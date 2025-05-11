@@ -98,14 +98,14 @@ unsafe extern "Rust" {
 extern crate alloc as rust_alloc;
 
 #[cfg(any(feature = "std", test))]
-#[no_mangle]
+#[unsafe(no_mangle)]
 fn __alloc(layout: Layout) -> AllocResult<NonNull<[u8]>> {
 	use rust_alloc::alloc::{Allocator, Global};
 	Global.allocate(layout)
 }
 
 #[cfg(any(feature = "std", test))]
-#[no_mangle]
+#[unsafe(no_mangle)]
 unsafe fn __realloc(
 	ptr: NonNull<u8>,
 	old_layout: Layout,
@@ -124,7 +124,7 @@ unsafe fn __realloc(
 }
 
 #[cfg(any(feature = "std", test))]
-#[no_mangle]
+#[unsafe(no_mangle)]
 unsafe fn __dealloc(ptr: NonNull<u8>, layout: Layout) {
 	use rust_alloc::alloc::{Allocator, Global};
 	Global.deallocate(ptr, layout);
