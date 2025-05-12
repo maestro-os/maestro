@@ -165,7 +165,7 @@ mod test {
 	use utils::{limits::PAGE_SIZE, math};
 
 	#[test_case]
-	fn alloc_free1() {
+	fn alloc_free0() {
 		let usage = buddy::allocated_pages_count();
 		unsafe {
 			let ptr = alloc(NonZeroUsize::new(1).unwrap()).unwrap();

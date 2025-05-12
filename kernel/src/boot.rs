@@ -22,6 +22,13 @@ use crate::{
 };
 use core::{arch::global_asm, sync::atomic::AtomicUsize};
 
+/// Boot stack size
+#[cfg(debug_assertions)]
+const BOOT_STACK_SIZE: usize = 262144; // rustc in debug mode is greedy
+/// Boot stack size
+#[cfg(not(debug_assertions))]
+const BOOT_STACK_SIZE: usize = 32768;
+
 #[cfg(target_arch = "x86")]
 pub const GDT_VIRT_ADDR: VirtAddr = VirtAddr(0xc0000800);
 #[cfg(target_arch = "x86_64")]
@@ -150,12 +157,12 @@ header_end:
 
 .align 8
 
-.set STACK_SIZE, 32768
-
 boot_stack:
-.size boot_stack, STACK_SIZE
-.skip STACK_SIZE
-boot_stack_begin:"#
+.size boot_stack, {BOOT_STACK_SIZE}
+.skip {BOOT_STACK_SIZE}
+boot_stack_begin:
+"#,
+	BOOT_STACK_SIZE = const(BOOT_STACK_SIZE)
 );
 
 // x86-specific initialization
