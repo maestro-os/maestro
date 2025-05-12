@@ -64,8 +64,7 @@ impl Config {
 			Err(e) if e.kind() == io::ErrorKind::NotFound => fs::read_to_string(FILE_DEFAULT)?,
 			Err(e) => return Err(e),
 		};
-		toml::from_str(&config_str)
-			.map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))
+		toml::from_str(&config_str).map_err(|e| io::Error::other(e.to_string()))
 	}
 
 	/// Sets the crate's cfg flags according to the configuration.

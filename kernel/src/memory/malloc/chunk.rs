@@ -32,7 +32,7 @@ use core::{
 	mem::size_of,
 	num::NonZeroUsize,
 	ptr,
-	ptr::{addr_of_mut, NonNull},
+	ptr::{NonNull, addr_of_mut},
 };
 use utils::errno::AllocResult;
 
@@ -442,11 +442,7 @@ static mut FREE_LISTS: [Option<NonNull<FreeChunk>>; FREE_LIST_BINS] = [None; FRE
 const fn get_min_chunk_size() -> usize {
 	let len = size_of::<FreeChunk>() - size_of::<Chunk>();
 	// Required because `max` is not `const`
-	if len > ALIGNMENT {
-		len
-	} else {
-		ALIGNMENT
-	}
+	if len > ALIGNMENT { len } else { ALIGNMENT }
 }
 
 /// Checks the chunks inside each free lists.

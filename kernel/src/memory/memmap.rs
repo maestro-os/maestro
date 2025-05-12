@@ -22,7 +22,7 @@
 //!
 //! This data is meant to be used by the memory allocators.
 
-use super::{stats, PhysAddr, VirtAddr};
+use super::{PhysAddr, VirtAddr, stats};
 use crate::{elf::kernel::sections, multiboot, multiboot::BootInfo, sync::once::OnceInit};
 use core::{cmp::min, iter};
 use utils::limits::PAGE_SIZE;

@@ -25,8 +25,8 @@ use crate::{
 	memory::user::UserPtr,
 	process::{ForkOptions, Process},
 	syscall::{
-		clone::{clone, CLONE_VFORK, CLONE_VM},
 		Args,
+		clone::{CLONE_VFORK, CLONE_VM, clone},
 	},
 };
 use core::ptr::null_mut;

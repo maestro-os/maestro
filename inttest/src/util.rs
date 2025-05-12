@@ -21,7 +21,7 @@
 use libc::{gid_t, mode_t, pid_t, sighandler_t, uid_t};
 use std::{
 	error::Error,
-	ffi::{c_int, c_ulong, c_void, CStr, CString},
+	ffi::{CStr, CString, c_int, c_ulong, c_void},
 	io, mem,
 	os::unix::ffi::OsStrExt,
 	path::Path,

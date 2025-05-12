@@ -147,7 +147,7 @@ pub fn register_callback(id: u32, callback: Callback) -> AllocResult<Option<Call
 /// Called whenever an interruption is triggered.
 ///
 /// `frame` is the stack frame of the interruption, with general purpose registers saved.
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "C" fn interrupt_handler(frame: &mut IntFrame) {
 	// Ignore page faults to avoid a deadlock (might occur when writing entropy to userspace on
 	// non-mapped page)

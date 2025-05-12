@@ -34,9 +34,8 @@ pub mod mountpoint;
 pub mod node;
 
 use super::{
-	perm,
+	FileType, Stat, perm,
 	perm::{AccessProfile, S_ISVTX},
-	FileType, Stat,
 };
 use crate::{
 	file::fs::StatSet,

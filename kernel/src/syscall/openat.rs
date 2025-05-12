@@ -21,17 +21,17 @@
 use crate::{
 	file,
 	file::{
-		fd::{FileDescriptorTable, FD_CLOEXEC},
+		File, FileType, O_CLOEXEC, O_CREAT, O_DIRECTORY, O_EXCL, O_NOCTTY, O_NOFOLLOW, O_RDONLY,
+		O_RDWR, O_TRUNC, O_WRONLY, Stat,
+		fd::{FD_CLOEXEC, FileDescriptorTable},
 		perm::AccessProfile,
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
-		File, FileType, Stat, O_CLOEXEC, O_CREAT, O_DIRECTORY, O_EXCL, O_NOCTTY, O_NOFOLLOW,
-		O_RDONLY, O_RDWR, O_TRUNC, O_WRONLY,
 	},
 	memory::user::UserString,
 	process::Process,
-	syscall::{util::at, Args},
-	time::clock::{current_time_ns, current_time_sec, Clock},
+	syscall::{Args, util::at},
+	time::clock::{Clock, current_time_ns, current_time_sec},
 };
 use core::{ffi::c_int, ops::Deref};
 use utils::{

@@ -31,7 +31,7 @@ use crate::{
 	arch::x86::{idt::IntFrame, tss},
 	file::{vfs, vfs::ResolutionSettings},
 	memory::VirtAddr,
-	process::{mem_space::MemSpace, Process},
+	process::{Process, mem_space::MemSpace},
 	sync::mutex::Mutex,
 };
 use utils::{

@@ -19,7 +19,7 @@
 //! TODO doc
 
 use crate::{
-	file::{fs::FileOps, File, FileType, Stat},
+	file::{File, FileType, Stat, fs::FileOps},
 	format_content,
 	memory::user::UserSlice,
 };

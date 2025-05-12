@@ -34,7 +34,7 @@ pub mod vfs;
 pub mod wait_queue;
 
 use crate::{
-	device::{BlkDev, BlkDevFileOps, DeviceID, DeviceType, BLK_DEVICES, CHAR_DEVICES},
+	device::{BLK_DEVICES, BlkDev, BlkDevFileOps, CHAR_DEVICES, DeviceID, DeviceType},
 	file::{
 		fs::FileOps,
 		perm::{Gid, Uid},
@@ -46,7 +46,7 @@ use crate::{
 	net::{SocketDesc, SocketDomain, SocketType},
 	sync::{atomic::AtomicU64, mutex::Mutex, once::OnceInit},
 	time::{
-		clock::{current_time_sec, Clock},
+		clock::{Clock, current_time_sec},
 		unit::Timestamp,
 	},
 };

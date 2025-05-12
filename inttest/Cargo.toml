@@ -1,7 +1,7 @@
 [package]
 name = "inttest"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [[bin]]
 name = "inttest"
@@ -12,5 +12,5 @@ name = "init"
 path = "src/boot.rs"
 
 [dependencies]
-libc = "0.2.153"
+libc = "0.2.172"
 memmap2 = "0.9.5"

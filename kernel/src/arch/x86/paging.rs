@@ -20,7 +20,7 @@
 
 use crate::{
 	arch::x86::supports_supervisor_prot,
-	memory::{buddy, buddy::BUDDY_RETRY, PhysAddr, VirtAddr},
+	memory::{PhysAddr, VirtAddr, buddy, buddy::BUDDY_RETRY},
 	register_get, register_set,
 };
 use core::{

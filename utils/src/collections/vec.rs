@@ -19,9 +19,8 @@
 //! A dynamically-resizable array of elements.
 
 use crate::{
-	__alloc, __dealloc, __realloc,
+	__alloc, __dealloc, __realloc, TryClone,
 	errno::{AllocResult, CollectResult},
-	TryClone,
 };
 use core::{
 	alloc::{AllocError, Layout},

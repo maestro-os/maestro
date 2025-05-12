@@ -27,11 +27,11 @@ use crate::{
 	process::Process,
 	sync::mutex::Mutex,
 	syscall::{
+		Args,
 		util::{
 			at,
 			at::{AT_EACCESS, AT_FDCWD},
 		},
-		Args,
 	},
 };
 use core::ffi::c_int;

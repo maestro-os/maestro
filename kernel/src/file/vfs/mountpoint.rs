@@ -19,27 +19,26 @@
 //! A mount point is a directory in which a filesystem is mounted.
 
 use crate::{
-	device::{DeviceID, BLK_DEVICES},
+	device::{BLK_DEVICES, DeviceID},
 	file::{
-		fs,
+		FileType, fs,
 		fs::{Filesystem, FilesystemType},
 		vfs,
 		vfs::{EntryChild, ResolutionSettings},
-		FileType,
 	},
 	sync::mutex::Mutex,
 };
 use core::fmt;
 use utils::{
+	TryClone,
 	collections::{
 		hashmap::HashMap,
 		path::{Path, PathBuf},
 		string::String,
 	},
 	errno,
-	errno::{AllocResult, EResult, ENOENT},
+	errno::{AllocResult, ENOENT, EResult},
 	ptr::arc::Arc,
-	TryClone,
 };
 
 /// Permits mandatory locking on files.

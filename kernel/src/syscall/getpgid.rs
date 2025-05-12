@@ -19,7 +19,7 @@
 //! The `getpgid` system call, which allows to get the process group ID of a process.
 
 use crate::{
-	process::{pid::Pid, Process},
+	process::{Process, pid::Pid},
 	syscall::Args,
 };
 use utils::{

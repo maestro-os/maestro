@@ -19,15 +19,15 @@
 //! The `open` system call allows a process to open a file and get a file
 //! descriptor.
 
-use super::{openat, Args};
+use super::{Args, openat};
 use crate::{
 	file,
 	file::{
+		File, FileType, Stat,
 		fd::FD_CLOEXEC,
 		perm::AccessProfile,
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
-		File, FileType, Stat,
 	},
 	memory::user::UserString,
 	process::Process,

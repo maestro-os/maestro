@@ -19,7 +19,7 @@
 //! The `truncate` syscall allows to truncate a file.
 
 use crate::{
-	file::{vfs, vfs::ResolutionSettings, File, O_WRONLY},
+	file::{File, O_WRONLY, vfs, vfs::ResolutionSettings},
 	memory::user::UserString,
 	process::Process,
 	syscall::Args,

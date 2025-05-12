@@ -19,9 +19,9 @@
 //! The `writev` system call allows to write sparse data on a file descriptor.
 
 use crate::{
-	file::{fd::FileDescriptorTable, File, FileType, O_NONBLOCK},
+	file::{File, FileType, O_NONBLOCK, fd::FileDescriptorTable},
 	memory::user::{UserIOVec, UserSlice},
-	process::{mem_space::MemSpace, scheduler, signal::Signal, Process},
+	process::{Process, mem_space::MemSpace, scheduler, signal::Signal},
 	sync::mutex::Mutex,
 	syscall::{Args, FromSyscallArg},
 };

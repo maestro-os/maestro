@@ -20,17 +20,16 @@
 //! current process.
 
 use crate::{
-	file::{fd::FileDescriptorTable, perm::AccessProfile, FileType},
+	file::{FileType, fd::FileDescriptorTable, perm::AccessProfile},
 	process::Process,
 	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::ffi::c_int;
 use utils::{
-	errno,
+	TryClone, errno,
 	errno::{EResult, Errno},
 	ptr::arc::Arc,
-	TryClone,
 };
 
 pub fn fchdir(

@@ -325,7 +325,7 @@ impl Drop for FileDescriptorTable {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::file::{fs::FileOps, File};
+	use crate::file::{File, fs::FileOps};
 
 	/// Dummy node ops for testing purpose.
 	#[derive(Debug)]

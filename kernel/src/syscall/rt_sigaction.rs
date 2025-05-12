@@ -21,8 +21,8 @@
 use crate::{
 	memory::user::UserPtr,
 	process::{
-		signal::{CompatSigAction, SigAction, SignalHandler},
 		Process,
+		signal::{CompatSigAction, SigAction, SignalHandler},
 	},
 	syscall::{Args, Signal},
 };

@@ -20,9 +20,9 @@
 
 use crate::{
 	file::{
+		FileType,
 		fd::{FileDescriptorTable, NewFDConstraint},
 		pipe::PipeBuffer,
-		FileType,
 	},
 	process::Process,
 	sync::mutex::Mutex,

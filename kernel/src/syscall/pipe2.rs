@@ -20,7 +20,7 @@
 
 use crate::{
 	file,
-	file::{fd::FileDescriptorTable, pipe::PipeBuffer, vfs, File},
+	file::{File, fd::FileDescriptorTable, pipe::PipeBuffer, vfs},
 	memory::user::UserPtr,
 	process::Process,
 	sync::mutex::Mutex,

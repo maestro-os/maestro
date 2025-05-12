@@ -22,7 +22,7 @@ use crate::{
 	file::{fd::FileDescriptorTable, vfs::ResolutionSettings},
 	memory::user::UserString,
 	sync::mutex::Mutex,
-	syscall::{renameat2::do_renameat2, util::at::AT_FDCWD, Args},
+	syscall::{Args, renameat2::do_renameat2, util::at::AT_FDCWD},
 };
 use utils::{
 	errno,

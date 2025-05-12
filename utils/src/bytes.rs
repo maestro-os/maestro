@@ -23,7 +23,7 @@ use core::sync::atomic::AtomicU64;
 use core::{
 	mem::{align_of, size_of, size_of_val},
 	slice,
-	sync::atomic::{AtomicU16, AtomicU32, AtomicU8, AtomicUsize},
+	sync::atomic::{AtomicU8, AtomicU16, AtomicU32, AtomicUsize},
 };
 
 /// Marker trait for a type valid for any bit representation.

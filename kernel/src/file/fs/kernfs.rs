@@ -26,10 +26,10 @@
 
 use crate::{
 	file::{
+		DirContext, DirEntry, FileType, INode, Stat,
 		fs::{DummyOps, FileOps, NodeOps},
 		vfs,
 		vfs::node::Node,
-		DirContext, DirEntry, FileType, INode, Stat,
 	},
 	memory::user::UserSlice,
 	sync::mutex::Mutex,
@@ -40,12 +40,12 @@ use core::{
 	sync::atomic::AtomicBool,
 };
 use utils::{
+	DisplayableStr,
 	boxed::Box,
 	collections::vec::Vec,
 	errno,
 	errno::{AllocResult, EResult},
 	ptr::arc::Arc,
-	DisplayableStr,
 };
 
 /// The index of the root inode.

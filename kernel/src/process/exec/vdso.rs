@@ -22,11 +22,11 @@
 use crate::{
 	elf::parser::ELFParser,
 	memory::{
+		VirtAddr,
 		buddy::ZONE_KERNEL,
 		cache::{FrameOwner, RcFrame},
-		VirtAddr,
 	},
-	process::mem_space::{MemSpace, Page, MAP_ANONYMOUS, MAP_PRIVATE, PROT_EXEC, PROT_READ},
+	process::mem_space::{MAP_ANONYMOUS, MAP_PRIVATE, MemSpace, PROT_EXEC, PROT_READ, Page},
 	sync::once::OnceInit,
 };
 use core::{cmp::min, num::NonZeroUsize, ptr::NonNull};
@@ -95,13 +95,7 @@ pub fn map(mem_space: &MemSpace, compat: bool) -> EResult<MappedVDSO> {
 	#[cfg(not(target_arch = "x86_64"))]
 	let vdso = &*VDSO;
 	#[cfg(target_arch = "x86_64")]
-	let vdso = {
-		if !compat {
-			&*VDSO
-		} else {
-			&*VDSO_COMPAT
-		}
-	};
+	let vdso = { if !compat { &*VDSO } else { &*VDSO_COMPAT } };
 	let begin = mem_space.map_special(
 		PROT_READ | PROT_EXEC,
 		MAP_PRIVATE | MAP_ANONYMOUS,

@@ -23,7 +23,7 @@ use crate::{
 	file::{fs::NodeOps, vfs, vfs::node::Node},
 	format_content,
 	memory::user::UserSlice,
-	process::{pid::Pid, Process},
+	process::{Process, pid::Pid},
 };
 use utils::{errno, errno::EResult};
 

@@ -18,10 +18,10 @@
 
 //! The `kill` system call, which allows to send a signal to a process.
 
-use super::{util, Args};
+use super::{Args, util};
 use crate::{
 	process,
-	process::{pid::Pid, scheduler::SCHEDULER, signal::Signal, Process, State},
+	process::{Process, State, pid::Pid, scheduler::SCHEDULER, signal::Signal},
 };
 use core::ffi::c_int;
 use utils::{

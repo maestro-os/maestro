@@ -45,11 +45,11 @@ use crate::{
 	device::manager::DeviceManager,
 	file,
 	file::{
+		File, FileType, Mode, Stat,
 		fs::FileOps,
 		perm::AccessProfile,
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
-		File, FileType, Mode, Stat,
 	},
 	memory::{
 		buddy::FrameOrder,
@@ -69,7 +69,7 @@ use utils::{
 		path::{Path, PathBuf},
 	},
 	errno,
-	errno::{AllocResult, EResult, ENOENT},
+	errno::{AllocResult, ENOENT, EResult},
 	limits::PAGE_SIZE,
 	ptr::arc::Arc,
 };

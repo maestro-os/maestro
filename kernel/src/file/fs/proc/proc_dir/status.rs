@@ -20,13 +20,13 @@
 //! status of the process.
 
 use crate::{
-	file::{fs::FileOps, File},
+	file::{File, fs::FileOps},
 	format_content,
 	memory::user::UserSlice,
-	process::{pid::Pid, Process},
+	process::{Process, pid::Pid},
 };
 use core::fmt;
-use utils::{errno, errno::EResult, DisplayableStr};
+use utils::{DisplayableStr, errno, errno::EResult};
 
 /// The `status` node of the proc.
 #[derive(Debug)]

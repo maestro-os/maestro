@@ -20,7 +20,7 @@
 
 pub mod ucontext;
 
-use super::{Process, State, REDZONE_SIZE};
+use super::{Process, REDZONE_SIZE, State};
 use crate::{
 	arch::x86::idt::IntFrame,
 	file::perm::Uid,

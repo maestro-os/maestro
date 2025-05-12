@@ -41,7 +41,6 @@
 #![feature(pointer_is_aligned_to)]
 #![feature(ptr_metadata)]
 #![feature(strict_provenance_lints)]
-#![feature(trait_upcasting)]
 #![deny(fuzzy_provenance_casts)]
 #![deny(missing_docs)]
 #![deny(warnings)]
@@ -49,6 +48,7 @@
 #![allow(dead_code)]
 #![allow(incomplete_features)]
 #![allow(internal_features)]
+#![allow(unsafe_op_in_unsafe_fn)]
 #![test_runner(crate::selftest::runner)]
 #![reexport_test_harness_main = "kernel_selftest"]
 
@@ -85,10 +85,9 @@ use crate::{
 	logger::LOGGER,
 	memory::{cache, vmem},
 	process::{
-		exec,
-		exec::{exec, ExecInfo},
-		scheduler::{switch, switch::idle_task, SCHEDULER},
-		Process,
+		Process, exec,
+		exec::{ExecInfo, exec},
+		scheduler::{SCHEDULER, switch, switch::idle_task},
 	},
 	sync::mutex::Mutex,
 	tty::TTY,
@@ -243,7 +242,7 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 /// Arguments:
 /// - `magic` is the magic number passed by Multiboot.
 /// - `multiboot_ptr` is the pointer to the Multiboot booting information structure.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn kernel_main(magic: u32, multiboot_ptr: *const c_void) -> ! {
 	kernel_main_inner(magic, multiboot_ptr);
 	unsafe {

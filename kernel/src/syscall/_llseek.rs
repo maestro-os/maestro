@@ -21,7 +21,7 @@
 use crate::{
 	file::fd::FileDescriptorTable,
 	memory::user::UserPtr,
-	process::{mem_space::MemSpace, Process},
+	process::{Process, mem_space::MemSpace},
 	sync::mutex::Mutex,
 	syscall::Args,
 };

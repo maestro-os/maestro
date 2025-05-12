@@ -22,15 +22,14 @@ use crate::{
 	arch::x86::{cli, idt::IntFrame},
 	memory::user::UserPtr,
 	process::{
+		ForkOptions, Process, State,
 		pid::Pid,
 		scheduler,
 		scheduler::{
-			switch,
+			SCHEDULER, Scheduler, switch,
 			switch::{fork_asm, init_ctx, stash_segments},
-			Scheduler, SCHEDULER,
 		},
 		user_desc::UserDesc,
-		ForkOptions, Process, State,
 	},
 	syscall::{Args, FromSyscallArg},
 };

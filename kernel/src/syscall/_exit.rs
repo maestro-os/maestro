@@ -22,7 +22,7 @@
 use super::Args;
 use crate::{
 	arch::x86::cli,
-	process::{scheduler, scheduler::Scheduler, Process},
+	process::{Process, scheduler, scheduler::Scheduler},
 };
 use core::ffi::c_int;
 use utils::errno::EResult;

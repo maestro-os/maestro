@@ -23,7 +23,7 @@
 use crate::{
 	arch::{
 		x86,
-		x86::{cli, gdt, pic, sti, DEFAULT_FLAGS},
+		x86::{DEFAULT_FLAGS, cli, gdt, pic, sti},
 	},
 	syscall::syscall_int,
 };
@@ -282,7 +282,7 @@ impl InterruptDescriptor {
 	}
 }
 
-extern "C" {
+unsafe extern "C" {
 	fn error0();
 	fn error1();
 	fn error2();

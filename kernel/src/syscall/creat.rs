@@ -18,7 +18,7 @@
 
 //! The `creat` system call allows to create and open a file.
 
-use super::{open, Args};
+use super::{Args, open};
 use crate::{
 	file,
 	file::{O_CREAT, O_TRUNC, O_WRONLY},

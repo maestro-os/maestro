@@ -20,8 +20,8 @@
 
 use crate::{
 	file::{
-		fs::{FileOps, Filesystem, NodeOps},
 		FileType, INode, Stat,
+		fs::{FileOps, Filesystem, NodeOps},
 	},
 	memory::{cache::MappedNode, user::UserSlice},
 	sync::mutex::Mutex,

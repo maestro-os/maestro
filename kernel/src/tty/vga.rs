@@ -25,7 +25,7 @@
 
 use crate::{
 	arch::x86::io::{inb, outb},
-	memory::{vmem, PhysAddr},
+	memory::{PhysAddr, vmem},
 };
 
 /// Type representing a VGA text mode character.

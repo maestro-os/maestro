@@ -33,7 +33,7 @@ use crate::{
 	time,
 	time::{
 		clock,
-		clock::{current_time_ns, Clock},
+		clock::{Clock, current_time_ns},
 		unit::{TimeUnit, Timespec},
 	},
 	tty::vga::DEFAULT_COLOR,

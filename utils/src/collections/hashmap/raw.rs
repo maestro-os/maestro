@@ -25,7 +25,7 @@ use core::{
 	intrinsics::{likely, unlikely},
 	iter::FusedIterator,
 	marker::PhantomData,
-	mem::{size_of, MaybeUninit},
+	mem::{MaybeUninit, size_of},
 	ops::BitAnd,
 	ptr::NonNull,
 	simd::{cmp::SimdPartialEq, u8x16},

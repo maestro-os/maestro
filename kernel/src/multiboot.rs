@@ -21,7 +21,7 @@
 //! ELF structure of the kernel.
 
 use crate::{memory::PhysAddr, sync::once::OnceInit};
-use core::{ffi::c_void, ptr::null, slice};
+use core::{ffi::c_void, slice};
 
 /// Multiboot2 magic number.
 pub const BOOTLOADER_MAGIC: u32 = 0x36d76289;
@@ -130,6 +130,7 @@ impl MmapEntry {
 }
 
 /// Kernel boot information provided by Multiboot, structured and filtered.
+#[derive(Default)]
 pub struct BootInfo {
 	/// The pointer to the end of the Multiboot2 tags.
 	pub tags_end: PhysAddr,
@@ -161,25 +162,6 @@ pub struct BootInfo {
 	///
 	/// If `None`, no initramfs is loaded.
 	pub initramfs: Option<&'static [u8]>,
-}
-
-impl Default for BootInfo {
-	fn default() -> Self {
-		Self {
-			tags_end: PhysAddr::default(),
-			cmdline: None,
-			loader_name: None,
-			mem_upper: 0,
-			memory_maps_size: 0,
-			memory_maps_entry_size: 0,
-			memory_maps: null(),
-			elf_num: 0,
-			elf_entsize: 0,
-			elf_shndx: 0,
-			elf_sections: PhysAddr::default(),
-			initramfs: None,
-		}
-	}
 }
 
 /// The field storing the information given to the kernel at boot time.

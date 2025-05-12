@@ -23,7 +23,7 @@
 //! handle protection rings and load the Task State Segment (TSS).
 
 use crate::{
-	boot::{InitGdt, GDT_VIRT_ADDR},
+	boot::{GDT_VIRT_ADDR, InitGdt},
 	memory::{PhysAddr, VirtAddr},
 };
 use core::{arch::asm, fmt, ptr};

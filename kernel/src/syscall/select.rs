@@ -22,12 +22,12 @@
 use crate::{
 	file::fd::FileDescriptorTable,
 	memory::user::UserPtr,
-	process::{mem_space::MemSpace, scheduler, scheduler::Scheduler, Process},
+	process::{Process, mem_space::MemSpace, scheduler, scheduler::Scheduler},
 	sync::mutex::Mutex,
-	syscall::{poll, Args},
+	syscall::{Args, poll},
 	time::{
 		clock,
-		clock::{current_time_ns, Clock},
+		clock::{Clock, current_time_ns},
 		unit::{TimeUnit, Timeval},
 	},
 };

@@ -19,10 +19,10 @@
 //! An inode represents a file in the filesystem.
 
 use super::{
-	bgd::BlockGroupDescriptor, dirent, dirent::Dirent, read_block, zero_block, Ext2Fs, Superblock,
+	Ext2Fs, Superblock, bgd::BlockGroupDescriptor, dirent, dirent::Dirent, read_block, zero_block,
 };
 use crate::{
-	file::{fs::ext2::dirent::DirentIterator, vfs::node::Node, FileType, INode, Mode, Stat},
+	file::{FileType, INode, Mode, Stat, fs::ext2::dirent::DirentIterator, vfs::node::Node},
 	memory::cache::{RcFrame, RcFrameVal},
 	sync::mutex::MutexGuard,
 };

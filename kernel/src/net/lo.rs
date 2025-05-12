@@ -18,7 +18,7 @@
 
 //! This module implements the local loopback.
 
-use super::{buff::BuffList, Address, BindAddress, Interface, MAC};
+use super::{Address, BindAddress, Interface, MAC, buff::BuffList};
 use utils::errno::EResult;
 
 /// Local loopback interfaces allows the system to write data to itself.

@@ -20,10 +20,10 @@
 //! storage drives.
 
 use crate::device::{
+	BlockDeviceOps,
 	bar::BAR,
 	bus::pci,
-	storage::{pata::PATAInterface, PhysicalDevice},
-	BlockDeviceOps,
+	storage::{PhysicalDevice, pata::PATAInterface},
 };
 use utils::{boxed::Box, errno::AllocResult};
 

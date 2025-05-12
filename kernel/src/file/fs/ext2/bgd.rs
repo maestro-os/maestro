@@ -20,7 +20,7 @@
 //! Table which represents a block group, which is a subdivision of the
 //! filesystem.
 
-use super::{read_block, Ext2Fs};
+use super::{Ext2Fs, read_block};
 use crate::memory::cache::RcFrameVal;
 use core::{mem::size_of, sync::atomic::AtomicU16};
 use macros::AnyRepr;

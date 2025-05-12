@@ -122,7 +122,7 @@ unsafe fn free(mut ptr: NonNull<u8>) {
 
 /// See Rust documentation.
 #[allow(clippy::missing_safety_doc)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe fn __alloc(layout: Layout) -> AllocResult<NonNull<[u8]>> {
 	let Some(size) = NonZeroUsize::new(layout.size()) else {
 		return Ok(NonNull::slice_from_raw_parts(layout.dangling(), 0));
@@ -133,7 +133,7 @@ pub unsafe fn __alloc(layout: Layout) -> AllocResult<NonNull<[u8]>> {
 
 /// See Rust documentation.
 #[allow(clippy::missing_safety_doc)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe fn __realloc(
 	ptr: NonNull<u8>,
 	old_layout: Layout,
@@ -149,7 +149,7 @@ pub unsafe fn __realloc(
 
 /// See Rust documentation.
 #[allow(clippy::missing_safety_doc)]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe fn __dealloc(ptr: NonNull<u8>, layout: Layout) {
 	if unlikely(layout.size() == 0) {
 		return;
@@ -165,7 +165,7 @@ mod test {
 	use utils::{limits::PAGE_SIZE, math};
 
 	#[test_case]
-	fn alloc_free1() {
+	fn alloc_free0() {
 		let usage = buddy::allocated_pages_count();
 		unsafe {
 			let ptr = alloc(NonZeroUsize::new(1).unwrap()).unwrap();

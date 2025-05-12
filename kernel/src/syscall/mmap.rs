@@ -19,16 +19,15 @@
 //! The `mmap` system call allows the process to allocate memory.
 
 use crate::{
-	file::{fd::FileDescriptorTable, perm::AccessProfile, FileType},
+	file::{FileType, fd::FileDescriptorTable, perm::AccessProfile},
 	memory,
 	memory::VirtAddr,
 	process::{
-		mem_space,
-		mem_space::{MemSpace, MAP_ANONYMOUS, MAP_FIXED, PROT_EXEC, PROT_READ, PROT_WRITE},
-		Process,
+		Process, mem_space,
+		mem_space::{MAP_ANONYMOUS, MAP_FIXED, MemSpace, PROT_EXEC, PROT_READ, PROT_WRITE},
 	},
 	sync::mutex::{IntMutex, Mutex},
-	syscall::{mmap::mem_space::MapConstraint, Args},
+	syscall::{Args, mmap::mem_space::MapConstraint},
 };
 use core::{
 	ffi::{c_int, c_void},

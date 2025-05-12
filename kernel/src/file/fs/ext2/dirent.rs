@@ -19,16 +19,16 @@
 //! A directory entry is an entry stored into an inode's content which
 //! represents a subfile in a directory.
 
-use super::{read_block, Ext2Fs, Superblock};
+use super::{Ext2Fs, Superblock, read_block};
 use crate::{
-	file::{fs::ext2::inode::Ext2INode, FileType},
+	file::{FileType, fs::ext2::inode::Ext2INode},
 	memory::cache::RcFrame,
 };
 use core::{intrinsics::unlikely, mem::offset_of, ptr::NonNull};
 use macros::AnyRepr;
 use utils::{
 	errno,
-	errno::{EResult, EOVERFLOW},
+	errno::{EOVERFLOW, EResult},
 	limits::NAME_MAX,
 };
 

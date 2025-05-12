@@ -20,9 +20,8 @@
 
 use crate::{
 	file::{
-		fs, vfs,
-		vfs::{mountpoint, mountpoint::MountSource, ResolutionSettings},
-		FileType,
+		FileType, fs, vfs,
+		vfs::{ResolutionSettings, mountpoint, mountpoint::MountSource},
 	},
 	memory::user::{UserPtr, UserString},
 	process::Process,

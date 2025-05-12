@@ -30,7 +30,7 @@ use crate::{
 	memory::user::UserString,
 	process::Process,
 	sync::mutex::Mutex,
-	syscall::{util::at::AT_EMPTY_PATH, Args},
+	syscall::{Args, util::at::AT_EMPTY_PATH},
 };
 use core::ffi::c_int;
 use utils::{

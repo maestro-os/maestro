@@ -32,11 +32,11 @@ use crate::{
 	device::serial,
 	file::wait_queue::WaitQueue,
 	memory::{user::UserSlice, vmem},
-	process::{pid::Pid, signal::Signal, Process},
+	process::{Process, pid::Pid, signal::Signal},
 	sync::mutex::IntMutex,
 	tty::{
 		ansi::ANSIBuffer,
-		termios::{consts::*, Termios},
+		termios::{Termios, consts::*},
 	},
 };
 use core::{cmp::min, ptr};

@@ -19,7 +19,7 @@
 //! Implementation of the directory of a process in the proc.
 
 use crate::{
-	memory::{user::UserSlice, VirtAddr},
+	memory::{VirtAddr, user::UserSlice},
 	process::mem_space::MemSpace,
 };
 use utils::{collections::vec::Vec, errno::AllocResult, ptr::arc::Arc, vec};

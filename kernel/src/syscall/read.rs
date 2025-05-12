@@ -20,9 +20,9 @@
 
 use super::Args;
 use crate::{
-	file::{fd::FileDescriptorTable, FileType},
+	file::{FileType, fd::FileDescriptorTable},
 	memory::user::UserSlice,
-	process::{scheduler, Process},
+	process::{Process, scheduler},
 	sync::mutex::Mutex,
 };
 use core::{cmp::min, ffi::c_int, sync::atomic};

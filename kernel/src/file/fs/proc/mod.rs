@@ -30,19 +30,19 @@ use super::{DummyOps, Filesystem, FilesystemOps, FilesystemType, NodeOps};
 use crate::{
 	device::BlkDev,
 	file::{
+		DirContext, DirEntry, FileType, Mode, Stat,
 		fs::{
+			Statfs,
 			kernfs::{
-				box_file, box_node, static_dir_stat, EitherOps, StaticDir, StaticEntry, StaticLink,
+				EitherOps, StaticDir, StaticEntry, StaticLink, box_file, box_node, static_dir_stat,
 			},
 			proc::proc_dir::environ::Environ,
-			Statfs,
 		},
 		perm::{Gid, Uid},
 		vfs,
 		vfs::node::Node,
-		DirContext, DirEntry, FileType, Mode, Stat,
 	},
-	process::{pid::Pid, scheduler::SCHEDULER, Process},
+	process::{Process, pid::Pid, scheduler::SCHEDULER},
 	sync::mutex::Mutex,
 };
 use core::sync::atomic::AtomicBool;

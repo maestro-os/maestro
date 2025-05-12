@@ -26,23 +26,23 @@ use crate::{
 	arch::x86::paging,
 	file::File,
 	memory::{
+		PhysAddr, VirtAddr,
 		buddy::ZONE_USER,
 		cache::{FrameOwner, RcFrame},
-		vmem::{write_ro, VMem},
-		PhysAddr, VirtAddr,
+		vmem::{VMem, write_ro},
 	},
 	process::mem_space::{
-		Page, COPY_BUFFER, MAP_ANONYMOUS, MAP_PRIVATE, MAP_SHARED, PROT_EXEC, PROT_WRITE,
+		COPY_BUFFER, MAP_ANONYMOUS, MAP_PRIVATE, MAP_SHARED, PROT_EXEC, PROT_WRITE, Page,
 	},
-	time::clock::{current_time_ms, Clock},
+	time::clock::{Clock, current_time_ms},
 };
 use core::{num::NonZeroUsize, ops::Deref, sync::atomic::Ordering::Release};
 use utils::{
+	TryClone,
 	collections::vec::Vec,
 	errno::{AllocResult, EResult},
 	limits::PAGE_SIZE,
 	ptr::arc::Arc,
-	TryClone,
 };
 
 /// Returns a physical address to the default zeroed page.

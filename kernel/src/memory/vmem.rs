@@ -27,7 +27,7 @@ use crate::{
 		},
 	},
 	elf, memory,
-	memory::{buddy, memmap::PHYS_MAP, PhysAddr, VirtAddr, KERNELSPACE_SIZE},
+	memory::{KERNELSPACE_SIZE, PhysAddr, VirtAddr, buddy, memmap::PHYS_MAP},
 	sync::{mutex::Mutex, once::OnceInit},
 	tty::vga,
 };
@@ -251,7 +251,7 @@ pub(crate) fn init() {
 	let iter = elf::kernel::sections().filter(|s| s.sh_addralign as usize == PAGE_SIZE);
 	for section in iter {
 		let write = section.sh_flags as u32 & elf::SHF_WRITE != 0;
-		let user = elf::kernel::get_section_name(section) == Some(b".user");
+		let user = elf::kernel::get_section_name(&section) == Some(b".user");
 		let mut flags = FLAG_GLOBAL;
 		if write {
 			flags |= FLAG_WRITE;

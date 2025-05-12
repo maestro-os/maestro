@@ -20,7 +20,7 @@
 
 use crate::{
 	memory::user::UserPtr,
-	process::{mem_space::MemSpace, pid::Pid, Process},
+	process::{Process, mem_space::MemSpace, pid::Pid},
 	sync::mutex::IntMutex,
 	syscall::Args,
 };

@@ -30,15 +30,14 @@ use crate::{
 	device::BlkDev,
 	file::vfs::node::Node,
 	memory::{
-		buddy,
+		PhysAddr, VirtAddr, buddy,
 		buddy::{Flags, FrameOrder, Page, ZONE_KERNEL},
 		stats::MEM_INFO,
-		PhysAddr, VirtAddr,
 	},
 	println,
 	sync::mutex::IntMutex,
 	time::{
-		clock::{current_time_ms, Clock},
+		clock::{Clock, current_time_ms},
 		sleep_for,
 		unit::{Timestamp, UTimestamp},
 	},

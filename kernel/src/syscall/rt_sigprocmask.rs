@@ -20,13 +20,13 @@
 
 use crate::{
 	memory::user::UserPtr,
-	process::{signal::SigSet, Process},
+	process::{Process, signal::SigSet},
 	syscall::Args,
 };
 use core::{cmp::min, ffi::c_int, intrinsics::unlikely};
 use utils::{
 	errno,
-	errno::{EResult, Errno, EINVAL},
+	errno::{EINVAL, EResult, Errno},
 	ptr::arc::Arc,
 };
 

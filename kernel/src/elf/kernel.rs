@@ -24,6 +24,7 @@ use crate::{
 	multiboot::BOOT_INFO,
 	sync::once::OnceInit,
 };
+use core::ptr;
 use utils::{
 	collections::hashmap::HashMap,
 	errno::{AllocResult, CollectResult},
@@ -44,24 +45,24 @@ pub type KernSym = super::ELF32Sym;
 pub type KernSym = super::ELF64Sym;
 
 /// A reference to the strtab.
-static STRTAB: OnceInit<&'static KernSectionHeader> = unsafe { OnceInit::new() };
+static STRTAB: OnceInit<KernSectionHeader> = unsafe { OnceInit::new() };
 /// Name-to-symbol map for the kernel.
 static SYMBOLS: OnceInit<HashMap<&'static [u8], KernSym>> = unsafe { OnceInit::new() };
 
 /// Returns an iterator over the kernel's ELF sections.
-pub fn sections() -> impl Iterator<Item = &'static KernSectionHeader> {
+pub fn sections() -> impl Iterator<Item = KernSectionHeader> {
 	(0..BOOT_INFO.elf_num).map(|i| get_section_by_offset(i).unwrap())
 }
 
 /// Returns a reference to the `n`th kernel section.
 ///
 /// If the section does not exist, the function returns `None`.
-pub fn get_section_by_offset(n: u32) -> Option<&'static KernSectionHeader> {
+pub fn get_section_by_offset(n: u32) -> Option<KernSectionHeader> {
 	if n < BOOT_INFO.elf_num {
 		let offset = n as usize * BOOT_INFO.elf_entsize as usize;
 		let section = unsafe {
 			let elf_sections = BOOT_INFO.elf_sections.kernel_to_virtual().unwrap();
-			&*(elf_sections + offset).as_ptr()
+			ptr::read_unaligned((elf_sections + offset).as_ptr())
 		};
 		Some(section)
 	} else {
@@ -88,12 +89,12 @@ pub fn get_section_name(section: &KernSectionHeader) -> Option<&'static [u8]> {
 /// `name` is the name of the required section.
 ///
 /// If the section doesn't exist, the function returns `None`.
-pub fn get_section_by_name(name: &[u8]) -> Option<&'static KernSectionHeader> {
+pub fn get_section_by_name(name: &[u8]) -> Option<KernSectionHeader> {
 	sections().find(|s| get_section_name(s) == Some(name))
 }
 
 /// Returns an iterator over the kernel's ELF symbols.
-pub fn symbols() -> impl Iterator<Item = &'static KernSym> {
+pub fn symbols() -> impl Iterator<Item = KernSym> {
 	let symtab = sections()
 		.find(|section| section.sh_type == SHT_SYMTAB)
 		.unwrap();
@@ -104,7 +105,7 @@ pub fn symbols() -> impl Iterator<Item = &'static KernSym> {
 	let symbols_count = (symtab.sh_size / symtab.sh_entsize) as usize;
 	(0..symbols_count).map(move |i| {
 		let off = i * symtab.sh_entsize as usize;
-		unsafe { &*(begin.add(off) as *const KernSym) }
+		unsafe { ptr::read_unaligned(begin.add(off) as *const KernSym) }
 	})
 }
 
@@ -132,6 +133,7 @@ pub fn get_function_name(inst: VirtAddr) -> Option<&'static [u8]> {
 			let end = begin + sym.st_size as usize;
 			(begin..end).contains(&inst)
 		})
+		.as_ref()
 		.and_then(get_symbol_name)
 }
 
@@ -154,7 +156,6 @@ pub(crate) fn init() -> AllocResult<()> {
 	}
 	// Build the symbol map
 	let map = symbols()
-		.cloned()
 		.map(|sym| {
 			let name = get_symbol_name(&sym).unwrap_or(b"");
 			(name, sym)
