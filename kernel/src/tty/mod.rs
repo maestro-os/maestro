@@ -56,11 +56,6 @@ const TAB_SIZE: usize = 4;
 /// The maximum number of characters in the input buffer of a TTY.
 const INPUT_MAX: usize = 4096;
 
-/// The frequency of the bell in Hz.
-const BELL_FREQUENCY: u32 = 2000;
-/// The duraction of the bell in ms.
-const BELL_DURATION: u32 = 500;
-
 // TODO Implement character size mask
 // TODO Full implement serial
 
@@ -117,8 +112,6 @@ pub struct TTYDisplay {
 	screen_y: vga::Pos,
 	/// The content of the TTY's history
 	history: [vga::Char; HISTORY_SIZE],
-	/// Tells whether TTY updates are enabled or not
-	update: bool,
 
 	/// Terminal I/O settings.
 	termios: Termios,
@@ -435,7 +428,6 @@ pub static TTY: TTY = TTY {
 
 		screen_y: 0,
 		history: [(vga::DEFAULT_COLOR as vga::Char) << 8; HISTORY_SIZE],
-		update: true,
 
 		termios: Termios::new(),
 		winsize: WinSize {

@@ -39,8 +39,6 @@ use utils::errno::AllocResult;
 /// The magic number for every chunks
 #[cfg(config_debug_malloc_magic)]
 const CHUNK_MAGIC: u32 = 0xdeadbeef;
-/// Chunk flag indicating that the chunk is being used
-const CHUNK_FLAG_USED: u8 = 0b1;
 /// The required alignment for pointers returned by allocator.
 pub const ALIGNMENT: usize = 16;
 /// The number of free list bins.

@@ -21,7 +21,7 @@
 //! A file descriptor is an ID held by a process pointing to an entry in the
 //! open file description table.
 
-use crate::{file::File, sync::mutex::Mutex};
+use crate::file::File;
 use core::{cmp::max, ffi::c_int, mem};
 use utils::{
 	collections::vec::Vec,
@@ -31,34 +31,9 @@ use utils::{
 	ptr::arc::Arc,
 };
 
-/// The maximum number of file descriptors that can be open system-wide at once.
-const TOTAL_MAX_FD: usize = u32::MAX as usize;
-
 /// File descriptor flag: If set, the file descriptor is closed on successful
 /// call to `execve`.
 pub const FD_CLOEXEC: i32 = 1;
-
-/// The total number of file descriptors open system-wide.
-static TOTAL_FD: Mutex<usize> = Mutex::new(0);
-
-/// Increments the total number of file descriptors open system-wide.
-///
-/// If the maximum amount of file descriptors is reached, the function does
-/// nothing and returns an error with the appropriate errno.
-fn increment_total() -> EResult<()> {
-	let mut total_fd = TOTAL_FD.lock();
-	#[allow(clippy::absurd_extreme_comparisons)]
-	if *total_fd >= TOTAL_MAX_FD {
-		return Err(errno!(ENFILE));
-	}
-	*total_fd += 1;
-	Ok(())
-}
-
-/// Decrements the total number of file descriptors open system-wide.
-fn decrement_total() {
-	*TOTAL_FD.lock() -= 1;
-}
 
 /// Constraint on a new file descriptor ID.
 #[derive(Debug)]

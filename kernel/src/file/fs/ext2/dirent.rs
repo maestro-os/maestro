@@ -154,16 +154,6 @@ impl Dirent {
 		}
 	}
 
-	/// Returns the number of bytes actually used by the entry.
-	pub fn used_space(&self, superblock: &Superblock) -> u16 {
-		(NAME_OFF + self.name_len(superblock)).next_multiple_of(ALIGN) as _
-	}
-
-	/// Tells whether the entry can fit another entry with the given `length` in bytes.
-	pub fn can_fit(&self, length: u16, superblock: &Superblock) -> bool {
-		self.rec_len - self.used_space(superblock) >= length
-	}
-
 	/// Returns the entry's name.
 	///
 	/// `superblock` is the filesystem's superblock.

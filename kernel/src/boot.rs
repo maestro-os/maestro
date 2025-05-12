@@ -115,11 +115,6 @@ static mut REMAP_DIR: Table = const {
 	dir
 };
 
-unsafe extern "C" {
-	/// The kernel's entry point.
-	fn multiboot_entry();
-}
-
 // Common initialization code
 global_asm!(
 	r#"

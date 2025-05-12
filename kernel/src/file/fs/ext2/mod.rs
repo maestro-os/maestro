@@ -94,23 +94,6 @@ use utils::{
 /// The filesystem's magic number.
 const EXT2_MAGIC: u16 = 0xef53;
 
-/// Default filesystem major version.
-const DEFAULT_MAJOR: u32 = 1;
-/// Default filesystem minor version.
-const DEFAULT_MINOR: u16 = 1;
-/// Default filesystem block size.
-const DEFAULT_BLOCK_SIZE: u64 = 1024;
-/// Default inode size.
-const DEFAULT_INODE_SIZE: u16 = 128;
-/// Default inode size.
-const DEFAULT_INODES_PER_GROUP: u32 = 1024;
-/// Default number of blocks per block group.
-const DEFAULT_BLOCKS_PER_GROUP: u32 = 1024;
-/// Default number of mounts in between each fsck.
-const DEFAULT_MOUNT_COUNT_BEFORE_FSCK: u16 = 1000;
-/// Default elapsed time in between each fsck in seconds.
-const DEFAULT_FSCK_INTERVAL: u32 = 16070400;
-
 /// State telling that the filesystem is clean.
 const FS_STATE_CLEAN: u16 = 1;
 /// State telling that the filesystem has errors.

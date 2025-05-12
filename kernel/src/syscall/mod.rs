@@ -141,7 +141,6 @@ mod unlinkat;
 mod util;
 mod utimensat;
 mod vfork;
-mod wait;
 mod wait4;
 mod waitpid;
 mod write;
@@ -158,7 +157,7 @@ use crate::{
 	syscall::{
 		getdents::getdents64,
 		mmap::mmap2,
-		sync::{fsync, msync, sync, syncfs},
+		sync::{fdatasync, fsync, msync, sync, syncfs},
 		time::{
 			clock_gettime, clock_gettime64, nanosleep32, nanosleep64, time64, timer_create,
 			timer_delete, timer_settime,
@@ -665,7 +664,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		0x091 => syscall!(readv, frame),
 		0x092 => syscall!(writev, frame),
 		// TODO 0x093 => syscall!(getsid, frame),
-		// TODO 0x094 => syscall!(fdatasync, frame),
+		0x094 => syscall!(fdatasync, frame),
 		// TODO 0x095 => syscall!(_sysctl, frame),
 		// TODO 0x096 => syscall!(mlock, frame),
 		// TODO 0x097 => syscall!(munlock, frame),
@@ -1040,7 +1039,7 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		0x048 => syscall!(fcntl, frame),
 		// TODO 0x049 => syscall!(flock, frame),
 		0x04a => syscall!(fsync, frame),
-		// TODO 0x04b => syscall!(fdatasync, frame),
+		0x04b => syscall!(fdatasync, frame),
 		0x04c => syscall!(truncate, frame),
 		// TODO 0x04d => syscall!(ftruncate, frame),
 		0x04e => syscall!(getdents, frame),

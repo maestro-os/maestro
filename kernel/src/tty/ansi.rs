@@ -123,11 +123,6 @@ impl<'tty> ANSIBufferView<'tty> {
 		&self.tty.ansi_buffer.buf[..self.tty.ansi_buffer.cursor]
 	}
 
-	/// Tells whether the view is empty.
-	fn is_empty(&self) -> bool {
-		self.buffer()[self.cursor..].is_empty()
-	}
-
 	/// Returns the number of consumed characters.
 	fn consumed_count(&self) -> usize {
 		self.cursor

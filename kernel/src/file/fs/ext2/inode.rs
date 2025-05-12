@@ -59,37 +59,6 @@ pub const INODE_TYPE_SYMLINK: u16 = 0xa000;
 /// INode type: Socket
 pub const INODE_TYPE_SOCKET: u16 = 0xc000;
 
-/// User: Read, Write and Execute.
-const INODE_PERMISSION_IRWXU: u16 = 0o0700;
-/// User: Read.
-const INODE_PERMISSION_IRUSR: u16 = 0o0400;
-/// User: Write.
-const INODE_PERMISSION_IWUSR: u16 = 0o0200;
-/// User: Execute.
-const INODE_PERMISSION_IXUSR: u16 = 0o0100;
-/// Group: Read, Write and Execute.
-const INODE_PERMISSION_IRWXG: u16 = 0o0070;
-/// Group: Read.
-const INODE_PERMISSION_IRGRP: u16 = 0o0040;
-/// Group: Write.
-const INODE_PERMISSION_IWGRP: u16 = 0o0020;
-/// Group: Execute.
-const INODE_PERMISSION_IXGRP: u16 = 0o0010;
-/// Other: Read, Write and Execute.
-const INODE_PERMISSION_IRWXO: u16 = 0o0007;
-/// Other: Read.
-const INODE_PERMISSION_IROTH: u16 = 0o0004;
-/// Other: Write.
-const INODE_PERMISSION_IWOTH: u16 = 0o0002;
-/// Other: Execute.
-const INODE_PERMISSION_IXOTH: u16 = 0o0001;
-/// Setuid.
-const INODE_PERMISSION_ISUID: u16 = 0o4000;
-/// Setgid.
-const INODE_PERMISSION_ISGID: u16 = 0o2000;
-/// Sticky bit.
-const INODE_PERMISSION_ISVTX: u16 = 0o1000;
-
 /// `s_flags`: Secure deletion
 const INODE_FLAG_SECURE_DELETION: u32 = 0x00001;
 /// `s_flags`: Keep a copy of data when deleted
@@ -122,16 +91,10 @@ pub const SYMLINK_INLINE_LIMIT: u64 = 60;
 
 /// The inode of the root directory.
 pub const ROOT_DIRECTORY_INODE: u32 = 2;
-/// The root directory's default mode.
-pub const ROOT_DIRECTORY_DEFAULT_MODE: u16 = INODE_PERMISSION_IRWXU
-	| INODE_PERMISSION_IRGRP
-	| INODE_PERMISSION_IXGRP
-	| INODE_PERMISSION_IROTH
-	| INODE_PERMISSION_IXOTH;
 
 /// Container for an inode, locking its associated mutex to avoid concurrency issues
 pub(super) struct INodeWrap<'n> {
-	guard: MutexGuard<'n, (), true>,
+	_guard: MutexGuard<'n, (), true>,
 	inode: RcFrameVal<Ext2INode>,
 }
 
@@ -323,7 +286,7 @@ impl Ext2INode {
 		// Adapt to the size of an inode
 		let off = off * (inode_size / 128);
 		Ok(INodeWrap {
-			guard: node.lock.lock(),
+			_guard: node.lock.lock(),
 			inode: RcFrameVal::new(blk, off as _),
 		})
 	}

@@ -74,7 +74,7 @@ pub fn fsync(Args(fd): Args<c_int>, fds: Arc<Mutex<FileDescriptorTable>>) -> ERe
 	do_fsync(fd, fds, true)
 }
 
-pub fn fsyncdata(Args(fd): Args<c_int>, fds: Arc<Mutex<FileDescriptorTable>>) -> EResult<usize> {
+pub fn fdatasync(Args(fd): Args<c_int>, fds: Arc<Mutex<FileDescriptorTable>>) -> EResult<usize> {
 	do_fsync(fd, fds, false)
 }
 

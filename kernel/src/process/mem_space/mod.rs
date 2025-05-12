@@ -214,9 +214,8 @@ impl MemSpaceState {
 	///
 	/// If no mapping contains the address, the function returns `None`.
 	pub fn get_mapping_for_addr(&self, addr: VirtAddr) -> Option<&MemMapping> {
-		self.mappings.cmp_get(|key, value| {
-			range_cmp(*key as usize, value.get_size().get() * PAGE_SIZE, addr.0)
-		})
+		self.mappings
+			.cmp_get(|key, value| range_cmp(*key as usize, value.size.get() * PAGE_SIZE, addr.0))
 	}
 
 	/// Returns a mutable reference to the memory mapping containing the given virtual
@@ -225,7 +224,7 @@ impl MemSpaceState {
 	/// If no mapping contains the address, the function returns `None`.
 	pub fn get_mut_mapping_for_addr(&mut self, addr: VirtAddr) -> Option<&mut MemMapping> {
 		self.mappings.cmp_get_mut(|key, value| {
-			range_cmp(*key as usize, value.get_size().get() * PAGE_SIZE, addr.0)
+			range_cmp(*key as usize, value.size.get() * PAGE_SIZE, addr.0)
 		})
 	}
 }
@@ -393,7 +392,7 @@ impl MemSpace {
 			file,
 			off,
 		)?;
-		let addr = map.get_addr();
+		let addr = map.addr;
 		transaction.insert_mapping(map)?;
 		transaction.commit();
 		Ok(addr)
@@ -421,7 +420,7 @@ impl MemSpace {
 			.zip(pages.iter().cloned())
 			.for_each(|(dst, src)| *dst = Some(MappedFrame::new(src)));
 		// Commit
-		let addr = map.get_addr();
+		let addr = map.addr;
 		transaction.insert_mapping(map)?;
 		transaction.commit();
 		Ok(addr)
@@ -450,11 +449,11 @@ impl MemSpace {
 				continue;
 			};
 			// The pointer to the beginning of the mapping
-			let mapping_begin = mapping.get_addr();
+			let mapping_begin = mapping.addr;
 			// The offset in the mapping to the beginning of pages to unmap
 			let inner_off = (page_addr.0 - mapping_begin as usize) / PAGE_SIZE;
 			// The number of pages to unmap in the mapping
-			let pages = min(size.get() - i, mapping.get_size().get() - inner_off);
+			let pages = min(size.get() - i, mapping.size.get() - inner_off);
 			i += pages;
 			// Newly created mappings and gap after removing parts of the previous one
 			let (prev, gap, next) = mapping.split(inner_off, pages)?;
@@ -563,7 +562,7 @@ impl MemSpace {
 		let mappings = state.mappings.try_clone()?;
 		// Unmap to invalidate the virtual memory context
 		for (_, m) in &state.mappings {
-			vmem.unmap_range(VirtAddr::from(m.get_addr()), m.get_size().get());
+			vmem.unmap_range(VirtAddr::from(m.addr), m.size.get());
 		}
 		Ok(Self {
 			state: IntMutex::new(MemSpaceState {
@@ -685,7 +684,7 @@ impl MemSpace {
 		while i < pages {
 			let mapping = state.get_mapping_for_addr(addr).ok_or(AllocError)?;
 			mapping.sync(&vmem, sync)?;
-			i += mapping.get_size().get();
+			i += mapping.size.get();
 		}
 		Ok(())
 	}
@@ -709,16 +708,15 @@ impl MemSpace {
 			return Ok(false);
 		};
 		// Check permissions
-		let prot = mapping.get_prot();
 		let write = code & PAGE_FAULT_WRITE != 0;
-		if unlikely(write && prot & PROT_WRITE == 0) {
+		if unlikely(write && mapping.prot & PROT_WRITE == 0) {
 			return Ok(false);
 		}
-		if unlikely(code & PAGE_FAULT_INSTRUCTION != 0 && prot & PROT_EXEC == 0) {
+		if unlikely(code & PAGE_FAULT_INSTRUCTION != 0 && mapping.prot & PROT_EXEC == 0) {
 			return Ok(false);
 		}
 		// Map the accessed page
-		let page_offset = (addr.0 - mapping.get_addr() as usize) / PAGE_SIZE;
+		let page_offset = (addr.0 - mapping.addr as usize) / PAGE_SIZE;
 		mapping.map(page_offset, &mut vmem, write)?;
 		Ok(true)
 	}

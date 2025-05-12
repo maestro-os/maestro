@@ -158,13 +158,13 @@ fn init_page(
 #[derive(Debug)]
 pub struct MemMapping {
 	/// Address on the virtual memory to the beginning of the mapping
-	addr: *mut u8,
+	pub(super) addr: *mut u8,
 	/// The size of the mapping in pages
-	size: NonZeroUsize,
+	pub(super) size: NonZeroUsize,
 	/// Memory protection
-	prot: u8,
+	pub(super) prot: u8,
 	/// Mapping flags
-	flags: u8,
+	pub(super) flags: u8,
 
 	/// The mapped file, if any
 	file: Option<Arc<File>>,
@@ -209,26 +209,6 @@ impl MemMapping {
 
 			pages,
 		})
-	}
-
-	/// Returns a pointer on the virtual memory to the beginning of the mapping.
-	pub fn get_addr(&self) -> *mut u8 {
-		self.addr
-	}
-
-	/// Returns the size of the mapping in memory pages.
-	pub fn get_size(&self) -> NonZeroUsize {
-		self.size
-	}
-
-	/// Returns memory protection.
-	pub fn get_prot(&self) -> u8 {
-		self.prot
-	}
-
-	/// Returns the mapping's flags.
-	pub fn get_flags(&self) -> u8 {
-		self.flags
 	}
 
 	/// Maps the page at the offset `offset` of the mapping, onto `vmem`.
