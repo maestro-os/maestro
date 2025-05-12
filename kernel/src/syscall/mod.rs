@@ -58,9 +58,6 @@ mod fstatfs;
 mod fstatfs64;
 mod getcwd;
 mod getdents;
-mod getegid;
-mod geteuid;
-mod getgid;
 mod getpgid;
 mod getpid;
 mod getppid;
@@ -71,7 +68,6 @@ mod getrusage;
 mod getsockname;
 mod getsockopt;
 mod gettid;
-mod getuid;
 mod init_module;
 pub mod ioctl;
 mod kill;
@@ -110,15 +106,9 @@ mod select;
 mod sendto;
 mod set_thread_area;
 mod set_tid_address;
-mod setgid;
 mod sethostname;
 mod setpgid;
-mod setregid;
-mod setresgid;
-mod setresuid;
-mod setreuid;
 mod setsockopt;
-mod setuid;
 mod shutdown;
 mod signal;
 mod sigreturn;
@@ -138,6 +128,7 @@ mod umount;
 mod uname;
 mod unlink;
 mod unlinkat;
+mod user;
 mod util;
 mod utimensat;
 mod vfork;
@@ -146,7 +137,6 @@ mod waitpid;
 mod write;
 mod writev;
 
-//use wait::wait;
 use crate::{
 	arch::x86::{gdt, idt::IntFrame},
 	file,
@@ -161,6 +151,10 @@ use crate::{
 		time::{
 			clock_gettime, clock_gettime64, nanosleep32, nanosleep64, time64, timer_create,
 			timer_delete, timer_settime,
+		},
+		user::{
+			getegid, geteuid, getgid, getuid, setgid, setregid, setresgid, setresuid, setreuid,
+			setuid,
 		},
 	},
 };
@@ -200,9 +194,6 @@ use fstatfs::fstatfs;
 use fstatfs64::fstatfs64;
 use getcwd::getcwd;
 use getdents::getdents;
-use getegid::getegid;
-use geteuid::geteuid;
-use getgid::getgid;
 use getpgid::getpgid;
 use getpid::getpid;
 use getppid::getppid;
@@ -213,7 +204,6 @@ use getrusage::getrusage;
 use getsockname::getsockname;
 use getsockopt::getsockopt;
 use gettid::gettid;
-use getuid::getuid;
 use init_module::init_module;
 use ioctl::ioctl;
 use kill::kill;
@@ -252,15 +242,9 @@ use select::select;
 use sendto::sendto;
 use set_thread_area::set_thread_area;
 use set_tid_address::set_tid_address;
-use setgid::setgid;
 use sethostname::sethostname;
 use setpgid::setpgid;
-use setregid::setregid;
-use setresgid::setresgid;
-use setresuid::setresuid;
-use setreuid::setreuid;
 use setsockopt::setsockopt;
-use setuid::setuid;
 use shutdown::shutdown;
 use signal::signal;
 use sigreturn::{rt_sigreturn, sigreturn};

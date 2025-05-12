@@ -146,7 +146,7 @@ impl<'tty> ANSIBufferView<'tty> {
 
 	/// Consumes the next number.
 	///
-	/// A successful return doesn't necessarily means the number is complete. The buffer might be
+	/// A successful return does not necessarily mean the number is complete. The buffer might be
 	/// incomplete and need more data.
 	///
 	/// If not enough data remains or if the number is invalid, the function returns `None`.

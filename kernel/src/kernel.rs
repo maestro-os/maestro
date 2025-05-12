@@ -44,6 +44,7 @@
 #![deny(fuzzy_provenance_casts)]
 #![deny(missing_docs)]
 #![allow(clippy::tabs_in_doc_comments)]
+#![allow(dead_code)]
 #![allow(incomplete_features)]
 #![allow(internal_features)]
 #![allow(unsafe_op_in_unsafe_fn)]
