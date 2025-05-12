@@ -35,7 +35,6 @@ mod chdir;
 mod chmod;
 mod chown;
 mod chroot;
-mod clone;
 mod close;
 mod connect;
 mod creat;
@@ -53,21 +52,13 @@ mod fchmodat;
 mod fcntl;
 mod fcntl64;
 mod finit_module;
-mod fork;
 mod fstatfs;
 mod fstatfs64;
 mod getcwd;
 mod getdents;
-mod getpgid;
-mod getpid;
-mod getppid;
 mod getrandom;
-mod getresgid;
-mod getresuid;
-mod getrusage;
 mod getsockname;
 mod getsockopt;
-mod gettid;
 mod init_module;
 pub mod ioctl;
 mod kill;
@@ -89,6 +80,7 @@ pub mod poll;
 mod preadv;
 mod preadv2;
 mod prlimit64;
+mod process;
 mod pselect6;
 mod pwritev;
 mod pwritev2;
@@ -101,13 +93,9 @@ mod renameat2;
 mod rmdir;
 mod rt_sigaction;
 mod rt_sigprocmask;
-mod sched_yield;
 mod select;
 mod sendto;
-mod set_thread_area;
-mod set_tid_address;
 mod sethostname;
-mod setpgid;
 mod setsockopt;
 mod shutdown;
 mod signal;
@@ -131,9 +119,7 @@ mod unlinkat;
 mod user;
 mod util;
 mod utimensat;
-mod vfork;
-mod wait4;
-mod waitpid;
+mod wait;
 mod write;
 mod writev;
 
@@ -141,21 +127,25 @@ use crate::{
 	arch::x86::{gdt, idt::IntFrame},
 	file,
 	file::{fd::FileDescriptorTable, perm::AccessProfile, vfs::ResolutionSettings},
-	process,
-	process::{Process, mem_space::MemSpace, signal::Signal},
+	process::{Process, mem_space::MemSpace, signal::Signal, yield_current},
 	sync::mutex::{IntMutex, Mutex},
 	syscall::{
 		getdents::getdents64,
 		mmap::mmap2,
+		process::{
+			clone, compat_clone, fork, getpgid, getpid, getppid, getrusage, gettid, sched_yield,
+			set_thread_area, set_tid_address, setpgid, vfork,
+		},
 		sync::{fdatasync, fsync, msync, sync, syncfs},
 		time::{
 			clock_gettime, clock_gettime64, nanosleep32, nanosleep64, time64, timer_create,
 			timer_delete, timer_settime,
 		},
 		user::{
-			getegid, geteuid, getgid, getuid, setgid, setregid, setresgid, setresuid, setreuid,
-			setuid,
+			getegid, geteuid, getgid, getresgid, getresuid, getuid, setgid, setregid, setresgid,
+			setresuid, setreuid, setuid,
 		},
+		wait::{wait4, waitpid},
 	},
 };
 use _exit::_exit;
@@ -170,7 +160,6 @@ use chdir::chdir;
 use chmod::chmod;
 use chown::chown;
 use chroot::chroot;
-use clone::{clone, compat_clone};
 use close::close;
 use connect::connect;
 use core::{arch::global_asm, fmt, ops::Deref, ptr};
@@ -189,21 +178,13 @@ use fchmodat::fchmodat;
 use fcntl::fcntl;
 use fcntl64::fcntl64;
 use finit_module::finit_module;
-use fork::fork;
 use fstatfs::fstatfs;
 use fstatfs64::fstatfs64;
 use getcwd::getcwd;
 use getdents::getdents;
-use getpgid::getpgid;
-use getpid::getpid;
-use getppid::getppid;
 use getrandom::getrandom;
-use getresgid::getresgid;
-use getresuid::getresuid;
-use getrusage::getrusage;
 use getsockname::getsockname;
 use getsockopt::getsockopt;
-use gettid::gettid;
 use init_module::init_module;
 use ioctl::ioctl;
 use kill::kill;
@@ -237,13 +218,9 @@ use renameat2::renameat2;
 use rmdir::rmdir;
 use rt_sigaction::{compat_rt_sigaction, rt_sigaction};
 use rt_sigprocmask::rt_sigprocmask;
-use sched_yield::sched_yield;
 use select::select;
 use sendto::sendto;
-use set_thread_area::set_thread_area;
-use set_tid_address::set_tid_address;
 use sethostname::sethostname;
-use setpgid::setpgid;
 use setsockopt::setsockopt;
 use shutdown::shutdown;
 use signal::signal;
@@ -265,9 +242,6 @@ use unlink::unlink;
 use unlinkat::unlinkat;
 use utils::{errno::EResult, ptr::arc::Arc};
 use utimensat::utimensat;
-use vfork::vfork;
-use wait4::wait4;
-use waitpid::waitpid;
 use write::write;
 use writev::writev;
 
@@ -1348,7 +1322,7 @@ pub extern "C" fn syscall_handler(frame: &mut IntFrame) {
 		}
 	}
 	// If the process has been killed, handle it
-	process::yield_current(3, frame);
+	yield_current(3, frame);
 }
 
 unsafe extern "C" {

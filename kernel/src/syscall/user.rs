@@ -20,6 +20,7 @@
 
 use crate::{
 	file::perm::{AccessProfile, Gid, Uid},
+	memory::user::UserPtr,
 	process::Process,
 	syscall::Args,
 };
@@ -30,16 +31,36 @@ pub fn getuid(ap: AccessProfile) -> EResult<usize> {
 	Ok(ap.uid as _)
 }
 
-pub fn getgid(ap: AccessProfile) -> EResult<usize> {
-	Ok(ap.gid as _)
-}
-
 pub fn geteuid(ap: AccessProfile) -> EResult<usize> {
 	Ok(ap.euid as _)
 }
 
+pub fn getresuid(
+	Args((ruid, euid, suid)): Args<(UserPtr<Uid>, UserPtr<Uid>, UserPtr<Uid>)>,
+	ap: AccessProfile,
+) -> EResult<usize> {
+	ruid.copy_to_user(&ap.uid)?;
+	euid.copy_to_user(&ap.euid)?;
+	suid.copy_to_user(&ap.suid)?;
+	Ok(0)
+}
+
+pub fn getgid(ap: AccessProfile) -> EResult<usize> {
+	Ok(ap.gid as _)
+}
+
 pub fn getegid(ap: AccessProfile) -> EResult<usize> {
 	Ok(ap.egid as _)
+}
+
+pub fn getresgid(
+	Args((rgid, egid, sgid)): Args<(UserPtr<Gid>, UserPtr<Gid>, UserPtr<Gid>)>,
+	ap: AccessProfile,
+) -> EResult<usize> {
+	rgid.copy_to_user(&ap.gid)?;
+	egid.copy_to_user(&ap.egid)?;
+	sgid.copy_to_user(&ap.sgid)?;
+	Ok(0)
 }
 
 pub fn setuid(Args(uid): Args<Uid>, proc: Arc<Process>) -> EResult<usize> {

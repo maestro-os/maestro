@@ -16,19 +16,20 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The `waitpid` system call allows to wait for an event from a child process.
+//! Process management system calls.
 
 use crate::{
 	memory::user::UserPtr,
-	process,
-	process::{Process, State, pid::Pid, rusage::Rusage, scheduler, scheduler::Scheduler},
-	syscall::{Args, waitpid::scheduler::SCHEDULER},
+	process::{
+		Process, State,
+		pid::Pid,
+		rusage::Rusage,
+		scheduler::{SCHEDULER, Scheduler},
+	},
+	syscall::Args,
 };
 use core::{ffi::c_int, iter};
-use utils::{
-	errno,
-	errno::{EResult, Errno},
-};
+use utils::{errno, errno::EResult};
 
 /// Wait flag. Returns immediately if no child has exited.
 pub const WNOHANG: i32 = 1;
@@ -170,4 +171,10 @@ pub fn waitpid(
 	Args((pid, wstatus, options)): Args<(c_int, UserPtr<c_int>, c_int)>,
 ) -> EResult<usize> {
 	do_waitpid(pid, wstatus, options | WEXITED, UserPtr(None))
+}
+
+pub fn wait4(
+	Args((pid, wstatus, options, rusage)): Args<(c_int, UserPtr<c_int>, c_int, UserPtr<Rusage>)>,
+) -> EResult<usize> {
+	do_waitpid(pid, wstatus, options | WEXITED, rusage)
 }
