@@ -95,16 +95,13 @@ macro_rules! module {
 				C
 			}
 
-			#[no_mangle]
+			#[unsafe(no_mangle)]
 			pub static MOD_MAGIC: u64 = kernel::module::MOD_MAGIC;
-
-			#[no_mangle]
+			#[unsafe(no_mangle)]
 			pub static MOD_NAME: &'static str = env!("CARGO_PKG_NAME");
-
-			#[no_mangle]
+			#[unsafe(no_mangle)]
 			pub static MOD_VERSION: Version = get_version();
-
-			#[no_mangle]
+			#[unsafe(no_mangle)]
 			pub static MOD_DEPS: [Dependency; const_len(&$deps)] = $deps;
 		}
 	};
