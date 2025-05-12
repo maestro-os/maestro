@@ -11,14 +11,14 @@ extern crate kernel;
 kernel::module!([]);
 
 /// Called on module load
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn init() -> bool {
 	kernel::println!("Hello world!");
 	true
 }
 
 /// Called on module unload
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn fini() {
 	kernel::println!("Goodbye!");
 }
