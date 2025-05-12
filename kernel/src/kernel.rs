@@ -43,7 +43,6 @@
 #![feature(strict_provenance_lints)]
 #![deny(fuzzy_provenance_casts)]
 #![deny(missing_docs)]
-#![deny(warnings)]
 #![allow(clippy::tabs_in_doc_comments)]
 #![allow(dead_code)]
 #![allow(incomplete_features)]
