@@ -169,86 +169,29 @@ pub fn do_fcntl(
 			fds.get_fd(fd)?.get_file().set_flags(arg as _, true);
 			Ok(0)
 		}
-		F_GETLK => {
-			// TODO
-			todo!();
-		}
-		F_SETLK => {
-			// TODO
-			todo!();
-		}
-		F_SETLKW => {
-			// TODO
-			todo!();
-		}
-		F_SETOWN => {
-			// TODO
-			todo!();
-		}
-		F_GETOWN => {
-			// TODO
-			todo!();
-		}
-		F_SETSIG => {
-			// TODO
-			todo!();
-		}
-		F_GETSIG => {
-			// TODO
-			todo!();
-		}
-		F_GETLK64 => {
-			// TODO
-			todo!();
-		}
-		F_SETLK64 => {
-			// TODO
-			todo!();
-		}
-		F_SETLKW64 => {
-			// TODO
-			todo!();
-		}
-		F_SETOWN_EX => {
-			// TODO
-			todo!();
-		}
-		F_GETOWN_EX => {
-			// TODO
-			todo!();
-		}
-		F_OFD_GETLK => {
-			// TODO
-			todo!();
-		}
-		F_OFD_SETLK => {
-			// TODO
-			todo!();
-		}
-		F_OFD_SETLKW => {
-			// TODO
-			todo!();
-		}
-		F_SETLEASE => {
-			// TODO
-			todo!();
-		}
-		F_GETLEASE => {
-			// TODO
-			todo!();
-		}
-		F_NOTIFY => {
-			// TODO
-			todo!();
-		}
+		F_GETLK => todo!(),
+		F_SETLK => todo!(),
+		F_SETLKW => todo!(),
+		F_SETOWN => todo!(),
+		F_GETOWN => todo!(),
+		F_SETSIG => todo!(),
+		F_GETSIG => todo!(),
+		F_GETLK64 => todo!(),
+		F_SETLK64 => todo!(),
+		F_SETLKW64 => todo!(),
+		F_SETOWN_EX => todo!(),
+		F_GETOWN_EX => todo!(),
+		F_OFD_GETLK => todo!(),
+		F_OFD_SETLK => todo!(),
+		F_OFD_SETLKW => todo!(),
+		F_SETLEASE => todo!(),
+		F_GETLEASE => todo!(),
+		F_NOTIFY => todo!(),
 		F_DUPFD_CLOEXEC => {
 			let (id, _) = fds.duplicate_fd(fd, NewFDConstraint::Min(arg as _), true)?;
 			Ok(id as _)
 		}
-		F_SETPIPE_SZ => {
-			// TODO
-			todo!();
-		}
+		F_SETPIPE_SZ => todo!(),
 		F_GETPIPE_SZ => {
 			let file = fds.get_fd(fd)?.get_file();
 			match file.get_buffer::<PipeBuffer>() {
@@ -256,30 +199,12 @@ pub fn do_fcntl(
 				_ => Ok(0),
 			}
 		}
-		F_ADD_SEALS => {
-			// TODO
-			todo!();
-		}
-		F_GET_SEALS => {
-			// TODO
-			todo!();
-		}
-		F_GET_RW_HINT => {
-			// TODO
-			todo!();
-		}
-		F_SET_RW_HINT => {
-			// TODO
-			todo!();
-		}
-		F_GET_FILE_RW_HINT => {
-			// TODO
-			todo!();
-		}
-		F_SET_FILE_RW_HINT => {
-			// TODO
-			todo!();
-		}
+		F_ADD_SEALS => todo!(),
+		F_GET_SEALS => todo!(),
+		F_GET_RW_HINT => todo!(),
+		F_SET_RW_HINT => todo!(),
+		F_GET_FILE_RW_HINT => todo!(),
+		F_SET_FILE_RW_HINT => todo!(),
 		_ => Err(errno!(EINVAL)),
 	}
 }
@@ -289,4 +214,11 @@ pub fn fcntl(
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	do_fcntl(fd, cmd, arg, false, &mut fds.lock())
+}
+
+pub fn fcntl64(
+	Args((fd, cmd, arg)): Args<(c_int, c_int, *mut c_void)>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+) -> EResult<usize> {
+	do_fcntl(fd, cmd, arg, true, &mut fds.lock())
 }

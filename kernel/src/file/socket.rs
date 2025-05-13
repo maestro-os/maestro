@@ -23,7 +23,7 @@ use crate::{
 	memory::{ring_buffer::RingBuffer, user::UserSlice},
 	net::{SocketDesc, osi},
 	sync::mutex::Mutex,
-	syscall::ioctl::Request,
+	syscall::ioctl,
 };
 use core::{
 	ffi::{c_int, c_void},
@@ -182,7 +182,7 @@ impl FileOps for Socket {
 		todo!()
 	}
 
-	fn ioctl(&self, _file: &File, _request: Request, _argp: *const c_void) -> EResult<u32> {
+	fn ioctl(&self, _file: &File, _request: ioctl::Request, _argp: *const c_void) -> EResult<u32> {
 		todo!()
 	}
 

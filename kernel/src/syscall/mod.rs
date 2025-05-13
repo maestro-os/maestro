@@ -23,72 +23,37 @@
 
 #![allow(unused_imports)]
 
-mod _llseek;
-mod _newselect;
-mod access;
 mod arch_prctl;
 mod bind;
 mod r#break;
 mod brk;
-mod chdir;
-mod chmod;
-mod chown;
-mod chroot;
-mod close;
 mod connect;
-mod creat;
 mod delete_module;
-mod dup;
-mod dup2;
+mod dirent;
 mod execve;
-mod faccessat;
-mod faccessat2;
-mod fadvise64_64;
-mod fchdir;
-mod fchmod;
-mod fchmodat;
 mod fcntl;
-mod fcntl64;
+mod fd;
 mod finit_module;
+mod fs;
 mod fstatfs;
 mod fstatfs64;
-mod getcwd;
-mod getdents;
 mod getrandom;
 mod getsockname;
 mod getsockopt;
 mod init_module;
 pub mod ioctl;
-mod lchown;
-mod link;
-mod linkat;
 mod madvise;
-mod mkdir;
-mod mknod;
 mod mmap;
 mod mount;
 mod mprotect;
 mod munmap;
-mod open;
-mod openat;
 mod pipe;
 mod pipe2;
-pub mod poll;
-mod preadv;
-mod preadv2;
 mod prlimit64;
 mod process;
-mod pselect6;
-mod pwritev;
-mod pwritev2;
-mod read;
 mod readlink;
-mod readv;
 mod reboot;
-mod rename;
-mod renameat2;
-mod rmdir;
-mod select;
+pub mod select;
 mod sendto;
 mod sethostname;
 mod setsockopt;
@@ -99,36 +64,39 @@ mod socketpair;
 mod stat;
 mod statfs;
 mod statfs64;
-mod symlink;
-mod symlinkat;
 mod sync;
 mod time;
-mod truncate;
-mod umask;
 mod umount;
 mod uname;
-mod unlink;
-mod unlinkat;
 mod user;
 mod util;
-mod utimensat;
 mod wait;
-mod write;
-mod writev;
 
 use crate::{
 	arch::x86::{gdt, idt::IntFrame},
-	file,
-	file::{fd::FileDescriptorTable, perm::AccessProfile, vfs::ResolutionSettings},
+	file::{Mode, fd::FileDescriptorTable, perm::AccessProfile, vfs::ResolutionSettings},
 	process::{Process, mem_space::MemSpace, signal::Signal, yield_current},
 	sync::mutex::{IntMutex, Mutex},
 	syscall::{
-		getdents::getdents64,
+		dirent::getdents64,
+		fcntl::fcntl64,
+		fd::{
+			_llseek, close, dup, dup2, lseek, preadv, preadv2, pwritev, pwritev2, read, readv,
+			write, writev,
+		},
+		fs::{
+			access, chdir, chmod, chown, chroot, creat, faccessat, faccessat2, fadvise64_64,
+			fchdir, fchmod, fchmodat, getcwd, lchown, link, linkat, mkdir, mknod, open, openat,
+			rename, renameat2, rmdir, symlink, symlinkat, truncate, umask, unlink, unlinkat,
+			utimensat,
+		},
+		ioctl::ioctl,
 		mmap::mmap2,
 		process::{
 			_exit, clone, compat_clone, exit_group, fork, getpgid, getpid, getppid, getrusage,
 			gettid, sched_yield, set_thread_area, set_tid_address, setpgid, vfork,
 		},
+		select::{_newselect, poll, pselect6},
 		signal::{
 			compat_rt_sigaction, kill, rt_sigaction, rt_sigprocmask, rt_sigreturn, sigreturn,
 			tkill,
@@ -145,71 +113,33 @@ use crate::{
 		wait::{wait4, waitpid},
 	},
 };
-use _llseek::{_llseek, lseek};
-use _newselect::_newselect;
-use access::access;
 use arch_prctl::arch_prctl;
 use bind::bind;
 use r#break::r#break;
 use brk::brk;
-use chdir::chdir;
-use chmod::chmod;
-use chown::chown;
-use chroot::chroot;
-use close::close;
 use connect::connect;
 use core::{arch::global_asm, fmt, ops::Deref, ptr};
-use creat::creat;
 use delete_module::delete_module;
-use dup::dup;
-use dup2::dup2;
+use dirent::getdents;
 use execve::execve;
-use faccessat::faccessat;
-use faccessat2::faccessat2;
-use fadvise64_64::fadvise64_64;
-use fchdir::fchdir;
-use fchmod::fchmod;
-use fchmodat::fchmodat;
 use fcntl::fcntl;
-use fcntl64::fcntl64;
 use finit_module::finit_module;
 use fstatfs::fstatfs;
 use fstatfs64::fstatfs64;
-use getcwd::getcwd;
-use getdents::getdents;
 use getrandom::getrandom;
 use getsockname::getsockname;
 use getsockopt::getsockopt;
 use init_module::init_module;
-use ioctl::ioctl;
-use lchown::lchown;
-use link::link;
-use linkat::linkat;
 use madvise::madvise;
-use mkdir::mkdir;
-use mknod::mknod;
 use mmap::mmap;
 use mount::mount;
 use mprotect::mprotect;
 use munmap::munmap;
-use open::open;
-use openat::openat;
 use pipe::pipe;
 use pipe2::pipe2;
-use poll::poll;
-use preadv::preadv;
-use preadv2::preadv2;
 use prlimit64::prlimit64;
-use pselect6::pselect6;
-use pwritev::pwritev;
-use pwritev2::pwritev2;
-use read::read;
 use readlink::readlink;
-use readv::readv;
 use reboot::reboot;
-use rename::rename;
-use renameat2::renameat2;
-use rmdir::rmdir;
 use select::select;
 use sendto::sendto;
 use sethostname::sethostname;
@@ -221,19 +151,10 @@ use socketpair::socketpair;
 use stat::{fstat, fstat64, lstat, lstat64, stat, stat64, statx};
 use statfs::statfs;
 use statfs64::statfs64;
-use symlink::symlink;
-use symlinkat::symlinkat;
 use time::time32;
-use truncate::truncate;
-use umask::umask;
 use umount::{umount, umount2};
 use uname::uname;
-use unlink::unlink;
-use unlinkat::unlinkat;
 use utils::{errno::EResult, ptr::arc::Arc};
-use utimensat::utimensat;
-use write::write;
-use writev::writev;
 
 /// The ID of the `sigreturn` system call, for use by the signal trampoline.
 pub const SIGRETURN_ID: usize = 0x077;
@@ -352,7 +273,7 @@ impl FromSyscall for ResolutionSettings {
 }
 
 /// The umask of the process performing the system call.
-pub struct Umask(file::Mode);
+pub struct Umask(Mode);
 
 impl FromSyscall for Umask {
 	fn from_syscall(_frame: &IntFrame) -> Self {
