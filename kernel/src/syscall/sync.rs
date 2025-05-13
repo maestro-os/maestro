@@ -19,10 +19,10 @@
 //! Filesystem synchronization system calls.
 
 use crate::{
-	file::{fd::FileDescriptorTable, vfs, vfs::mountpoint::FILESYSTEMS},
+	file::{fd::FileDescriptorTable, vfs::mountpoint::FILESYSTEMS},
 	memory::VirtAddr,
 	process::mem_space::MemSpace,
-	sync::mutex::{IntMutex, Mutex},
+	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::{ffi::c_int, intrinsics::unlikely};

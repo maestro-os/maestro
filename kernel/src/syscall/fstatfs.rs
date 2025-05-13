@@ -21,16 +21,11 @@
 use crate::{
 	file::{fd::FileDescriptorTable, fs::Statfs},
 	memory::user::UserPtr,
-	process::Process,
 	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::{ffi::c_int, intrinsics::size_of};
-use utils::{
-	errno,
-	errno::{EResult, Errno},
-	ptr::arc::Arc,
-};
+use utils::{errno, errno::EResult, ptr::arc::Arc};
 
 /// Performs the `fstatfs` system call.
 pub fn do_fstatfs(

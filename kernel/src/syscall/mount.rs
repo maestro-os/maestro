@@ -24,15 +24,10 @@ use crate::{
 		vfs::{ResolutionSettings, mountpoint, mountpoint::MountSource},
 	},
 	memory::user::{UserPtr, UserString},
-	process::Process,
 	syscall::Args,
 };
 use core::ffi::{c_ulong, c_void};
-use utils::{
-	collections::path::PathBuf,
-	errno,
-	errno::{EResult, Errno},
-};
+use utils::{collections::path::PathBuf, errno, errno::EResult};
 
 pub fn mount(
 	Args((source, target, filesystemtype, mountflags, _data)): Args<(

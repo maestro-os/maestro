@@ -19,20 +19,9 @@
 //! The `munmap` system call allows the process to free memory that was
 //! allocated with `mmap`.
 
-use crate::{
-	memory,
-	memory::VirtAddr,
-	process::{Process, mem_space::MemSpace},
-	sync::mutex::IntMutex,
-	syscall::Args,
-};
-use core::{ffi::c_void, intrinsics::unlikely, num::NonZeroUsize};
-use utils::{
-	errno,
-	errno::{EResult, Errno},
-	limits::PAGE_SIZE,
-	ptr::arc::Arc,
-};
+use crate::{memory, memory::VirtAddr, process::mem_space::MemSpace, syscall::Args};
+use core::{intrinsics::unlikely, num::NonZeroUsize};
+use utils::{errno, errno::EResult, limits::PAGE_SIZE, ptr::arc::Arc};
 
 pub fn munmap(
 	Args((addr, length)): Args<(VirtAddr, usize)>,

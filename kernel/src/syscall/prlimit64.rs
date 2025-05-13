@@ -20,16 +20,11 @@
 
 use crate::{
 	memory::user::UserPtr,
-	process::{Process, mem_space::MemSpace, pid::Pid},
-	sync::mutex::IntMutex,
+	process::{Process, pid::Pid},
 	syscall::Args,
 };
 use core::ffi::c_int;
-use utils::{
-	errno,
-	errno::{EResult, Errno},
-	ptr::arc::Arc,
-};
+use utils::{errno, errno::EResult};
 
 /// The amount of seconds of CPU time the process can consume.
 const RLIMIT_CPU: i32 = 0;

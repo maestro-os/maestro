@@ -21,16 +21,11 @@
 use crate::{
 	file::{fd::FileDescriptorTable, socket::Socket},
 	memory::user::UserSlice,
-	process::Process,
 	sync::mutex::Mutex,
 	syscall::Args,
 };
-use core::{any::Any, ffi::c_int, intrinsics::unlikely};
-use utils::{
-	errno,
-	errno::{EResult, Errno},
-	ptr::arc::Arc,
-};
+use core::{ffi::c_int, intrinsics::unlikely};
+use utils::{errno, errno::EResult, ptr::arc::Arc};
 
 /// The implementation of the `connect` syscall.
 pub fn connect(

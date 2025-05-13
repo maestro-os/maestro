@@ -21,20 +21,14 @@
 
 use crate::{
 	file,
-	file::{File, fd::FileDescriptorTable, perm::AccessProfile, socket::Socket, vfs},
+	file::{File, fd::FileDescriptorTable, perm::AccessProfile, socket::Socket},
 	memory::user::UserPtr,
 	net::{SocketDesc, SocketDomain, SocketType},
-	process::Process,
 	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::ffi::c_int;
-use utils::{
-	boxed::Box,
-	errno,
-	errno::{EResult, Errno},
-	ptr::arc::Arc,
-};
+use utils::{errno, errno::EResult, ptr::arc::Arc};
 
 pub fn socketpair(
 	Args((domain, r#type, protocol, sv)): Args<(c_int, c_int, c_int, UserPtr<[c_int; 2]>)>,

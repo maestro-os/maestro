@@ -23,14 +23,10 @@ use crate::{
 	memory::user::{UserSlice, UserString},
 	module,
 	module::Module,
-	process::Process,
 	syscall::Args,
 };
 use core::{ffi::c_ulong, intrinsics::unlikely};
-use utils::{
-	errno,
-	errno::{EResult, Errno},
-};
+use utils::{errno, errno::EResult};
 
 pub fn init_module(
 	Args((module_image, len, _param_values)): Args<(*mut u8, c_ulong, UserString)>,

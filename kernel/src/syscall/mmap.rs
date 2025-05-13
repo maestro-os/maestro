@@ -20,26 +20,16 @@
 
 use crate::{
 	file::{FileType, fd::FileDescriptorTable, perm::AccessProfile},
-	memory,
 	memory::VirtAddr,
 	process::{
-		Process, mem_space,
+		mem_space,
 		mem_space::{MAP_ANONYMOUS, MAP_FIXED, MemSpace, PROT_EXEC, PROT_READ, PROT_WRITE},
 	},
-	sync::mutex::{IntMutex, Mutex},
+	sync::mutex::Mutex,
 	syscall::{Args, mmap::mem_space::MapConstraint},
 };
-use core::{
-	ffi::{c_int, c_void},
-	intrinsics::unlikely,
-	num::NonZeroUsize,
-};
-use utils::{
-	errno,
-	errno::{EResult, Errno},
-	limits::PAGE_SIZE,
-	ptr::arc::Arc,
-};
+use core::{ffi::c_int, intrinsics::unlikely, num::NonZeroUsize};
+use utils::{errno, errno::EResult, limits::PAGE_SIZE, ptr::arc::Arc};
 
 /// Performs the `mmap` system call.
 #[allow(clippy::too_many_arguments)]

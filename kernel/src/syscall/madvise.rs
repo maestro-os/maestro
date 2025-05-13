@@ -21,7 +21,7 @@
 
 use crate::syscall::Args;
 use core::ffi::{c_int, c_void};
-use utils::errno::{EResult, Errno};
+use utils::errno::EResult;
 
 pub fn madvise(
 	Args((_addr, _length, _advice)): Args<(*mut c_void, usize, c_int)>,

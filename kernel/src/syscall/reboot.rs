@@ -19,12 +19,9 @@
 //! The `reboot` system call allows the superuser to power off, reboot, halt or
 //! suspend the system.
 
-use crate::{file::perm::AccessProfile, power, process::Process, syscall::Args};
+use crate::{file::perm::AccessProfile, power, syscall::Args};
 use core::ffi::{c_int, c_void};
-use utils::{
-	errno,
-	errno::{EResult, Errno},
-};
+use utils::{errno, errno::EResult};
 
 /// First magic number.
 const MAGIC: c_int = 0xde145e83u32 as _;

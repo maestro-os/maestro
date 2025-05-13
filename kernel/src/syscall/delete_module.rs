@@ -18,19 +18,9 @@
 
 //! The `delete_module` system call allows to unload a module from the kernel.
 
-use crate::{
-	file::{perm::AccessProfile, vfs::ResolutionSettings},
-	memory::user::UserString,
-	module,
-	process::Process,
-	syscall::Args,
-};
+use crate::{file::perm::AccessProfile, memory::user::UserString, module, syscall::Args};
 use core::ffi::c_uint;
-use utils::{
-	collections::string::String,
-	errno,
-	errno::{EResult, Errno},
-};
+use utils::{errno, errno::EResult};
 // TODO handle flags
 
 pub fn delete_module(

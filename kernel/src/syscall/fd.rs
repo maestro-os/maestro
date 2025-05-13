@@ -20,21 +20,16 @@
 
 use crate::{
 	file::{
-		File, FileType,
+		FileType,
 		fd::{FileDescriptorTable, NewFDConstraint},
 	},
 	memory::user::{UserIOVec, UserPtr, UserSlice},
-	process::scheduler::Scheduler,
 	sync::mutex::Mutex,
 	syscall::Args,
-	time::{
-		clock::{Clock, current_time_ms},
-		unit::Timestamp,
-	},
 };
 use core::{
 	cmp::min,
-	ffi::{c_int, c_uint, c_ulong, c_void},
+	ffi::{c_int, c_uint},
 	intrinsics::unlikely,
 	sync::atomic,
 };

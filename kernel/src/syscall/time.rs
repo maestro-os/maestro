@@ -27,7 +27,6 @@ use crate::{
 	},
 	syscall::Args,
 	time::{
-		clock,
 		clock::{Clock, current_time_ns, current_time_sec},
 		sleep_for,
 		unit::{ClockIdT, ITimerspec32, TimeUnit, TimerT, Timespec, Timespec32},

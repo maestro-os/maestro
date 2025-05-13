@@ -25,15 +25,10 @@ use crate::{
 		vfs::{ResolutionSettings, mountpoint},
 	},
 	memory::user::UserString,
-	process::Process,
 	syscall::Args,
 };
 use core::ffi::c_int;
-use utils::{
-	collections::path::PathBuf,
-	errno,
-	errno::{EResult, Errno},
-};
+use utils::{collections::path::PathBuf, errno, errno::EResult};
 
 pub fn umount(Args(target): Args<UserString>, rs: ResolutionSettings) -> EResult<usize> {
 	umount2(Args((target, 0)), rs)

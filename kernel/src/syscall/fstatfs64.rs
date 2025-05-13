@@ -21,16 +21,11 @@
 use crate::{
 	file::{fd::FileDescriptorTable, fs::Statfs},
 	memory::user::UserPtr,
-	process::Process,
 	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::ffi::c_int;
-use utils::{
-	errno,
-	errno::{EResult, Errno},
-	ptr::arc::Arc,
-};
+use utils::{errno::EResult, ptr::arc::Arc};
 
 pub fn fstatfs64(
 	Args((fd, sz, buf)): Args<(c_int, usize, UserPtr<Statfs>)>,

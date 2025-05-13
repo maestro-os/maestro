@@ -20,16 +20,11 @@
 
 use crate::{
 	file::{fd::FileDescriptorTable, socket::Socket},
-	process::Process,
 	sync::mutex::Mutex,
 	syscall::Args,
 };
-use core::{any::Any, ffi::c_int};
-use utils::{
-	errno,
-	errno::{EResult, Errno},
-	ptr::arc::Arc,
-};
+use core::ffi::c_int;
+use utils::{errno, errno::EResult, ptr::arc::Arc};
 
 /// Shutdown receive side of the connection.
 const SHUT_RD: c_int = 0;

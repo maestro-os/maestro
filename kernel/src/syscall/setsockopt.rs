@@ -21,16 +21,11 @@
 use crate::{
 	file::{fd::FileDescriptorTable, socket::Socket},
 	memory::user::UserSlice,
-	process::Process,
 	sync::mutex::Mutex,
 	syscall::Args,
 };
-use core::{any::Any, ffi::c_int};
-use utils::{
-	errno,
-	errno::{EResult, Errno},
-	ptr::arc::Arc,
-};
+use core::ffi::c_int;
+use utils::{errno, errno::EResult, ptr::arc::Arc};
 
 pub fn setsockopt(
 	Args((sockfd, level, optname, optval, optlen)): Args<(c_int, c_int, c_int, *mut u8, usize)>,

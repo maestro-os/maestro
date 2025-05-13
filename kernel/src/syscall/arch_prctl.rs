@@ -25,10 +25,7 @@ use crate::{
 	syscall::{Args, FromSyscallArg},
 };
 use core::ffi::c_int;
-use utils::{
-	errno,
-	errno::{EResult, Errno},
-};
+use utils::{errno, errno::EResult};
 
 /// Set 64 bit base for the FS register.
 const ARCH_SET_GS: c_int = 0x1001;

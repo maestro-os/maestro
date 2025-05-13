@@ -20,23 +20,14 @@
 
 use crate::{
 	file::{
-		FileType,
 		fd::{FileDescriptorTable, NewFDConstraint},
 		pipe::PipeBuffer,
 	},
-	process::Process,
 	sync::mutex::Mutex,
 	syscall::Args,
 };
-use core::{
-	any::Any,
-	ffi::{c_int, c_void},
-};
-use utils::{
-	errno,
-	errno::{EResult, Errno},
-	ptr::arc::Arc,
-};
+use core::ffi::{c_int, c_void};
+use utils::{errno, errno::EResult, ptr::arc::Arc};
 
 /// Duplicate the file descriptor using the lowest numbered available file descriptor greater than
 /// or equal to the specified argument.

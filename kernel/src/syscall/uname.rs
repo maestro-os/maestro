@@ -18,13 +18,8 @@
 
 //! The `uname` syscall is used to retrieve information about the system.
 
-use crate::{
-	HOSTNAME, NAME, VERSION, arch::ARCH, memory::user::UserPtr, process::Process, syscall::Args,
-};
-use utils::{
-	errno,
-	errno::{EResult, Errno},
-};
+use crate::{HOSTNAME, NAME, VERSION, arch::ARCH, memory::user::UserPtr, syscall::Args};
+use utils::errno::EResult;
 
 /// The length of a field of the utsname structure.
 const UTSNAME_LENGTH: usize = 65;

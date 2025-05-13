@@ -21,8 +21,6 @@
 //! Documentation for each system call can be retrieved from the man. Type the
 //! command: `man 2 <syscall>`
 
-#![allow(unused_imports)]
-
 mod arch_prctl;
 mod bind;
 mod r#break;
@@ -73,10 +71,10 @@ mod util;
 mod wait;
 
 use crate::{
-	arch::x86::{gdt, idt::IntFrame},
+	arch::x86::idt::IntFrame,
 	file::{Mode, fd::FileDescriptorTable, perm::AccessProfile, vfs::ResolutionSettings},
 	process::{Process, mem_space::MemSpace, signal::Signal, yield_current},
-	sync::mutex::{IntMutex, Mutex},
+	sync::mutex::Mutex,
 	syscall::{
 		dirent::getdents64,
 		fcntl::fcntl64,
@@ -118,7 +116,7 @@ use bind::bind;
 use r#break::r#break;
 use brk::brk;
 use connect::connect;
-use core::{arch::global_asm, fmt, ops::Deref, ptr};
+use core::{fmt, ops::Deref, ptr};
 use delete_module::delete_module;
 use dirent::getdents;
 use execve::execve;

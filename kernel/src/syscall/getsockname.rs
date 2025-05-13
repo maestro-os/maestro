@@ -21,16 +21,11 @@
 use crate::{
 	file::{fd::FileDescriptorTable, socket::Socket},
 	memory::user::{UserPtr, UserSlice},
-	process::Process,
 	sync::mutex::Mutex,
 	syscall::Args,
 };
-use core::{any::Any, cmp::min, ffi::c_int};
-use utils::{
-	errno,
-	errno::{EResult, Errno},
-	ptr::arc::Arc,
-};
+use core::{cmp::min, ffi::c_int};
+use utils::{errno, errno::EResult, ptr::arc::Arc};
 
 pub fn getsockname(
 	Args((sockfd, addr, addrlen)): Args<(c_int, *mut u8, UserPtr<isize>)>,

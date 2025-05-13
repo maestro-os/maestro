@@ -25,8 +25,8 @@ use crate::{
 	memory::user::{UserArray, UserSlice, UserString},
 	process::{
 		Process, exec,
-		exec::{ExecInfo, ProgramImage, exec},
-		scheduler::{SCHEDULER, switch::init_ctx},
+		exec::{ExecInfo, exec},
+		scheduler::switch::init_ctx,
 	},
 };
 use core::intrinsics::unlikely;
@@ -37,7 +37,7 @@ use utils::{
 		vec::Vec,
 	},
 	errno,
-	errno::{CollectResult, EResult, Errno},
+	errno::{CollectResult, EResult},
 	ptr::arc::Arc,
 };
 

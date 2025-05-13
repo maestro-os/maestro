@@ -28,7 +28,6 @@ use crate::{
 		Process, State,
 		pid::Pid,
 		scheduler::SCHEDULER,
-		signal,
 		signal::{CompatSigAction, SigAction, SigSet, Signal, SignalHandler, ucontext},
 	},
 	syscall::{Args, FromSyscallArg},
@@ -38,14 +37,8 @@ use core::{
 	fmt::Debug,
 	intrinsics::unlikely,
 	mem,
-	mem::transmute,
-	ptr::null,
 };
-use utils::{
-	errno,
-	errno::{EResult, Errno},
-	ptr::arc::Arc,
-};
+use utils::{errno, errno::EResult, ptr::arc::Arc};
 
 /// Performs the union of the given mask with the current mask.
 const SIG_BLOCK: i32 = 0;

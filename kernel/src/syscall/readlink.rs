@@ -24,12 +24,7 @@ use crate::{
 	process::Process,
 	syscall::Args,
 };
-use utils::{
-	collections::{path::PathBuf, vec::Vec},
-	errno,
-	errno::{EResult, Errno},
-	vec,
-};
+use utils::{collections::path::PathBuf, errno, errno::EResult};
 
 pub fn readlink(
 	Args((pathname, buf, bufsiz)): Args<(UserString, *mut u8, usize)>,

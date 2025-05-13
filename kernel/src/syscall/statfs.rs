@@ -21,14 +21,9 @@
 use crate::{
 	file::{fs::Statfs, vfs, vfs::ResolutionSettings},
 	memory::user::{UserPtr, UserString},
-	process::Process,
 	syscall::Args,
 };
-use utils::{
-	collections::path::PathBuf,
-	errno,
-	errno::{EResult, Errno},
-};
+use utils::{collections::path::PathBuf, errno, errno::EResult};
 
 pub(super) fn do_statfs(
 	path: UserString,

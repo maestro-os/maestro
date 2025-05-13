@@ -22,13 +22,12 @@
 //! This module implements utility functions for those system calls.
 
 use crate::file::{
-	File,
 	fd::FileDescriptorTable,
 	vfs,
 	vfs::{ResolutionSettings, Resolved},
 };
 use core::ffi::c_int;
-use utils::{collections::path::Path, errno, errno::EResult, ptr::arc::Arc};
+use utils::{collections::path::Path, errno, errno::EResult};
 
 /// Special value to be used as file descriptor, telling to take the path relative to the
 /// current working directory.

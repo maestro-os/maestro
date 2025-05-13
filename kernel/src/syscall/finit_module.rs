@@ -26,13 +26,8 @@ use crate::{
 	sync::mutex::Mutex,
 	syscall::Args,
 };
-use core::{alloc::AllocError, ffi::c_int};
-use utils::{
-	errno,
-	errno::{EResult, Errno},
-	ptr::arc::Arc,
-	vec,
-};
+use core::ffi::c_int;
+use utils::{errno, errno::EResult, ptr::arc::Arc};
 
 pub fn finit_module(
 	Args((fd, _param_values, _flags)): Args<(c_int, UserString, c_int)>,

@@ -20,19 +20,13 @@
 
 use crate::{
 	file,
-	file::{File, fd::FileDescriptorTable, pipe::PipeBuffer, vfs},
+	file::{File, fd::FileDescriptorTable, pipe::PipeBuffer},
 	memory::user::UserPtr,
-	process::Process,
 	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::ffi::c_int;
-use utils::{
-	boxed::Box,
-	errno,
-	errno::{EResult, Errno},
-	ptr::arc::Arc,
-};
+use utils::{errno, errno::EResult, ptr::arc::Arc};
 
 pub fn pipe2(
 	Args((pipefd, flags)): Args<(UserPtr<[c_int; 2]>, c_int)>,

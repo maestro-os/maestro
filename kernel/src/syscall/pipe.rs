@@ -26,7 +26,7 @@ use crate::{
 	syscall::Args,
 };
 use core::ffi::c_int;
-use utils::{boxed::Box, errno::EResult, ptr::arc::Arc};
+use utils::{errno::EResult, ptr::arc::Arc};
 
 pub fn pipe(
 	Args(pipefd): Args<UserPtr<[c_int; 2]>>,

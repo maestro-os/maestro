@@ -22,11 +22,10 @@
 use crate::{
 	file::fd::FileDescriptorTable,
 	memory::user::{UserPtr, UserSlice},
-	process::{Process, mem_space::MemSpace, scheduler, scheduler::Scheduler},
+	process::scheduler::Scheduler,
 	sync::mutex::Mutex,
 	syscall::Args,
 	time::{
-		clock,
 		clock::{Clock, current_time_ms, current_time_ns},
 		unit::{TimeUnit, Timespec, Timestamp, Timeval},
 	},
@@ -35,11 +34,7 @@ use core::{
 	cmp::min,
 	ffi::{c_int, c_long},
 };
-use utils::{
-	errno,
-	errno::{EResult, Errno},
-	ptr::arc::Arc,
-};
+use utils::{errno, errno::EResult, ptr::arc::Arc};
 
 /// The number of file descriptors in FDSet.
 pub const FD_SETSIZE: usize = 1024;

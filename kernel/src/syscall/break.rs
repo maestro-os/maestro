@@ -18,10 +18,7 @@
 
 //! The `break` system call is not implemented.
 
-use utils::{
-	errno,
-	errno::{EResult, Errno},
-};
+use utils::{errno, errno::EResult};
 
 pub fn r#break() -> EResult<usize> {
 	Err(errno!(ENOSYS))

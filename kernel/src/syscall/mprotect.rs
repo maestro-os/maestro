@@ -18,21 +18,10 @@
 
 //! The `mprotect` system call allows to set permissions for the given range of memory.
 
-use super::{Args, mmap};
-use crate::{
-	file::perm::AccessProfile,
-	memory,
-	memory::stats::MemInfo,
-	process::{Process, mem_space, mem_space::MemSpace},
-	sync::mutex::IntMutex,
-};
+use super::Args;
+use crate::{file::perm::AccessProfile, process::mem_space::MemSpace};
 use core::ffi::{c_int, c_void};
-use utils::{
-	errno,
-	errno::{EResult, Errno},
-	limits::PAGE_SIZE,
-	ptr::arc::Arc,
-};
+use utils::{errno, errno::EResult, limits::PAGE_SIZE, ptr::arc::Arc};
 
 pub fn mprotect(
 	Args((addr, len, prot)): Args<(*mut c_void, usize, c_int)>,

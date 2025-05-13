@@ -19,28 +19,19 @@
 //! Implementation of `stat*` system calls, allowing to retrieve the status of a file.
 
 use crate::{
-	device::{
-		DeviceID,
-		id::{major, makedev, minor},
-	},
-	file,
+	device::id::{major, makedev, minor},
 	file::{
-		File, INode, Mode, Stat,
+		INode, Stat,
 		fd::FileDescriptorTable,
-		perm::{Gid, Uid},
 		vfs,
-		vfs::{
-			ResolutionSettings, Resolved,
-			mountpoint::{MountPoint, MountSource},
-		},
+		vfs::{ResolutionSettings, Resolved},
 	},
 	memory::user::{UserPtr, UserString},
 	sync::mutex::Mutex,
 	syscall::{Args, util::at},
-	time::unit::Timespec,
 };
 use core::{
-	ffi::{c_int, c_long, c_uint, c_ushort},
+	ffi::{c_int, c_uint},
 	intrinsics::unlikely,
 };
 use utils::{collections::path::PathBuf, errno, errno::EResult, ptr::arc::Arc};

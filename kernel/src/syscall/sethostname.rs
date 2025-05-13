@@ -18,14 +18,9 @@
 
 //! The `sethostname` syscall sets the hostname of the system.
 
-use crate::{file::perm::AccessProfile, memory::user::UserSlice, process::Process, syscall::Args};
+use crate::{file::perm::AccessProfile, memory::user::UserSlice, syscall::Args};
 use core::intrinsics::unlikely;
-use utils::{
-	collections::vec::Vec,
-	errno,
-	errno::{EResult, Errno},
-	limits::HOST_NAME_MAX,
-};
+use utils::{errno, errno::EResult, limits::HOST_NAME_MAX};
 
 pub fn sethostname(
 	Args((name, len)): Args<(*mut u8, usize)>,
