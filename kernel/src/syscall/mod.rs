@@ -23,7 +23,6 @@
 
 #![allow(unused_imports)]
 
-mod _exit;
 mod _llseek;
 mod _newselect;
 mod access;
@@ -42,7 +41,6 @@ mod delete_module;
 mod dup;
 mod dup2;
 mod execve;
-mod exit_group;
 mod faccessat;
 mod faccessat2;
 mod fadvise64_64;
@@ -61,7 +59,6 @@ mod getsockname;
 mod getsockopt;
 mod init_module;
 pub mod ioctl;
-mod kill;
 mod lchown;
 mod link;
 mod linkat;
@@ -91,15 +88,12 @@ mod reboot;
 mod rename;
 mod renameat2;
 mod rmdir;
-mod rt_sigaction;
-mod rt_sigprocmask;
 mod select;
 mod sendto;
 mod sethostname;
 mod setsockopt;
 mod shutdown;
 mod signal;
-mod sigreturn;
 mod socket;
 mod socketpair;
 mod stat;
@@ -109,7 +103,6 @@ mod symlink;
 mod symlinkat;
 mod sync;
 mod time;
-mod tkill;
 mod truncate;
 mod umask;
 mod umount;
@@ -133,8 +126,12 @@ use crate::{
 		getdents::getdents64,
 		mmap::mmap2,
 		process::{
-			clone, compat_clone, fork, getpgid, getpid, getppid, getrusage, gettid, sched_yield,
-			set_thread_area, set_tid_address, setpgid, vfork,
+			_exit, clone, compat_clone, exit_group, fork, getpgid, getpid, getppid, getrusage,
+			gettid, sched_yield, set_thread_area, set_tid_address, setpgid, vfork,
+		},
+		signal::{
+			compat_rt_sigaction, kill, rt_sigaction, rt_sigprocmask, rt_sigreturn, sigreturn,
+			tkill,
 		},
 		sync::{fdatasync, fsync, msync, sync, syncfs},
 		time::{
@@ -148,7 +145,6 @@ use crate::{
 		wait::{wait4, waitpid},
 	},
 };
-use _exit::_exit;
 use _llseek::{_llseek, lseek};
 use _newselect::_newselect;
 use access::access;
@@ -168,7 +164,6 @@ use delete_module::delete_module;
 use dup::dup;
 use dup2::dup2;
 use execve::execve;
-use exit_group::exit_group;
 use faccessat::faccessat;
 use faccessat2::faccessat2;
 use fadvise64_64::fadvise64_64;
@@ -187,7 +182,6 @@ use getsockname::getsockname;
 use getsockopt::getsockopt;
 use init_module::init_module;
 use ioctl::ioctl;
-use kill::kill;
 use lchown::lchown;
 use link::link;
 use linkat::linkat;
@@ -216,15 +210,12 @@ use reboot::reboot;
 use rename::rename;
 use renameat2::renameat2;
 use rmdir::rmdir;
-use rt_sigaction::{compat_rt_sigaction, rt_sigaction};
-use rt_sigprocmask::rt_sigprocmask;
 use select::select;
 use sendto::sendto;
 use sethostname::sethostname;
 use setsockopt::setsockopt;
 use shutdown::shutdown;
 use signal::signal;
-use sigreturn::{rt_sigreturn, sigreturn};
 use socket::socket;
 use socketpair::socketpair;
 use stat::{fstat, fstat64, lstat, lstat64, stat, stat64, statx};
@@ -233,7 +224,6 @@ use statfs64::statfs64;
 use symlink::symlink;
 use symlinkat::symlinkat;
 use time::time32;
-use tkill::tkill;
 use truncate::truncate;
 use umask::umask;
 use umount::{umount, umount2};
@@ -647,7 +637,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		0x0aa => syscall!(setresgid, frame),
 		0x0ab => syscall!(getresgid, frame),
 		// TODO 0x0ac => syscall!(prctl, frame),
-		0x0ad => syscall!(rt_sigreturn, frame),
+		0x0ad => syscall!(sigreturn, frame),
 		0x0ae => syscall!(compat_rt_sigaction, frame),
 		0x0af => syscall!(rt_sigprocmask, frame),
 		// TODO 0x0b0 => syscall!(rt_sigpending, frame),

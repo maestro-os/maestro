@@ -329,3 +329,36 @@ pub fn sched_yield() -> EResult<usize> {
 	Scheduler::tick();
 	Ok(0)
 }
+
+/// Exits the current process.
+///
+/// Arguments:
+/// - `status` is the exit status.
+/// - `thread_group`: if `true`, the function exits the whole process group.
+/// - `proc` is the current process.
+pub fn do_exit(status: u32, thread_group: bool) -> ! {
+	// Disable interruptions to prevent execution from being stopped before the reference to
+	// `Process` is dropped
+	cli();
+	{
+		let proc = Process::current();
+		proc.exit(status);
+		let _pid = proc.get_pid();
+		let _tid = proc.tid;
+		if thread_group {
+			// TODO Iterate on every process of thread group `tid`, except the
+			// process with pid `pid`
+		}
+	}
+	Scheduler::tick();
+	// Cannot resume since the process is now a zombie
+	unreachable!();
+}
+
+pub fn _exit(Args(status): Args<c_int>) -> EResult<usize> {
+	do_exit(status as _, false);
+}
+
+pub fn exit_group(Args(status): Args<c_int>) -> EResult<usize> {
+	do_exit(status as _, true);
+}
