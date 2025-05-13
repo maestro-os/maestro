@@ -34,7 +34,7 @@ use crate::{
 use core::{
 	ffi::{c_int, c_void},
 	fmt::Debug,
-	intrinsics::unlikely,
+	hint::unlikely,
 	mem,
 };
 use utils::{errno, errno::EResult, ptr::arc::Arc};

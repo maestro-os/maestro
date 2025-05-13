@@ -30,7 +30,7 @@ use core::{
 	cell::UnsafeCell,
 	cmp::Ordering,
 	fmt,
-	intrinsics::likely,
+	hint::likely,
 	iter::{FusedIterator, TrustedLen},
 	mem,
 	ops::{Bound, RangeBounds},

@@ -59,7 +59,7 @@ use crate::{
 	sync::mutex::Mutex,
 	syscall::ioctl,
 };
-use core::{ffi::c_void, fmt, intrinsics::likely, num::NonZeroU64};
+use core::{ffi::c_void, fmt, hint::likely, num::NonZeroU64};
 use keyboard::KeyboardManager;
 use storage::StorageManager;
 use utils::{

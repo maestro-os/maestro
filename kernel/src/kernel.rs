@@ -31,10 +31,10 @@
 #![feature(allocator_api)]
 #![feature(allow_internal_unstable)]
 #![feature(array_chunks)]
-#![feature(core_intrinsics)]
 #![feature(custom_test_frameworks)]
 #![feature(debug_closure_helpers)]
 #![feature(lang_items)]
+#![feature(likely_unlikely)]
 #![feature(negative_impls)]
 #![feature(offset_of_enum)]
 #![feature(once_cell_try)]
@@ -91,7 +91,7 @@ use crate::{
 	sync::mutex::Mutex,
 	tty::TTY,
 };
-use core::{ffi::c_void, intrinsics::unlikely};
+use core::{ffi::c_void, hint::unlikely};
 pub use utils;
 use utils::{
 	collections::{path::Path, string::String, vec::Vec},

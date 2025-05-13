@@ -72,7 +72,7 @@ use crate::{
 use bgd::BlockGroupDescriptor;
 use core::{
 	cmp::max,
-	intrinsics::unlikely,
+	hint::unlikely,
 	sync::atomic::{
 		AtomicBool, AtomicU8, AtomicU16, AtomicU32, AtomicUsize,
 		Ordering::{Acquire, Relaxed, Release},

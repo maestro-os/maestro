@@ -27,7 +27,7 @@ use chunk::Chunk;
 use core::{
 	alloc::{AllocError, Layout},
 	cmp::Ordering,
-	intrinsics::unlikely,
+	hint::unlikely,
 	num::NonZeroUsize,
 	ptr,
 	ptr::drop_in_place,

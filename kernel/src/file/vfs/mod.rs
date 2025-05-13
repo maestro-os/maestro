@@ -45,7 +45,7 @@ use crate::{
 use core::{
 	borrow::Borrow,
 	hash::{Hash, Hasher},
-	intrinsics::unlikely,
+	hint::unlikely,
 	sync::atomic::Ordering::Release,
 };
 use node::Node;

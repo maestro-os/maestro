@@ -24,7 +24,7 @@ use crate::{
 	file::{FileType, fs::ext2::inode::Ext2INode},
 	memory::cache::RcFrame,
 };
-use core::{intrinsics::unlikely, mem::offset_of, ptr::NonNull};
+use core::{hint::unlikely, mem::offset_of, ptr::NonNull};
 use macros::AnyRepr;
 use utils::{
 	errno,

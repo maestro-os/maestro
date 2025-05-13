@@ -22,7 +22,7 @@ use crate::{memory::vmem, process::mem_space::bound_check, syscall::FromSyscallA
 use core::{
 	cmp::min,
 	fmt,
-	intrinsics::{likely, unlikely},
+	hint::{likely, unlikely},
 	marker::PhantomData,
 	mem::{MaybeUninit, size_of},
 	ptr,

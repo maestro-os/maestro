@@ -28,7 +28,7 @@ use crate::{
 };
 use core::{
 	ffi::{c_int, c_uint, c_ulong},
-	intrinsics::unlikely,
+	hint::unlikely,
 };
 use utils::{errno, errno::EResult, ptr::arc::Arc};
 

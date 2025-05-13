@@ -21,7 +21,7 @@
 //! The kernel only support binary CPIO, not ASCII.
 
 use crate::bytes;
-use core::{intrinsics::unlikely, mem::size_of};
+use core::{hint::unlikely, mem::size_of};
 use macros::AnyRepr;
 
 /// Rotates the given 4 bytes value from PDP-endian.

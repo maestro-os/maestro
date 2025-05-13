@@ -27,7 +27,7 @@ use crate::{
 	sync::mutex::MutexGuard,
 };
 use core::{
-	intrinsics::unlikely,
+	hint::unlikely,
 	mem,
 	num::NonZeroU32,
 	ops::{Deref, DerefMut},

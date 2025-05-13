@@ -26,7 +26,7 @@ use crate::{
 	sync::mutex::Mutex,
 	syscall::Args,
 };
-use core::{cmp::min, ffi::c_int, intrinsics::unlikely};
+use core::{cmp::min, ffi::c_int, hint::unlikely};
 use utils::{errno, errno::EResult, ptr::arc::Arc};
 
 /// Shutdown receive side of the connection.

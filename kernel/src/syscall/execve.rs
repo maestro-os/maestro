@@ -29,7 +29,7 @@ use crate::{
 		scheduler::switch::init_ctx,
 	},
 };
-use core::intrinsics::unlikely;
+use core::hint::unlikely;
 use utils::{
 	collections::{
 		path::{Path, PathBuf},

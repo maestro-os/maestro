@@ -25,7 +25,7 @@ use crate::{
 	sync::mutex::Mutex,
 	syscall::Args,
 };
-use core::{ffi::c_int, intrinsics::unlikely};
+use core::{ffi::c_int, hint::unlikely};
 use utils::{errno, errno::EResult, limits::PAGE_SIZE, ptr::arc::Arc};
 
 /// Schedules a synchronization and returns directly

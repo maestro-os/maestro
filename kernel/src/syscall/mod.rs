@@ -96,7 +96,7 @@ use crate::{
 	},
 };
 use arch_prctl::arch_prctl;
-use core::{fmt, intrinsics::unlikely, ops::Deref, ptr};
+use core::{fmt, hint::unlikely, ops::Deref, ptr};
 use dirent::getdents;
 use execve::execve;
 use fcntl::fcntl;

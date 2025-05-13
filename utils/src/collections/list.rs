@@ -23,7 +23,7 @@
 
 use crate::ptr::arc::Arc;
 use core::{
-	cell::UnsafeCell, fmt, fmt::Formatter, intrinsics::unlikely, marker::PhantomData, mem, ptr,
+	cell::UnsafeCell, fmt, fmt::Formatter, hint::unlikely, marker::PhantomData, mem, ptr,
 	ptr::NonNull,
 };
 

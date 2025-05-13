@@ -19,7 +19,7 @@
 //! ACPI's Multiple APIC Description Table (MADT) handling.
 
 use super::{Table, TableHdr};
-use core::{ffi::c_void, intrinsics::likely};
+use core::{ffi::c_void, hint::likely};
 
 /// The offset of the entries in the MADT.
 const ENTRIES_OFF: usize = 0x2c;

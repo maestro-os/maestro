@@ -39,7 +39,7 @@ use crate::{
 	sync::mutex::IntMutex,
 };
 use core::{
-	alloc::AllocError, cmp::min, ffi::c_void, fmt, intrinsics::unlikely, mem, num::NonZeroUsize,
+	alloc::AllocError, cmp::min, ffi::c_void, fmt, hint::unlikely, mem, num::NonZeroUsize,
 };
 use gap::MemGap;
 use mapping::MemMapping;

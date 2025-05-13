@@ -45,7 +45,7 @@ use core::{
 	borrow::Borrow,
 	cmp::min,
 	hash::{Hash, Hasher},
-	intrinsics::unlikely,
+	hint::unlikely,
 	mem::{size_of, transmute},
 	slice,
 };

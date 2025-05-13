@@ -32,7 +32,7 @@ use crate::{
 		unit::{TimeUnit, Timespec32, Timestamp},
 	},
 };
-use core::intrinsics::unlikely;
+use core::hint::unlikely;
 use utils::{
 	boxed::Box,
 	collections::{btreemap::BTreeMap, hashmap::HashMap, id_allocator::IDAllocator},

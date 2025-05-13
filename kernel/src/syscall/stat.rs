@@ -33,7 +33,7 @@ use crate::{
 };
 use core::{
 	ffi::{c_int, c_uint},
-	intrinsics::unlikely,
+	hint::unlikely,
 };
 use utils::{collections::path::PathBuf, errno, errno::EResult, ptr::arc::Arc};
 
@@ -467,7 +467,7 @@ pub fn fstatfs(
 	Args((fd, buf)): Args<(c_int, UserPtr<Statfs>)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
-	do_fstatfs(fd, core::intrinsics::size_of::<Statfs>(), buf, &fds.lock())
+	do_fstatfs(fd, size_of::<Statfs>(), buf, &fds.lock())
 }
 
 pub fn fstatfs64(

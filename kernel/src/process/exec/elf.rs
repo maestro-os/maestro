@@ -35,7 +35,7 @@ use crate::{
 		mem_space::{MAP_ANONYMOUS, MAP_PRIVATE, MapConstraint, MemSpace, PROT_READ, PROT_WRITE},
 	},
 };
-use core::{cmp::max, intrinsics::unlikely, num::NonZeroUsize, ptr, slice};
+use core::{cmp::max, hint::unlikely, num::NonZeroUsize, ptr, slice};
 use utils::{
 	collections::{string::String, vec::Vec},
 	errno,

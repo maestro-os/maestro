@@ -25,7 +25,7 @@ use crate::{
 	device::BlkDev,
 	memory::cache::FrameOwner,
 };
-use core::{intrinsics::unlikely, mem::size_of};
+use core::{hint::unlikely, mem::size_of};
 use macros::AnyRepr;
 use utils::{
 	bytes::from_bytes,

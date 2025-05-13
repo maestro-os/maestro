@@ -30,7 +30,7 @@ use crate::{
 use core::{
 	cmp::min,
 	ffi::{c_int, c_uint},
-	intrinsics::unlikely,
+	hint::unlikely,
 	sync::atomic,
 };
 use utils::{errno, errno::EResult, limits::IOV_MAX, ptr::arc::Arc};

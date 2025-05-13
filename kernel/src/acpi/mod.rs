@@ -26,7 +26,7 @@
 
 use crate::{acpi::rsdt::Rsdt, memory};
 use core::{
-	intrinsics::{likely, unlikely},
+	hint::{likely, unlikely},
 	mem::{align_of, size_of},
 	ptr, slice,
 	sync::{atomic, atomic::AtomicBool},

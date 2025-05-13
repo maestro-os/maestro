@@ -31,7 +31,7 @@ use core::{
 	fmt,
 	fmt::Formatter,
 	hash::Hash,
-	intrinsics::{likely, unlikely},
+	hint::{likely, unlikely},
 	iter::FusedIterator,
 	ops::Deref,
 };

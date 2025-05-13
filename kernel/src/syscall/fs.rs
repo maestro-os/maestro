@@ -45,7 +45,7 @@ use crate::{
 		unit::{TimeUnit, Timespec},
 	},
 };
-use core::{ffi::c_int, intrinsics::unlikely, ops::Deref, sync::atomic};
+use core::{ffi::c_int, hint::unlikely, ops::Deref, sync::atomic};
 use utils::{
 	collections::path::{Path, PathBuf},
 	errno,

@@ -61,7 +61,7 @@ use core::{
 	ffi::c_int,
 	fmt,
 	fmt::Formatter,
-	intrinsics::unlikely,
+	hint::unlikely,
 	mem,
 	mem::ManuallyDrop,
 	ptr::NonNull,
