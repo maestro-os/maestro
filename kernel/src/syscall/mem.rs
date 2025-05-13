@@ -16,19 +16,24 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The `mmap` system call allows the process to allocate memory.
+//! Memory management system calls.
 
 use crate::{
 	file::{FileType, fd::FileDescriptorTable, perm::AccessProfile},
+	memory,
 	memory::VirtAddr,
 	process::{
 		mem_space,
 		mem_space::{MAP_ANONYMOUS, MAP_FIXED, MemSpace, PROT_EXEC, PROT_READ, PROT_WRITE},
 	},
 	sync::mutex::Mutex,
-	syscall::{Args, mmap::mem_space::MapConstraint},
+	syscall::{Args, mem::mem_space::MapConstraint},
 };
-use core::{ffi::c_int, intrinsics::unlikely, num::NonZeroUsize};
+use core::{
+	ffi::{c_int, c_void},
+	intrinsics::unlikely,
+	num::NonZeroUsize,
+};
 use utils::{errno, errno::EResult, limits::PAGE_SIZE, ptr::arc::Arc};
 
 /// Performs the `mmap` system call.
@@ -163,4 +168,47 @@ pub fn mmap2(
 		ap,
 		mem_space,
 	)
+}
+
+pub fn madvise(
+	Args((_addr, _length, _advice)): Args<(*mut c_void, usize, c_int)>,
+) -> EResult<usize> {
+	// TODO
+	Ok(0)
+}
+
+pub fn mprotect(
+	Args((addr, len, prot)): Args<(*mut c_void, usize, c_int)>,
+	mem_space: Arc<MemSpace>,
+	ap: AccessProfile,
+) -> EResult<usize> {
+	// Check alignment of `addr` and `length`
+	if !addr.is_aligned_to(PAGE_SIZE) || len == 0 {
+		return Err(errno!(EINVAL));
+	}
+	let prot = prot as u8;
+	mem_space.set_prot(addr, len, prot, &ap)?;
+	Ok(0)
+}
+
+pub fn munmap(
+	Args((addr, length)): Args<(VirtAddr, usize)>,
+	mem_space: Arc<MemSpace>,
+) -> EResult<usize> {
+	// Check address alignment
+	if !addr.is_aligned_to(PAGE_SIZE) || length == 0 {
+		return Err(errno!(EINVAL));
+	}
+	let pages = length.div_ceil(PAGE_SIZE);
+	let length = pages * PAGE_SIZE;
+	// Check for overflow
+	let Some(end) = addr.0.checked_add(length) else {
+		return Err(errno!(EINVAL));
+	};
+	// Prevent from unmapping kernel memory
+	if unlikely(end > memory::PROCESS_END.0) {
+		return Err(errno!(EINVAL));
+	}
+	mem_space.unmap(addr, NonZeroUsize::new(pages).unwrap())?;
+	Ok(0)
 }

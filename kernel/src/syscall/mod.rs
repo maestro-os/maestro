@@ -31,20 +31,14 @@ mod fcntl;
 mod fd;
 mod finit_module;
 mod fs;
-mod fstatfs;
-mod fstatfs64;
 mod getrandom;
 mod init_module;
 pub mod ioctl;
-mod madvise;
-mod mmap;
+mod mem;
 mod mount;
-mod mprotect;
-mod munmap;
 mod pipe;
 mod prlimit64;
 mod process;
-mod readlink;
 mod reboot;
 pub mod select;
 mod sethostname;
@@ -76,11 +70,11 @@ use crate::{
 		fs::{
 			access, chdir, chmod, chown, chroot, creat, faccessat, faccessat2, fadvise64_64,
 			fchdir, fchmod, fchmodat, getcwd, lchown, link, linkat, mkdir, mknod, open, openat,
-			rename, renameat2, rmdir, symlink, symlinkat, truncate, umask, unlink, unlinkat,
-			utimensat,
+			readlink, rename, renameat2, rmdir, symlink, symlinkat, truncate, umask, unlink,
+			unlinkat, utimensat,
 		},
 		ioctl::ioctl,
-		mmap::mmap2,
+		mem::{madvise, mmap2, mprotect, munmap},
 		pipe::pipe2,
 		process::{
 			_exit, clone, compat_clone, exit_group, fork, getpgid, getpid, getppid, getrusage,
@@ -94,6 +88,7 @@ use crate::{
 		socket::{
 			bind, connect, getsockname, getsockopt, sendto, setsockopt, shutdown, socketpair,
 		},
+		stat::{fstatfs, fstatfs64},
 		sync::{fdatasync, fsync, msync, sync, syncfs},
 		time::{
 			clock_gettime, clock_gettime64, nanosleep32, nanosleep64, time64, timer_create,
@@ -115,18 +110,12 @@ use dirent::getdents;
 use execve::execve;
 use fcntl::fcntl;
 use finit_module::finit_module;
-use fstatfs::fstatfs;
-use fstatfs64::fstatfs64;
 use getrandom::getrandom;
 use init_module::init_module;
-use madvise::madvise;
-use mmap::mmap;
+use mem::mmap;
 use mount::mount;
-use mprotect::mprotect;
-use munmap::munmap;
 use pipe::pipe;
 use prlimit64::prlimit64;
-use readlink::readlink;
 use reboot::reboot;
 use select::select;
 use sethostname::sethostname;

@@ -257,6 +257,26 @@ pub fn symlinkat(
 	Ok(0)
 }
 
+pub fn readlink(
+	Args((pathname, buf, bufsiz)): Args<(UserString, *mut u8, usize)>,
+) -> EResult<usize> {
+	let proc = Process::current();
+	// Get file
+	let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
+	let path = PathBuf::try_from(path)?;
+	let rs = ResolutionSettings::for_process(&proc, false);
+	let ent = vfs::get_file_from_path(&path, &rs)?;
+	// Validation
+	if ent.get_type()? != FileType::Link {
+		return Err(errno!(EINVAL));
+	}
+	// Read link
+	let buf = UserSlice::from_user(buf, bufsiz)?;
+	let node = ent.node();
+	let len = node.node_ops.readlink(node, buf)?;
+	Ok(len as _)
+}
+
 pub fn open(
 	Args((pathname, flags, mode)): Args<(UserString, c_int, file::Mode)>,
 ) -> EResult<usize> {

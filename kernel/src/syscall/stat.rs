@@ -23,6 +23,7 @@ use crate::{
 	file::{
 		INode, Stat,
 		fd::FileDescriptorTable,
+		fs::Statfs,
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
 	},
@@ -401,4 +402,40 @@ pub fn statx(
 		__padding1: [0; 19],
 	})?;
 	Ok(0)
+}
+
+/// Performs the `fstatfs` system call.
+pub fn do_fstatfs(
+	fd: c_int,
+	_sz: usize,
+	buf: UserPtr<Statfs>,
+	fds: &FileDescriptorTable,
+) -> EResult<usize> {
+	// TODO use `sz`
+	let stat = fds
+		.get_fd(fd)?
+		.get_file()
+		.vfs_entry
+		.as_ref()
+		.ok_or_else(|| errno!(ENOSYS))?
+		.node()
+		.fs
+		.ops
+		.get_stat()?;
+	buf.copy_to_user(&stat)?;
+	Ok(0)
+}
+
+pub fn fstatfs(
+	Args((fd, buf)): Args<(c_int, UserPtr<Statfs>)>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+) -> EResult<usize> {
+	do_fstatfs(fd, core::intrinsics::size_of::<Statfs>(), buf, &fds.lock())
+}
+
+pub fn fstatfs64(
+	Args((fd, sz, buf)): Args<(c_int, usize, UserPtr<Statfs>)>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+) -> EResult<usize> {
+	do_fstatfs(fd, sz, buf, &fds.lock())
 }
