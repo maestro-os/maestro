@@ -30,17 +30,6 @@ use crate::{
 use core::{arch::asm, ffi::c_void, mem::size_of, ptr::addr_of};
 use utils::errno::EResult;
 
-/// Makes the interrupt switch to ring 0.
-const ID_PRIVILEGE_RING_0: u8 = 0b00000000;
-/// Makes the interrupt switch to ring 1.
-const ID_PRIVILEGE_RING_1: u8 = 0b00000010;
-/// Makes the interrupt switch to ring 2.
-const ID_PRIVILEGE_RING_2: u8 = 0b00000100;
-/// Makes the interrupt switch to ring 3.
-const ID_PRIVILEGE_RING_3: u8 = 0b00000110;
-/// Flag telling that the interrupt is present.
-const ID_PRESENT: u8 = 0b00000001;
-
 /// The IDT vector index for system calls.
 pub const SYSCALL_ENTRY: usize = 0x80;
 /// The number of entries into the IDT.

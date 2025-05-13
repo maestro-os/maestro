@@ -21,272 +21,91 @@
 //! Documentation for each system call can be retrieved from the man. Type the
 //! command: `man 2 <syscall>`
 
-#![allow(unused_imports)]
-
-mod _exit;
-mod _llseek;
-mod _newselect;
-mod access;
-mod arch_prctl;
-mod bind;
-mod r#break;
-mod brk;
-mod chdir;
-mod chmod;
-mod chown;
-mod chroot;
-mod clone;
-mod close;
-mod connect;
-mod creat;
-mod delete_module;
-mod dup;
-mod dup2;
+mod dirent;
 mod execve;
-mod exit_group;
-mod faccessat;
-mod faccessat2;
-mod fadvise64_64;
-mod fchdir;
-mod fchmod;
-mod fchmodat;
 mod fcntl;
-mod fcntl64;
-mod finit_module;
-mod fork;
-mod fstatfs;
-mod fstatfs64;
-mod getcwd;
-mod getdents;
-mod getegid;
-mod geteuid;
-mod getgid;
-mod getpgid;
-mod getpid;
-mod getppid;
+mod fd;
+mod fs;
 mod getrandom;
-mod getresgid;
-mod getresuid;
-mod getrusage;
-mod getsockname;
-mod getsockopt;
-mod gettid;
-mod getuid;
-mod init_module;
+mod host;
 pub mod ioctl;
-mod kill;
-mod lchown;
-mod link;
-mod linkat;
-mod madvise;
-mod mkdir;
-mod mknod;
-mod mmap;
+mod mem;
+mod module;
 mod mount;
-mod mprotect;
-mod munmap;
-mod open;
-mod openat;
 mod pipe;
-mod pipe2;
-pub mod poll;
-mod preadv;
-mod preadv2;
-mod prlimit64;
-mod pselect6;
-mod pwritev;
-mod pwritev2;
-mod read;
-mod readlink;
-mod readv;
-mod reboot;
-mod rename;
-mod renameat2;
-mod rmdir;
-mod rt_sigaction;
-mod rt_sigprocmask;
-mod sched_yield;
-mod select;
-mod sendto;
-mod set_thread_area;
-mod set_tid_address;
-mod setgid;
-mod sethostname;
-mod setpgid;
-mod setregid;
-mod setresgid;
-mod setresuid;
-mod setreuid;
-mod setsockopt;
-mod setuid;
-mod shutdown;
+mod process;
+pub mod select;
 mod signal;
-mod sigreturn;
 mod socket;
-mod socketpair;
 mod stat;
-mod statfs;
-mod statfs64;
-mod symlink;
-mod symlinkat;
 mod sync;
 mod time;
-mod tkill;
-mod truncate;
-mod umask;
-mod umount;
-mod uname;
-mod unlink;
-mod unlinkat;
+mod user;
 mod util;
-mod utimensat;
-mod vfork;
 mod wait;
-mod wait4;
-mod waitpid;
-mod write;
-mod writev;
 
-//use wait::wait;
 use crate::{
-	arch::x86::{gdt, idt::IntFrame},
-	file,
-	file::{fd::FileDescriptorTable, perm::AccessProfile, vfs::ResolutionSettings},
-	process,
-	process::{Process, mem_space::MemSpace, signal::Signal},
-	sync::mutex::{IntMutex, Mutex},
+	arch::x86::idt::IntFrame,
+	file::{Mode, fd::FileDescriptorTable, perm::AccessProfile, vfs::ResolutionSettings},
+	process::{Process, mem_space::MemSpace, signal::Signal, yield_current},
+	sync::mutex::Mutex,
 	syscall::{
-		getdents::getdents64,
-		mmap::mmap2,
-		sync::{fsync, msync, sync, syncfs},
-		time::{
-			clock_gettime, clock_gettime64, nanosleep32, nanosleep64, time64, timer_create,
-			timer_delete, timer_settime,
+		dirent::{getdents, getdents64},
+		execve::execve,
+		fcntl::{fcntl, fcntl64},
+		fd::{
+			_llseek, close, dup, dup2, lseek, preadv, preadv2, pwritev, pwritev2, read, readv,
+			write, writev,
 		},
+		fs::{
+			access, chdir, chmod, chown, chroot, creat, faccessat, faccessat2, fadvise64_64,
+			fchdir, fchmod, fchmodat, getcwd, lchown, link, linkat, mkdir, mknod, open, openat,
+			readlink, rename, renameat2, rmdir, symlink, symlinkat, truncate, umask, unlink,
+			unlinkat, utimensat,
+		},
+		getrandom::getrandom,
+		host::{reboot, sethostname, uname},
+		ioctl::ioctl,
+		mem::{brk, madvise, mmap, mmap2, mprotect, munmap},
+		module::{delete_module, finit_module, init_module},
+		mount::{mount, umount, umount2},
+		pipe::{pipe, pipe2},
+		process::{
+			_exit, arch_prctl, clone, compat_clone, exit_group, fork, getpgid, getpid, getppid,
+			getrusage, gettid, prlimit64, sched_yield, set_thread_area, set_tid_address, setpgid,
+			vfork,
+		},
+		select::{_newselect, poll, pselect6, select},
+		signal::{
+			compat_rt_sigaction, kill, rt_sigaction, rt_sigprocmask, rt_sigreturn, signal,
+			sigreturn, tkill,
+		},
+		socket::{
+			bind, connect, getsockname, getsockopt, sendto, setsockopt, shutdown, socket,
+			socketpair,
+		},
+		stat::{
+			fstat, fstat64, fstatfs, fstatfs64, lstat, lstat64, stat, stat64, statfs, statfs64,
+			statx,
+		},
+		sync::{fdatasync, fsync, msync, sync, syncfs},
+		time::{
+			clock_gettime, clock_gettime64, nanosleep32, nanosleep64, time32, time64,
+			timer_create, timer_delete, timer_settime,
+		},
+		user::{
+			getegid, geteuid, getgid, getresgid, getresuid, getuid, setgid, setregid, setresgid,
+			setresuid, setreuid, setuid,
+		},
+		wait::{wait4, waitpid},
 	},
 };
-use _exit::_exit;
-use _llseek::{_llseek, lseek};
-use _newselect::_newselect;
-use access::access;
-use arch_prctl::arch_prctl;
-use bind::bind;
-use r#break::r#break;
-use brk::brk;
-use chdir::chdir;
-use chmod::chmod;
-use chown::chown;
-use chroot::chroot;
-use clone::{clone, compat_clone};
-use close::close;
-use connect::connect;
-use core::{arch::global_asm, fmt, ops::Deref, ptr};
-use creat::creat;
-use delete_module::delete_module;
-use dup::dup;
-use dup2::dup2;
-use execve::execve;
-use exit_group::exit_group;
-use faccessat::faccessat;
-use faccessat2::faccessat2;
-use fadvise64_64::fadvise64_64;
-use fchdir::fchdir;
-use fchmod::fchmod;
-use fchmodat::fchmodat;
-use fcntl::fcntl;
-use fcntl64::fcntl64;
-use finit_module::finit_module;
-use fork::fork;
-use fstatfs::fstatfs;
-use fstatfs64::fstatfs64;
-use getcwd::getcwd;
-use getdents::getdents;
-use getegid::getegid;
-use geteuid::geteuid;
-use getgid::getgid;
-use getpgid::getpgid;
-use getpid::getpid;
-use getppid::getppid;
-use getrandom::getrandom;
-use getresgid::getresgid;
-use getresuid::getresuid;
-use getrusage::getrusage;
-use getsockname::getsockname;
-use getsockopt::getsockopt;
-use gettid::gettid;
-use getuid::getuid;
-use init_module::init_module;
-use ioctl::ioctl;
-use kill::kill;
-use lchown::lchown;
-use link::link;
-use linkat::linkat;
-use madvise::madvise;
-use mkdir::mkdir;
-use mknod::mknod;
-use mmap::mmap;
-use mount::mount;
-use mprotect::mprotect;
-use munmap::munmap;
-use open::open;
-use openat::openat;
-use pipe::pipe;
-use pipe2::pipe2;
-use poll::poll;
-use preadv::preadv;
-use preadv2::preadv2;
-use prlimit64::prlimit64;
-use pselect6::pselect6;
-use pwritev::pwritev;
-use pwritev2::pwritev2;
-use read::read;
-use readlink::readlink;
-use readv::readv;
-use reboot::reboot;
-use rename::rename;
-use renameat2::renameat2;
-use rmdir::rmdir;
-use rt_sigaction::{compat_rt_sigaction, rt_sigaction};
-use rt_sigprocmask::rt_sigprocmask;
-use sched_yield::sched_yield;
-use select::select;
-use sendto::sendto;
-use set_thread_area::set_thread_area;
-use set_tid_address::set_tid_address;
-use setgid::setgid;
-use sethostname::sethostname;
-use setpgid::setpgid;
-use setregid::setregid;
-use setresgid::setresgid;
-use setresuid::setresuid;
-use setreuid::setreuid;
-use setsockopt::setsockopt;
-use setuid::setuid;
-use shutdown::shutdown;
-use signal::signal;
-use sigreturn::{rt_sigreturn, sigreturn};
-use socket::socket;
-use socketpair::socketpair;
-use stat::{fstat, fstat64, lstat, lstat64, stat, stat64, statx};
-use statfs::statfs;
-use statfs64::statfs64;
-use symlink::symlink;
-use symlinkat::symlinkat;
-use time::time32;
-use tkill::tkill;
-use truncate::truncate;
-use umask::umask;
-use umount::{umount, umount2};
-use uname::uname;
-use unlink::unlink;
-use unlinkat::unlinkat;
-use utils::{errno::EResult, ptr::arc::Arc};
-use utimensat::utimensat;
-use vfork::vfork;
-use wait4::wait4;
-use waitpid::waitpid;
-use write::write;
-use writev::writev;
+use core::{fmt, hint::unlikely, ops::Deref, ptr};
+use utils::{
+	errno,
+	errno::{ENOSYS, EResult},
+	ptr::arc::Arc,
+};
 
 /// The ID of the `sigreturn` system call, for use by the signal trampoline.
 pub const SIGRETURN_ID: usize = 0x077;
@@ -405,7 +224,7 @@ impl FromSyscall for ResolutionSettings {
 }
 
 /// The umask of the process performing the system call.
-pub struct Umask(file::Mode);
+pub struct Umask(Mode);
 
 impl FromSyscall for Umask {
 	fn from_syscall(_frame: &IntFrame) -> Self {
@@ -510,15 +329,12 @@ impl<T> FromSyscallArg for *mut T {
 /// Syscall declaration.
 macro_rules! syscall {
 	($name:ident, $frame:expr) => {
-		Some(SyscallHandler::call($name, stringify!($name), $frame))
+		SyscallHandler::call($name, stringify!($name), $frame)
 	};
 }
 
-/// Executes the system call associated with the given `id` and returns its result.
-///
-/// If the syscall doesn't exist, the function returns `None`.
 #[inline]
-fn do_syscall32(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
+fn do_syscall32(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 	match id {
 		0x001 => syscall!(_exit, frame),
 		0x002 => syscall!(fork, frame),
@@ -536,7 +352,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		0x00e => syscall!(mknod, frame),
 		0x00f => syscall!(chmod, frame),
 		0x010 => syscall!(lchown, frame),
-		0x011 => syscall!(r#break, frame),
+		// 0x011: unimplemented (break)
 		// TODO 0x012 => syscall!(oldstat, frame),
 		// TODO 0x013 => syscall!(lseek, frame),
 		0x014 => syscall!(getpid, frame),
@@ -550,11 +366,11 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		// TODO 0x01c => syscall!(oldfstat, frame),
 		// TODO 0x01d => syscall!(pause, frame),
 		// TODO 0x01e => syscall!(utime, frame),
-		// TODO 0x01f => syscall!(stty, frame),
-		// TODO 0x020 => syscall!(gtty, frame),
+		// 0x01f: unimplemented (stty),
+		// 0x020: unimplemented_syscall (gtty)
 		0x021 => syscall!(access, frame),
 		// TODO 0x022 => syscall!(nice, frame),
-		// TODO 0x023 => syscall!(ftime, frame),
+		// 0x023: unimplemented (ftime),
 		0x024 => syscall!(sync, frame),
 		0x025 => syscall!(kill, frame),
 		0x026 => syscall!(rename, frame),
@@ -563,7 +379,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		0x029 => syscall!(dup, frame),
 		0x02a => syscall!(pipe, frame),
 		// TODO 0x02b => syscall!(times, frame),
-		// TODO 0x02c => syscall!(prof, frame),
+		// 0x02c: unimplemented (prof),
 		0x02d => syscall!(brk, frame),
 		0x02e => syscall!(setgid, frame),
 		0x02f => syscall!(getgid, frame),
@@ -572,12 +388,12 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		0x032 => syscall!(getegid, frame),
 		// TODO 0x033 => syscall!(acct, frame),
 		0x034 => syscall!(umount2, frame),
-		// TODO 0x035 => syscall!(lock, frame),
+		// 0x035: unimplemented (lock),
 		0x036 => syscall!(ioctl, frame),
 		0x037 => syscall!(fcntl, frame),
-		// TODO 0x038 => syscall!(mpx, frame),
+		// 0x038: unimplemented (mpx),
 		0x039 => syscall!(setpgid, frame),
-		// TODO 0x03a => syscall!(ulimit, frame),
+		// 0x03a: unimplemented (ulimit),
 		// TODO 0x03b => syscall!(oldolduname, frame),
 		0x03c => syscall!(umask, frame),
 		0x03d => syscall!(chroot, frame),
@@ -617,7 +433,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		// TODO 0x05f => syscall!(fchown, frame),
 		// TODO 0x060 => syscall!(getpriority, frame),
 		// TODO 0x061 => syscall!(setpriority, frame),
-		// TODO 0x062 => syscall!(profil, frame),
+		// 0x062: unimplemented (profil),
 		0x063 => syscall!(statfs, frame),
 		0x064 => syscall!(fstatfs, frame),
 		// TODO 0x065 => syscall!(ioperm, frame),
@@ -654,7 +470,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		// TODO 0x086 => syscall!(bdflush, frame),
 		// TODO 0x087 => syscall!(sysfs, frame),
 		// TODO 0x088 => syscall!(personality, frame),
-		// TODO 0x089 => syscall!(afs_syscall, frame),
+		// 0x089: unimplemented (afs_syscall),
 		// TODO 0x08a => syscall!(setfsuid, frame),
 		// TODO 0x08b => syscall!(setfsgid, frame),
 		0x08c => syscall!(_llseek, frame),
@@ -665,7 +481,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		0x091 => syscall!(readv, frame),
 		0x092 => syscall!(writev, frame),
 		// TODO 0x093 => syscall!(getsid, frame),
-		// TODO 0x094 => syscall!(fdatasync, frame),
+		0x094 => syscall!(fdatasync, frame),
 		// TODO 0x095 => syscall!(_sysctl, frame),
 		// TODO 0x096 => syscall!(mlock, frame),
 		// TODO 0x097 => syscall!(munlock, frame),
@@ -690,7 +506,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		0x0aa => syscall!(setresgid, frame),
 		0x0ab => syscall!(getresgid, frame),
 		// TODO 0x0ac => syscall!(prctl, frame),
-		0x0ad => syscall!(rt_sigreturn, frame),
+		0x0ad => syscall!(sigreturn, frame),
 		0x0ae => syscall!(compat_rt_sigaction, frame),
 		0x0af => syscall!(rt_sigprocmask, frame),
 		// TODO 0x0b0 => syscall!(rt_sigpending, frame),
@@ -705,8 +521,8 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		// TODO 0x0b9 => syscall!(capset, frame),
 		// TODO 0x0ba => syscall!(sigaltstack, frame),
 		// TODO 0x0bb => syscall!(sendfile, frame),
-		// TODO 0x0bc => syscall!(getpmsg, frame),
-		// TODO 0x0bd => syscall!(putpmsg, frame),
+		// 0x0bc: unimplemented (getpmsg),
+		// 0x0bd: unimplemented (putpmsg),
 		0x0be => syscall!(vfork, frame),
 		// TODO 0x0bf => syscall!(ugetrlimit, frame),
 		0x0c0 => syscall!(mmap2, frame),
@@ -787,7 +603,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		// TODO 0x10e => syscall!(tgkill, frame),
 		// TODO 0x10f => syscall!(utimes, frame),
 		0x110 => syscall!(fadvise64_64, frame),
-		// TODO 0x111 => syscall!(vserver, frame),
+		// 0x111: unimplemented (vserver),
 		// TODO 0x112 => syscall!(mbind, frame),
 		// TODO 0x113 => syscall!(get_mempolicy, frame),
 		// TODO 0x114 => syscall!(set_mempolicy, frame),
@@ -957,13 +773,13 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		// TODO 0x1c0 => syscall!(process_mrelease, frame),
 		// TODO 0x1c1 => syscall!(futex_waitv, frame),
 		// TODO 0x1c2 => syscall!(set_mempolicy_home_node, frame),
-		_ => None,
+		_ => Err(errno!(ENOSYS)),
 	}
 }
 
 #[cfg(target_arch = "x86_64")]
 #[inline]
-fn do_syscall64(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
+fn do_syscall64(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 	match id {
 		0x000 => syscall!(read, frame),
 		0x001 => syscall!(write, frame),
@@ -1040,7 +856,7 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		0x048 => syscall!(fcntl, frame),
 		// TODO 0x049 => syscall!(flock, frame),
 		0x04a => syscall!(fsync, frame),
-		// TODO 0x04b => syscall!(fdatasync, frame),
+		0x04b => syscall!(fdatasync, frame),
 		0x04c => syscall!(truncate, frame),
 		// TODO 0x04d => syscall!(ftruncate, frame),
 		0x04e => syscall!(getdents, frame),
@@ -1333,7 +1149,7 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> Option<EResult<usize>> {
 		// TODO 0x1c6 => syscall!(futex_wake, frame),
 		// TODO 0x1c7 => syscall!(futex_wait, frame),
 		// TODO 0x1c8 => syscall!(futex_requeue, frame),
-		_ => None,
+		_ => Err(errno!(ENOSYS)),
 	}
 }
 
@@ -1349,23 +1165,19 @@ pub extern "C" fn syscall_handler(frame: &mut IntFrame) {
 	} else {
 		do_syscall64(id, frame)
 	};
-	match res {
-		// Success: Set the return value
-		Some(res) => frame.set_syscall_return(res),
-		// The system call does not exist: Kill the process with SIGSYS
-		None => {
-			let proc = Process::current();
-			#[cfg(feature = "strace")]
-			crate::println!(
-				"[strace PID: {pid}] invalid syscall (ID: 0x{id:x})",
-				pid = proc.get_pid()
-			);
-			// SIGSYS cannot be caught, thus the process will be terminated
-			proc.kill(Signal::SIGSYS);
-		}
+	frame.set_syscall_return(res);
+	// If the system call does not exist, kill the process with SIGSYS
+	if unlikely(matches!(res, Err(e) if e.as_int() == ENOSYS)) {
+		let proc = Process::current();
+		#[cfg(feature = "strace")]
+		crate::println!(
+			"[strace PID: {pid}] invalid syscall (ID: 0x{id:x})",
+			pid = proc.get_pid()
+		);
+		proc.kill(Signal::SIGSYS);
 	}
 	// If the process has been killed, handle it
-	process::yield_current(3, frame);
+	yield_current(3, frame);
 }
 
 unsafe extern "C" {

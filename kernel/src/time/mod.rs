@@ -43,7 +43,7 @@ use crate::{
 		unit::TimeUnit,
 	},
 };
-use core::{intrinsics::unlikely, mem::ManuallyDrop};
+use core::{hint::unlikely, mem::ManuallyDrop};
 use unit::Timestamp;
 use utils::{boxed::Box, errno, errno::EResult};
 

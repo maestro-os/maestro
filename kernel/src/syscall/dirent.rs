@@ -20,26 +20,17 @@
 //! directory.
 
 use crate::{
-	file::{DT_UNKNOWN, DirContext, DirEntry, FileType, INode, fd::FileDescriptorTable},
+	file::{DT_UNKNOWN, DirContext, DirEntry, FileType, fd::FileDescriptorTable},
 	memory::user::UserSlice,
-	process::Process,
 	sync::mutex::Mutex,
 	syscall::Args,
 };
 use core::{
 	ffi::{c_int, c_uint},
 	mem::{offset_of, size_of},
-	ops::Range,
-	ptr,
 	sync::atomic,
 };
-use utils::{
-	bytes::as_bytes,
-	errno,
-	errno::{EResult, Errno},
-	ptr::arc::Arc,
-	vec,
-};
+use utils::{bytes::as_bytes, errno, errno::EResult, ptr::arc::Arc};
 
 /// A Linux directory entry.
 #[repr(C)]

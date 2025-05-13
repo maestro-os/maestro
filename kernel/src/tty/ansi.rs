@@ -123,11 +123,6 @@ impl<'tty> ANSIBufferView<'tty> {
 		&self.tty.ansi_buffer.buf[..self.tty.ansi_buffer.cursor]
 	}
 
-	/// Tells whether the view is empty.
-	fn is_empty(&self) -> bool {
-		self.buffer()[self.cursor..].is_empty()
-	}
-
 	/// Returns the number of consumed characters.
 	fn consumed_count(&self) -> usize {
 		self.cursor
@@ -151,7 +146,7 @@ impl<'tty> ANSIBufferView<'tty> {
 
 	/// Consumes the next number.
 	///
-	/// A successful return doesn't necessarily means the number is complete. The buffer might be
+	/// A successful return does not necessarily mean the number is complete. The buffer might be
 	/// incomplete and need more data.
 	///
 	/// If not enough data remains or if the number is invalid, the function returns `None`.

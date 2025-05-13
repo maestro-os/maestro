@@ -19,13 +19,13 @@
 //! Filesystem synchronization system calls.
 
 use crate::{
-	file::{fd::FileDescriptorTable, vfs, vfs::mountpoint::FILESYSTEMS},
+	file::{fd::FileDescriptorTable, vfs::mountpoint::FILESYSTEMS},
 	memory::VirtAddr,
 	process::mem_space::MemSpace,
-	sync::mutex::{IntMutex, Mutex},
+	sync::mutex::Mutex,
 	syscall::Args,
 };
-use core::{ffi::c_int, intrinsics::unlikely};
+use core::{ffi::c_int, hint::unlikely};
 use utils::{errno, errno::EResult, limits::PAGE_SIZE, ptr::arc::Arc};
 
 /// Schedules a synchronization and returns directly
@@ -74,7 +74,7 @@ pub fn fsync(Args(fd): Args<c_int>, fds: Arc<Mutex<FileDescriptorTable>>) -> ERe
 	do_fsync(fd, fds, true)
 }
 
-pub fn fsyncdata(Args(fd): Args<c_int>, fds: Arc<Mutex<FileDescriptorTable>>) -> EResult<usize> {
+pub fn fdatasync(Args(fd): Args<c_int>, fds: Arc<Mutex<FileDescriptorTable>>) -> EResult<usize> {
 	do_fsync(fd, fds, false)
 }
 

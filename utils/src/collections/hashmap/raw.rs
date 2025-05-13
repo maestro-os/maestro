@@ -22,7 +22,7 @@ use crate::{__alloc, __dealloc, errno::AllocResult};
 use core::{
 	alloc::Layout,
 	borrow::Borrow,
-	intrinsics::{likely, unlikely},
+	hint::{likely, unlikely},
 	iter::FusedIterator,
 	marker::PhantomData,
 	mem::{MaybeUninit, size_of},

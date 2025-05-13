@@ -193,6 +193,7 @@ pub fn unprivileged<F: FnOnce() -> R, R>(f: F) -> io::Result<R> {
 }
 
 /// Executes the given command and returns a [`Result`] corresponding to the exit status.
+#[allow(dead_code)]
 pub fn exec(cmd: &mut Command) -> TestResult {
 	// TODO capture output and compare to expected output?
 	let cmd = cmd.stdout(Stdio::null()).stderr(Stdio::null());

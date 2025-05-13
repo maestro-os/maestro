@@ -197,7 +197,7 @@ mod long {
 		arch::x86::idt::IntFrame,
 		process::{Process, mem_space::bound_check, signal::SigSet},
 	};
-	use core::intrinsics::unlikely;
+	use core::hint::unlikely;
 	use utils::{errno, errno::EResult};
 
 	/// General purpose registers (64 bit).

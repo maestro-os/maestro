@@ -16,32 +16,24 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! Implementation of `stat*` system calls, allowing to retrieve the status of a file.
+//! File and filesystem status system calls.
 
 use crate::{
-	device::{
-		DeviceID,
-		id::{major, makedev, minor},
-	},
-	file,
+	device::id::{major, makedev, minor},
 	file::{
-		File, INode, Mode, Stat,
+		INode, Stat,
 		fd::FileDescriptorTable,
-		perm::{Gid, Uid},
+		fs::Statfs,
 		vfs,
-		vfs::{
-			ResolutionSettings, Resolved,
-			mountpoint::{MountPoint, MountSource},
-		},
+		vfs::{ResolutionSettings, Resolved},
 	},
 	memory::user::{UserPtr, UserString},
 	sync::mutex::Mutex,
 	syscall::{Args, util::at},
-	time::unit::Timespec,
 };
 use core::{
-	ffi::{c_int, c_long, c_uint, c_ushort},
-	intrinsics::unlikely,
+	ffi::{c_int, c_uint},
+	hint::unlikely,
 };
 use utils::{collections::path::PathBuf, errno, errno::EResult, ptr::arc::Arc};
 
@@ -410,4 +402,77 @@ pub fn statx(
 		__padding1: [0; 19],
 	})?;
 	Ok(0)
+}
+
+pub(super) fn do_statfs(
+	path: UserString,
+	buf: UserPtr<Statfs>,
+	rs: ResolutionSettings,
+) -> EResult<usize> {
+	let rs = ResolutionSettings {
+		follow_link: false,
+		..rs
+	};
+	let path = path.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	let path = PathBuf::try_from(path)?;
+	let stat = vfs::get_file_from_path(&path, &rs)?
+		.node()
+		.fs
+		.ops
+		.get_stat()?;
+	// Write structure to userspace
+	buf.copy_to_user(&stat)?;
+	Ok(0)
+}
+
+pub fn statfs(
+	Args((path, buf)): Args<(UserString, UserPtr<Statfs>)>,
+	rs: ResolutionSettings,
+) -> EResult<usize> {
+	do_statfs(path, buf, rs)
+}
+
+// TODO Check args types
+pub fn statfs64(
+	Args((path, _sz, buf)): Args<(UserString, usize, UserPtr<Statfs>)>,
+	rs: ResolutionSettings,
+) -> EResult<usize> {
+	// TODO Use `sz`
+	do_statfs(path, buf, rs)
+}
+
+/// Performs the `fstatfs` system call.
+pub fn do_fstatfs(
+	fd: c_int,
+	_sz: usize,
+	buf: UserPtr<Statfs>,
+	fds: &FileDescriptorTable,
+) -> EResult<usize> {
+	// TODO use `sz`
+	let stat = fds
+		.get_fd(fd)?
+		.get_file()
+		.vfs_entry
+		.as_ref()
+		.ok_or_else(|| errno!(ENOSYS))?
+		.node()
+		.fs
+		.ops
+		.get_stat()?;
+	buf.copy_to_user(&stat)?;
+	Ok(0)
+}
+
+pub fn fstatfs(
+	Args((fd, buf)): Args<(c_int, UserPtr<Statfs>)>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+) -> EResult<usize> {
+	do_fstatfs(fd, size_of::<Statfs>(), buf, &fds.lock())
+}
+
+pub fn fstatfs64(
+	Args((fd, sz, buf)): Args<(c_int, usize, UserPtr<Statfs>)>,
+	fds: Arc<Mutex<FileDescriptorTable>>,
+) -> EResult<usize> {
+	do_fstatfs(fd, sz, buf, &fds.lock())
 }

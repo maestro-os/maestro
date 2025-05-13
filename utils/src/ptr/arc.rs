@@ -25,7 +25,6 @@ use core::{
 	borrow::Borrow,
 	fmt,
 	hash::{Hash, Hasher},
-	intrinsics::size_of_val,
 	marker::Unsize,
 	mem,
 	mem::{ManuallyDrop, offset_of},

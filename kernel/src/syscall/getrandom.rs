@@ -18,13 +18,9 @@
 
 //! The `getrandom` system call allows to get random bytes.
 
-use crate::{crypto::rand, memory::user::UserSlice, process::Process, syscall::Args};
+use crate::{crypto::rand, memory::user::UserSlice, syscall::Args};
 use core::ffi::c_uint;
-use utils::{
-	errno,
-	errno::{EResult, Errno},
-	vec,
-};
+use utils::errno::EResult;
 
 pub fn getrandom(Args((buf, buflen, flags)): Args<(*mut u8, usize, c_uint)>) -> EResult<usize> {
 	let buf = UserSlice::from_user(buf, buflen)?;

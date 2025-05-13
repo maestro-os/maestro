@@ -28,7 +28,7 @@ use super::{PhysAddr, VirtAddr, oom, stats};
 use crate::sync::{atomic::AtomicU64, mutex::IntMutex};
 use core::{
 	alloc::AllocError,
-	intrinsics::{likely, unlikely},
+	hint::{likely, unlikely},
 	mem::{offset_of, size_of},
 	ptr,
 	ptr::{NonNull, null_mut},

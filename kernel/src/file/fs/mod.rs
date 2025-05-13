@@ -46,7 +46,7 @@ use core::{
 	fmt,
 	fmt::{Debug, Formatter},
 	hash::{Hash, Hasher},
-	intrinsics::unlikely,
+	hint::unlikely,
 };
 use utils::{
 	boxed::Box,

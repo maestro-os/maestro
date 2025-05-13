@@ -24,7 +24,7 @@
 
 use super::{Partition, Table};
 use crate::{device::BlkDev, memory::cache::FrameOwner};
-use core::intrinsics::unlikely;
+use core::hint::unlikely;
 use macros::AnyRepr;
 use utils::{
 	collections::vec::Vec,

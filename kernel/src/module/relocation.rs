@@ -19,7 +19,7 @@
 //! ELF kernel modules relocations implementation.
 
 use crate::{elf::parser::SectionHeader, process::mem_space::bound_check};
-use core::{intrinsics::unlikely, ptr};
+use core::{hint::unlikely, ptr};
 
 const R_386_NONE: u8 = 0;
 const R_386_32: u8 = 1;

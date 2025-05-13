@@ -29,7 +29,7 @@ use crate::{
 	},
 	syscall::{
 		FromSyscallArg, ioctl,
-		poll::{POLLIN, POLLOUT},
+		select::{POLLIN, POLLOUT},
 	},
 	tty::{TTY, TTYDisplay, WinSize, termios, termios::Termios},
 };

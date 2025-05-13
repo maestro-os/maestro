@@ -31,7 +31,7 @@ use crate::{
 };
 use core::{
 	ffi::{c_int, c_void},
-	intrinsics::unlikely,
+	hint::unlikely,
 	num::NonZeroUsize,
 };
 use utils::{

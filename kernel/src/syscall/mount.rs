@@ -16,7 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The mount system call allows to mount a filesystem on the system.
+//! Mountpoint system calls.
 
 use crate::{
 	file::{
@@ -24,15 +24,10 @@ use crate::{
 		vfs::{ResolutionSettings, mountpoint, mountpoint::MountSource},
 	},
 	memory::user::{UserPtr, UserString},
-	process::Process,
 	syscall::Args,
 };
-use core::ffi::{c_ulong, c_void};
-use utils::{
-	collections::path::PathBuf,
-	errno,
-	errno::{EResult, Errno},
-};
+use core::ffi::{c_int, c_ulong, c_void};
+use utils::{collections::path::PathBuf, errno, errno::EResult};
 
 pub fn mount(
 	Args((source, target, filesystemtype, mountflags, _data)): Args<(
@@ -63,5 +58,27 @@ pub fn mount(
 	// TODO Use `data`
 	// Create mountpoint
 	mountpoint::create(mount_source, Some(fs_type), mountflags as _, Some(target))?;
+	Ok(0)
+}
+
+pub fn umount(Args(target): Args<UserString>, rs: ResolutionSettings) -> EResult<usize> {
+	umount2(Args((target, 0)), rs)
+}
+
+pub fn umount2(
+	Args((target, _flags)): Args<(UserString, c_int)>,
+	rs: ResolutionSettings,
+) -> EResult<usize> {
+	// TODO handle flags
+	// Check permission
+	if !rs.access_profile.is_privileged() {
+		return Err(errno!(EPERM));
+	}
+	// Get target directory
+	let target_slice = target.copy_from_user()?.ok_or(errno!(EFAULT))?;
+	let target_path = PathBuf::try_from(target_slice)?;
+	let target = vfs::get_file_from_path(&target_path, &rs)?;
+	// Remove mountpoint
+	mountpoint::remove(target)?;
 	Ok(0)
 }

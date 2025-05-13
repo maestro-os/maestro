@@ -45,7 +45,7 @@ use crate::{
 use core::{
 	fmt,
 	fmt::Formatter,
-	intrinsics::unlikely,
+	hint::unlikely,
 	marker::PhantomData,
 	mem,
 	ops::Deref,

@@ -38,7 +38,7 @@ use crate::{
 	},
 	sync::mutex::Mutex,
 };
-use core::{intrinsics::unlikely, num::NonZeroU64};
+use core::{hint::unlikely, num::NonZeroU64};
 use utils::{bytes::slice_from_bytes, errno, errno::EResult, limits::PAGE_SIZE};
 
 /// Offset to the data register

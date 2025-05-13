@@ -24,7 +24,7 @@ use crate::{
 	file::{FileType, fs::ext2::inode::Ext2INode},
 	memory::cache::RcFrame,
 };
-use core::{intrinsics::unlikely, mem::offset_of, ptr::NonNull};
+use core::{hint::unlikely, mem::offset_of, ptr::NonNull};
 use macros::AnyRepr;
 use utils::{
 	errno,
@@ -152,16 +152,6 @@ impl Dirent {
 		} else {
 			self.name_len as usize
 		}
-	}
-
-	/// Returns the number of bytes actually used by the entry.
-	pub fn used_space(&self, superblock: &Superblock) -> u16 {
-		(NAME_OFF + self.name_len(superblock)).next_multiple_of(ALIGN) as _
-	}
-
-	/// Tells whether the entry can fit another entry with the given `length` in bytes.
-	pub fn can_fit(&self, length: u16, superblock: &Superblock) -> bool {
-		self.rec_len - self.used_space(superblock) >= length
 	}
 
 	/// Returns the entry's name.

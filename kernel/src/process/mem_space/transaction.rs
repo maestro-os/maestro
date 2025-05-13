@@ -158,9 +158,9 @@ impl<'m> MemSpaceTransaction<'m> {
 	///
 	/// On failure, the transaction is dropped and rolled back.
 	pub fn insert_mapping(&mut self, mapping: MemMapping) -> AllocResult<()> {
-		let size = mapping.get_size().get();
+		let size = mapping.size.get();
 		insert(
-			mapping.get_addr(),
+			mapping.addr,
 			mapping,
 			&mut self.state.mappings,
 			&mut self.mappings_complement,
@@ -180,9 +180,9 @@ impl<'m> MemSpaceTransaction<'m> {
 			mapping.sync(&self.vmem, true)?;
 			// Apply to vmem. No rollback is required since this would be corrected by a page fault
 			self.vmem
-				.unmap_range(VirtAddr::from(mapping.get_addr()), mapping.get_size().get());
+				.unmap_range(VirtAddr::from(mapping.addr), mapping.size.get());
 			// Update usage
-			self.vmem_usage -= mapping.get_size().get();
+			self.vmem_usage -= mapping.size.get();
 		}
 		Ok(())
 	}

@@ -41,7 +41,7 @@ use crate::{
 	},
 	sync::mutex::Mutex,
 };
-use core::{any::Any, intrinsics::unlikely, sync::atomic::AtomicBool};
+use core::{any::Any, hint::unlikely, sync::atomic::AtomicBool};
 use utils::{
 	TryClone, TryToOwned,
 	boxed::Box,

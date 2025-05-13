@@ -23,7 +23,7 @@ use crate::{
 	module::relocation::Relocation,
 	process::mem_space::{PROT_EXEC, PROT_READ, PROT_WRITE},
 };
-use core::intrinsics::unlikely;
+use core::hint::unlikely;
 use utils::bytes;
 
 /// The ELF's class.
