@@ -19,7 +19,10 @@
 //! Process management system calls.
 
 use crate::{
-	arch::x86::{cli, gdt, idt::IntFrame},
+	arch::{
+		x86,
+		x86::{cli, gdt, idt::IntFrame},
+	},
 	memory::user::UserPtr,
 	process,
 	process::{
@@ -32,7 +35,7 @@ use crate::{
 		},
 		user_desc::UserDesc,
 	},
-	syscall::Args,
+	syscall::{Args, FromSyscallArg},
 };
 use core::{
 	ffi::{c_int, c_ulong, c_void},
@@ -94,6 +97,19 @@ pub const CLONE_NEWNET: c_ulong = 0x40000000;
 
 /// The index of the first entry for TLS segments in the GDT.
 const TLS_BEGIN_INDEX: usize = gdt::TLS_OFFSET / size_of::<gdt::Entry>();
+
+/// Set 64 bit base for the FS register.
+const ARCH_SET_GS: c_int = 0x1001;
+/// Set 64 bit base for the GS register.
+const ARCH_SET_FS: c_int = 0x1002;
+/// Get 64 bit base value for the FS register.
+const ARCH_GET_FS: c_int = 0x1003;
+/// Get 64 bit base value for the GS register.
+const ARCH_GET_GS: c_int = 0x1004;
+/// Tells whether the cpuid instruction is enabled.
+const ARCH_GET_CPUID: c_int = 0x1011;
+/// Enable or disable cpuid instruction.
+const ARCH_SET_CPUID: c_int = 0x1012;
 
 /// Returns the resource usage of the current process.
 const RUSAGE_SELF: i32 = 0;
@@ -307,7 +323,7 @@ pub fn vfork(proc: Arc<Process>, frame: &mut IntFrame) -> EResult<usize> {
 /// Returns an entry ID for the given process and entry number.
 ///
 /// If the id is `-1`, the function shall find a free entry.
-fn get_entry(
+fn get_tls_entry(
 	entries: &mut [gdt::Entry; process::TLS_ENTRIES_COUNT],
 	entry_number: i32,
 ) -> EResult<(usize, &mut gdt::Entry)> {
@@ -337,7 +353,7 @@ pub fn set_thread_area(
 	let mut info = u_info.copy_from_user()?.ok_or(errno!(EFAULT))?;
 	// Get the entry with its id
 	let mut entries = proc.tls.lock();
-	let (id, entry) = get_entry(&mut entries, info.get_entry_number())?;
+	let (id, entry) = get_tls_entry(&mut entries, info.get_entry_number())?;
 	// If the entry is allocated, tell the userspace its ID
 	let entry_number = info.get_entry_number();
 	if entry_number == -1 {
@@ -350,6 +366,33 @@ pub fn set_thread_area(
 		entry.update_gdt(gdt::TLS_OFFSET + id * size_of::<gdt::Entry>());
 	}
 	gdt::flush();
+	Ok(0)
+}
+
+pub fn arch_prctl(Args((code, addr)): Args<(c_int, usize)>) -> EResult<usize> {
+	// For `gs`, use kernel base because it will get swapped when returning to userspace
+	match code {
+		#[cfg(target_arch = "x86_64")]
+		ARCH_SET_GS => x86::wrmsr(x86::IA32_KERNEL_GS_BASE, addr as _),
+		#[cfg(target_arch = "x86_64")]
+		ARCH_SET_FS => x86::wrmsr(x86::IA32_FS_BASE, addr as _),
+		#[cfg(target_arch = "x86_64")]
+		ARCH_GET_FS => {
+			let val = x86::rdmsr(x86::IA32_FS_BASE) as usize;
+			let ptr = UserPtr::<usize>::from_ptr(addr);
+			ptr.copy_to_user(&val)?;
+		}
+		#[cfg(target_arch = "x86_64")]
+		ARCH_GET_GS => {
+			let val = x86::rdmsr(x86::IA32_GS_BASE) as usize;
+			let ptr = UserPtr::<usize>::from_ptr(addr);
+			ptr.copy_to_user(&val)?;
+		}
+		// TODO ARCH_GET_CPUID
+		// TODO ARCH_SET_CPUID
+		_ => return Err(errno!(EINVAL)),
+	}
+	#[allow(unreachable_code)]
 	Ok(0)
 }
 

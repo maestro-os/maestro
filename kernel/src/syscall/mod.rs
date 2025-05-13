@@ -21,28 +21,25 @@
 //! Documentation for each system call can be retrieved from the man. Type the
 //! command: `man 2 <syscall>`
 
-mod arch_prctl;
 mod dirent;
 mod execve;
 mod fcntl;
 mod fd;
 mod fs;
 mod getrandom;
+mod host;
 pub mod ioctl;
 mod mem;
 mod module;
 mod mount;
 mod pipe;
 mod process;
-mod reboot;
 pub mod select;
-mod sethostname;
 mod signal;
 mod socket;
 mod stat;
 mod sync;
 mod time;
-mod uname;
 mod user;
 mod util;
 mod wait;
@@ -53,8 +50,9 @@ use crate::{
 	process::{Process, mem_space::MemSpace, signal::Signal, yield_current},
 	sync::mutex::Mutex,
 	syscall::{
-		dirent::getdents64,
-		fcntl::fcntl64,
+		dirent::{getdents, getdents64},
+		execve::execve,
+		fcntl::{fcntl, fcntl64},
 		fd::{
 			_llseek, close, dup, dup2, lseek, preadv, preadv2, pwritev, pwritev2, read, readv,
 			write, writev,
@@ -65,28 +63,35 @@ use crate::{
 			readlink, rename, renameat2, rmdir, symlink, symlinkat, truncate, umask, unlink,
 			unlinkat, utimensat,
 		},
+		getrandom::getrandom,
+		host::{reboot, sethostname, uname},
 		ioctl::ioctl,
-		mem::{brk, madvise, mmap2, mprotect, munmap},
-		module::{delete_module, init_module},
-		mount::{umount, umount2},
-		pipe::pipe2,
+		mem::{brk, madvise, mmap, mmap2, mprotect, munmap},
+		module::{delete_module, finit_module, init_module},
+		mount::{mount, umount, umount2},
+		pipe::{pipe, pipe2},
 		process::{
-			_exit, clone, compat_clone, exit_group, fork, getpgid, getpid, getppid, getrusage,
-			gettid, prlimit64, sched_yield, set_thread_area, set_tid_address, setpgid, vfork,
+			_exit, arch_prctl, clone, compat_clone, exit_group, fork, getpgid, getpid, getppid,
+			getrusage, gettid, prlimit64, sched_yield, set_thread_area, set_tid_address, setpgid,
+			vfork,
 		},
-		select::{_newselect, poll, pselect6},
+		select::{_newselect, poll, pselect6, select},
 		signal::{
-			compat_rt_sigaction, kill, rt_sigaction, rt_sigprocmask, rt_sigreturn, sigreturn,
-			tkill,
+			compat_rt_sigaction, kill, rt_sigaction, rt_sigprocmask, rt_sigreturn, signal,
+			sigreturn, tkill,
 		},
 		socket::{
-			bind, connect, getsockname, getsockopt, sendto, setsockopt, shutdown, socketpair,
+			bind, connect, getsockname, getsockopt, sendto, setsockopt, shutdown, socket,
+			socketpair,
 		},
-		stat::{fstatfs, fstatfs64, statfs, statfs64},
+		stat::{
+			fstat, fstat64, fstatfs, fstatfs64, lstat, lstat64, stat, stat64, statfs, statfs64,
+			statx,
+		},
 		sync::{fdatasync, fsync, msync, sync, syncfs},
 		time::{
-			clock_gettime, clock_gettime64, nanosleep32, nanosleep64, time64, timer_create,
-			timer_delete, timer_settime,
+			clock_gettime, clock_gettime64, nanosleep32, nanosleep64, time32, time64,
+			timer_create, timer_delete, timer_settime,
 		},
 		user::{
 			getegid, geteuid, getgid, getresgid, getresuid, getuid, setgid, setregid, setresgid,
@@ -95,24 +100,7 @@ use crate::{
 		wait::{wait4, waitpid},
 	},
 };
-use arch_prctl::arch_prctl;
 use core::{fmt, hint::unlikely, ops::Deref, ptr};
-use dirent::getdents;
-use execve::execve;
-use fcntl::fcntl;
-use getrandom::getrandom;
-use mem::mmap;
-use module::finit_module;
-use mount::mount;
-use pipe::pipe;
-use reboot::reboot;
-use select::select;
-use sethostname::sethostname;
-use signal::signal;
-use socket::socket;
-use stat::{fstat, fstat64, lstat, lstat64, stat, stat64, statx};
-use time::time32;
-use uname::uname;
 use utils::{
 	errno,
 	errno::{ENOSYS, EResult},
