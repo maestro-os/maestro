@@ -22,10 +22,8 @@
 //! command: `man 2 <syscall>`
 
 mod arch_prctl;
-mod bind;
 mod r#break;
 mod brk;
-mod connect;
 mod delete_module;
 mod dirent;
 mod execve;
@@ -36,8 +34,6 @@ mod fs;
 mod fstatfs;
 mod fstatfs64;
 mod getrandom;
-mod getsockname;
-mod getsockopt;
 mod init_module;
 pub mod ioctl;
 mod madvise;
@@ -46,19 +42,14 @@ mod mount;
 mod mprotect;
 mod munmap;
 mod pipe;
-mod pipe2;
 mod prlimit64;
 mod process;
 mod readlink;
 mod reboot;
 pub mod select;
-mod sendto;
 mod sethostname;
-mod setsockopt;
-mod shutdown;
 mod signal;
 mod socket;
-mod socketpair;
 mod stat;
 mod statfs;
 mod statfs64;
@@ -90,6 +81,7 @@ use crate::{
 		},
 		ioctl::ioctl,
 		mmap::mmap2,
+		pipe::pipe2,
 		process::{
 			_exit, clone, compat_clone, exit_group, fork, getpgid, getpid, getppid, getrusage,
 			gettid, sched_yield, set_thread_area, set_tid_address, setpgid, vfork,
@@ -98,6 +90,9 @@ use crate::{
 		signal::{
 			compat_rt_sigaction, kill, rt_sigaction, rt_sigprocmask, rt_sigreturn, sigreturn,
 			tkill,
+		},
+		socket::{
+			bind, connect, getsockname, getsockopt, sendto, setsockopt, shutdown, socketpair,
 		},
 		sync::{fdatasync, fsync, msync, sync, syncfs},
 		time::{
@@ -112,10 +107,8 @@ use crate::{
 	},
 };
 use arch_prctl::arch_prctl;
-use bind::bind;
 use r#break::r#break;
 use brk::brk;
-use connect::connect;
 use core::{fmt, ops::Deref, ptr};
 use delete_module::delete_module;
 use dirent::getdents;
@@ -125,8 +118,6 @@ use finit_module::finit_module;
 use fstatfs::fstatfs;
 use fstatfs64::fstatfs64;
 use getrandom::getrandom;
-use getsockname::getsockname;
-use getsockopt::getsockopt;
 use init_module::init_module;
 use madvise::madvise;
 use mmap::mmap;
@@ -134,18 +125,13 @@ use mount::mount;
 use mprotect::mprotect;
 use munmap::munmap;
 use pipe::pipe;
-use pipe2::pipe2;
 use prlimit64::prlimit64;
 use readlink::readlink;
 use reboot::reboot;
 use select::select;
-use sendto::sendto;
 use sethostname::sethostname;
-use setsockopt::setsockopt;
-use shutdown::shutdown;
 use signal::signal;
 use socket::socket;
-use socketpair::socketpair;
 use stat::{fstat, fstat64, lstat, lstat64, stat, stat64, statx};
 use statfs::statfs;
 use statfs64::statfs64;
