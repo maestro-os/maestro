@@ -170,6 +170,11 @@ pub fn mmap2(
 	)
 }
 
+pub fn brk(Args(addr): Args<VirtAddr>, mem_space: Arc<MemSpace>) -> EResult<usize> {
+	let addr = mem_space.brk(addr);
+	Ok(addr.0 as _)
+}
+
 pub fn madvise(
 	Args((_addr, _length, _advice)): Args<(*mut c_void, usize, c_int)>,
 ) -> EResult<usize> {

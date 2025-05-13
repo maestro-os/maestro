@@ -16,7 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! Implementation of `stat*` system calls, allowing to retrieve the status of a file.
+//! File and filesystem status system calls.
 
 use crate::{
 	device::id::{major, makedev, minor},
@@ -402,6 +402,43 @@ pub fn statx(
 		__padding1: [0; 19],
 	})?;
 	Ok(0)
+}
+
+pub(super) fn do_statfs(
+	path: UserString,
+	buf: UserPtr<Statfs>,
+	rs: ResolutionSettings,
+) -> EResult<usize> {
+	let rs = ResolutionSettings {
+		follow_link: false,
+		..rs
+	};
+	let path = path.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	let path = PathBuf::try_from(path)?;
+	let stat = vfs::get_file_from_path(&path, &rs)?
+		.node()
+		.fs
+		.ops
+		.get_stat()?;
+	// Write structure to userspace
+	buf.copy_to_user(&stat)?;
+	Ok(0)
+}
+
+pub fn statfs(
+	Args((path, buf)): Args<(UserString, UserPtr<Statfs>)>,
+	rs: ResolutionSettings,
+) -> EResult<usize> {
+	do_statfs(path, buf, rs)
+}
+
+// TODO Check args types
+pub fn statfs64(
+	Args((path, _sz, buf)): Args<(UserString, usize, UserPtr<Statfs>)>,
+	rs: ResolutionSettings,
+) -> EResult<usize> {
+	// TODO Use `sz`
+	do_statfs(path, buf, rs)
 }
 
 /// Performs the `fstatfs` system call.

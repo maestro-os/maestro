@@ -16,8 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The `signal` syscall allows to specify a pointer to a function to be called
-//! when a specific signal is received by the current process.
+//! Signal management system calls.
 
 use crate::{
 	arch::x86::idt::IntFrame,

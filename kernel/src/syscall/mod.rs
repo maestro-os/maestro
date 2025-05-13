@@ -23,21 +23,17 @@
 
 mod arch_prctl;
 mod r#break;
-mod brk;
-mod delete_module;
 mod dirent;
 mod execve;
 mod fcntl;
 mod fd;
-mod finit_module;
 mod fs;
 mod getrandom;
-mod init_module;
 pub mod ioctl;
 mod mem;
+mod module;
 mod mount;
 mod pipe;
-mod prlimit64;
 mod process;
 mod reboot;
 pub mod select;
@@ -45,11 +41,8 @@ mod sethostname;
 mod signal;
 mod socket;
 mod stat;
-mod statfs;
-mod statfs64;
 mod sync;
 mod time;
-mod umount;
 mod uname;
 mod user;
 mod util;
@@ -74,11 +67,13 @@ use crate::{
 			unlinkat, utimensat,
 		},
 		ioctl::ioctl,
-		mem::{madvise, mmap2, mprotect, munmap},
+		mem::{brk, madvise, mmap2, mprotect, munmap},
+		module::{delete_module, init_module},
+		mount::{umount, umount2},
 		pipe::pipe2,
 		process::{
 			_exit, clone, compat_clone, exit_group, fork, getpgid, getpid, getppid, getrusage,
-			gettid, sched_yield, set_thread_area, set_tid_address, setpgid, vfork,
+			gettid, prlimit64, sched_yield, set_thread_area, set_tid_address, setpgid, vfork,
 		},
 		select::{_newselect, poll, pselect6},
 		signal::{
@@ -88,7 +83,7 @@ use crate::{
 		socket::{
 			bind, connect, getsockname, getsockopt, sendto, setsockopt, shutdown, socketpair,
 		},
-		stat::{fstatfs, fstatfs64},
+		stat::{fstatfs, fstatfs64, statfs, statfs64},
 		sync::{fdatasync, fsync, msync, sync, syncfs},
 		time::{
 			clock_gettime, clock_gettime64, nanosleep32, nanosleep64, time64, timer_create,
@@ -103,29 +98,22 @@ use crate::{
 };
 use arch_prctl::arch_prctl;
 use r#break::r#break;
-use brk::brk;
 use core::{fmt, ops::Deref, ptr};
-use delete_module::delete_module;
 use dirent::getdents;
 use execve::execve;
 use fcntl::fcntl;
-use finit_module::finit_module;
 use getrandom::getrandom;
-use init_module::init_module;
 use mem::mmap;
+use module::finit_module;
 use mount::mount;
 use pipe::pipe;
-use prlimit64::prlimit64;
 use reboot::reboot;
 use select::select;
 use sethostname::sethostname;
 use signal::signal;
 use socket::socket;
 use stat::{fstat, fstat64, lstat, lstat64, stat, stat64, statx};
-use statfs::statfs;
-use statfs64::statfs64;
 use time::time32;
-use umount::{umount, umount2};
 use uname::uname;
 use utils::{errno::EResult, ptr::arc::Arc};
 

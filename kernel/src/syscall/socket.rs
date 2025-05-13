@@ -16,7 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The `socket` system call allows to create a socket.
+//! Socket interface system calls.
 
 use crate::{
 	file,
