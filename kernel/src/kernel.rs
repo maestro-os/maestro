@@ -121,7 +121,7 @@ fn init(init_path: String) -> EResult<IntFrame> {
 		let path = Path::new(&init_path)?;
 		let rs = ResolutionSettings::kernel_follow();
 		let ent = vfs::get_file_from_path(path, &rs)?;
-		let program_image = exec::build_image(
+		let program_image = exec::elf::exec(
 			ent,
 			ExecInfo {
 				path_resolution: &rs,

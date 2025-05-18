@@ -30,14 +30,15 @@ use crate::{
 	memory::{VirtAddr, vmem},
 	process,
 	process::{
-		exec::{ExecInfo, Executor, ProgramImage, vdso::MappedVDSO},
+		Process,
+		exec::{ExecInfo, ProgramImage, vdso::MappedVDSO},
 		mem_space,
 		mem_space::{MAP_ANONYMOUS, MAP_PRIVATE, MapConstraint, MemSpace, PROT_READ, PROT_WRITE},
 	},
 };
-use core::{cmp::max, hint::unlikely, num::NonZeroUsize, ptr, slice};
+use core::{cmp::max, ffi::c_int, hint::unlikely, num::NonZeroUsize, ops::Deref, ptr, slice};
 use utils::{
-	collections::{string::String, vec::Vec},
+	collections::{path::Path, vec::Vec},
 	errno,
 	errno::{AllocResult, EResult},
 	limits::PAGE_SIZE,
@@ -136,86 +137,94 @@ struct AuxEntryDesc {
 /// Builds an auxiliary vector.
 ///
 /// Arguments:
-/// - `exec_info` is the set of execution information.
-/// - `load_base` is the base address at which the ELF is loaded.
-/// - `load_info` is the set of ELF load information.
-/// - `vdso` is the set of vDSO information.
+/// - `exec_info` is the set of execution information
+/// - `exec_fd` is the file descriptor to executable file to be read by the interpreter (if an
+///   interpreter is used)
+/// - `load_base` is the base address at which the ELF is loaded
+/// - `load_info` is the set of ELF load information
+/// - `vdso` is the set of vDSO information
 fn build_auxiliary(
 	exec_info: &ExecInfo,
+	exec_fd: Option<c_int>,
 	load_base: *mut u8,
 	load_info: &ELFLoadInfo,
 	vdso: &MappedVDSO,
 ) -> AllocResult<Vec<AuxEntryDesc>> {
-	let mut vec = vec![
-		AuxEntryDesc {
-			a_type: AT_PHDR,
-			a_val: AuxEntryDescValue::Number(load_info.phdr.0),
-		},
-		AuxEntryDesc {
-			a_type: AT_PHENT,
-			a_val: AuxEntryDescValue::Number(load_info.phentsize as _),
-		},
-		AuxEntryDesc {
-			a_type: AT_PHNUM,
-			a_val: AuxEntryDescValue::Number(load_info.phnum as _),
-		},
-		AuxEntryDesc {
-			a_type: AT_PAGESZ,
-			a_val: AuxEntryDescValue::Number(PAGE_SIZE),
-		},
-		AuxEntryDesc {
-			a_type: AT_BASE,
-			a_val: AuxEntryDescValue::Number(load_base as _),
-		},
-		AuxEntryDesc {
-			a_type: AT_NOTELF,
-			a_val: AuxEntryDescValue::Number(0),
-		},
-		AuxEntryDesc {
-			a_type: AT_UID,
-			a_val: AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.uid as _),
-		},
-		AuxEntryDesc {
-			a_type: AT_EUID,
-			a_val: AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.euid as _),
-		},
-		AuxEntryDesc {
-			a_type: AT_GID,
-			a_val: AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.gid as _),
-		},
-		AuxEntryDesc {
-			a_type: AT_EGID,
-			a_val: AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.egid as _),
-		},
-		AuxEntryDesc {
-			a_type: AT_PLATFORM,
-			a_val: AuxEntryDescValue::String(crate::NAME.as_bytes()),
-		},
-		AuxEntryDesc {
-			a_type: AT_HWCAP,
-			a_val: AuxEntryDescValue::Number(x86::get_hwcap() as _),
-		},
-		AuxEntryDesc {
-			a_type: AT_SECURE,
-			a_val: AuxEntryDescValue::Number(0), // TODO
-		},
-		AuxEntryDesc {
-			a_type: AT_BASE_PLATFORM,
-			a_val: AuxEntryDescValue::String(crate::NAME.as_bytes()),
-		},
-		AuxEntryDesc {
-			a_type: AT_RANDOM,
-			a_val: AuxEntryDescValue::String(&[0; 16]), // TODO
-		},
-		AuxEntryDesc {
-			a_type: AT_EXECFN,
-			a_val: AuxEntryDescValue::String(b"TODO\0"), // TODO
-		},
-		AuxEntryDesc {
-			a_type: AT_SYSINFO_EHDR,
-			a_val: AuxEntryDescValue::Number(vdso.begin.0),
-		},
-	]?;
+	let mut vec = vec![];
+	if let Some(fd) = exec_fd {
+		vec.push(AuxEntryDesc {
+			a_type: AT_EXECFD,
+			a_val: AuxEntryDescValue::Number(fd as _),
+		})?;
+	}
+	vec.push(AuxEntryDesc {
+		a_type: AT_PHDR,
+		a_val: AuxEntryDescValue::Number(load_info.phdr.0),
+	})?;
+	vec.push(AuxEntryDesc {
+		a_type: AT_PHENT,
+		a_val: AuxEntryDescValue::Number(load_info.phentsize as _),
+	})?;
+	vec.push(AuxEntryDesc {
+		a_type: AT_PHNUM,
+		a_val: AuxEntryDescValue::Number(load_info.phnum as _),
+	})?;
+	vec.push(AuxEntryDesc {
+		a_type: AT_PAGESZ,
+		a_val: AuxEntryDescValue::Number(PAGE_SIZE),
+	})?;
+	vec.push(AuxEntryDesc {
+		a_type: AT_BASE,
+		a_val: AuxEntryDescValue::Number(load_base as _),
+	})?;
+	vec.push(AuxEntryDesc {
+		a_type: AT_NOTELF,
+		a_val: AuxEntryDescValue::Number(0),
+	})?;
+	vec.push(AuxEntryDesc {
+		a_type: AT_UID,
+		a_val: AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.uid as _),
+	})?;
+	vec.push(AuxEntryDesc {
+		a_type: AT_EUID,
+		a_val: AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.euid as _),
+	})?;
+	vec.push(AuxEntryDesc {
+		a_type: AT_GID,
+		a_val: AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.gid as _),
+	})?;
+	vec.push(AuxEntryDesc {
+		a_type: AT_EGID,
+		a_val: AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.egid as _),
+	})?;
+	vec.push(AuxEntryDesc {
+		a_type: AT_PLATFORM,
+		a_val: AuxEntryDescValue::String(crate::NAME.as_bytes()),
+	})?;
+	vec.push(AuxEntryDesc {
+		a_type: AT_HWCAP,
+		a_val: AuxEntryDescValue::Number(x86::get_hwcap() as _),
+	})?;
+	vec.push(AuxEntryDesc {
+		a_type: AT_SECURE,
+		a_val: AuxEntryDescValue::Number(0), // TODO
+	})?;
+	vec.push(AuxEntryDesc {
+		a_type: AT_BASE_PLATFORM,
+		a_val: AuxEntryDescValue::String(crate::NAME.as_bytes()),
+	})?;
+	vec.push(AuxEntryDesc {
+		a_type: AT_RANDOM,
+		a_val: AuxEntryDescValue::String(&[0; 16]), // TODO
+	})?;
+	vec.push(AuxEntryDesc {
+		a_type: AT_EXECFN,
+		a_val: AuxEntryDescValue::String(b"TODO\0"), // TODO
+	})?;
+	vec.push(AuxEntryDesc {
+		a_type: AT_SYSINFO_EHDR,
+		a_val: AuxEntryDescValue::Number(vdso.begin.0),
+	})?;
 	if let Some(entry) = vdso.entry {
 		vec.push(AuxEntryDesc {
 			a_type: AT_SYSINFO,
@@ -343,12 +352,7 @@ fn load_elf(
 ///
 /// Returns the size of the "information" part, and the total size on the stack (including the
 /// "information" part).
-fn get_init_stack_size(
-	argv: &[String],
-	envp: &[String],
-	aux: &[AuxEntryDesc],
-	compat: bool,
-) -> (usize, usize) {
+fn get_init_stack_size(info: &ExecInfo, aux: &[AuxEntryDesc], compat: bool) -> (usize, usize) {
 	let size = if compat { 4 } else { 8 };
 	// The size of the block storing the arguments and environment
 	let info_block_size = aux
@@ -360,17 +364,17 @@ fn get_init_stack_size(
 				None
 			}
 		})
-		.chain(envp.iter().map(|e| e.len() + 1))
-		.chain(argv.iter().map(|a| a.len() + 1))
+		.chain(info.envp.iter().map(|e| e.len() + 1))
+		.chain(info.argv.iter().map(|a| a.len() + 1))
 		.sum::<usize>()
 		// Add padding before the information block allowing to preserve stack alignment
 		.next_multiple_of(size);
 	// The size of the auxiliary vector
 	let aux_size = aux.len() * (size * 2);
 	// The size of the environment pointers + null
-	let envp_size = (envp.len() + 1) * size;
+	let envp_size = (info.envp.len() + 1) * size;
 	// The size of the argument pointers + null + argc
-	let argv_size = (argv.len() + 2) * size;
+	let argv_size = (info.argv.len() + 2) * size;
 	// The total size of the stack data in bytes
 	let total_size = info_block_size + aux_size + envp_size + argv_size;
 	(info_block_size, total_size)
@@ -420,20 +424,19 @@ unsafe fn copy_string(stack: &mut *mut u8, str: &[u8]) {
 /// `stack` must point to a valid stack.
 unsafe fn init_stack(
 	user_stack: *mut u8,
-	argv: &[String],
-	envp: &[String],
+	info: &ExecInfo,
 	aux: &[AuxEntryDesc],
 	exe_info: &mut mem_space::ExeInfo,
 	compat: bool,
 ) {
-	let (info_size, total_size) = get_init_stack_size(argv, envp, aux, compat);
+	let (info_size, total_size) = get_init_stack_size(info, aux, compat);
 	let mut info_ptr = user_stack.sub(info_size);
 	let mut args_ptr = user_stack.sub(total_size);
 	// Push argc
-	write_val(&mut args_ptr, argv.len(), compat);
+	write_val(&mut args_ptr, info.argv.len(), compat);
 	// Set argv
 	exe_info.argv_begin = VirtAddr::from(info_ptr);
-	for arg in argv {
+	for arg in &info.argv {
 		write_val(&mut args_ptr, info_ptr as _, compat);
 		copy_string(&mut info_ptr, arg);
 	}
@@ -442,7 +445,7 @@ unsafe fn init_stack(
 	exe_info.argv_end = VirtAddr::from(info_ptr);
 	// Set environment
 	exe_info.envp_begin = exe_info.argv_end;
-	for var in envp {
+	for var in &info.envp {
 		write_val(&mut args_ptr, info_ptr as _, compat);
 		copy_string(&mut info_ptr, var);
 	}
@@ -464,82 +467,97 @@ unsafe fn init_stack(
 	}
 }
 
-/// The program executor for ELF files.
-pub struct ELFExecutor<'s>(pub ExecInfo<'s>);
-
-impl Executor for ELFExecutor<'_> {
-	// TODO Handle suid and sgid
-	fn build_image(&self, ent: Arc<vfs::Entry>) -> EResult<ProgramImage> {
-		// Check that the file can be executed by the user
-		let stat = ent.stat();
-		if unlikely(stat.get_type() != Some(FileType::Regular)) {
-			return Err(errno!(EACCES));
-		}
-		if unlikely(
-			!self
-				.0
-				.path_resolution
-				.access_profile
-				.can_execute_file(&stat),
-		) {
-			return Err(errno!(EACCES));
-		}
-		// Open file
-		let file = File::open_entry(ent.clone(), O_RDONLY)?;
-		// Read and parse file
-		let image = file.read_all()?;
-		let parser = ELFParser::new(&image)?;
-		let compat = parser.class() == Class::Bit32;
-		// Initialize memory space
-		let mut mem_space = MemSpace::new(ent)?;
-		let load_base = if parser.hdr().e_type == ET_DYN {
-			// TODO ASLR
-			PAGE_SIZE
-		} else {
-			0
-		};
-		let load_base = VirtAddr(load_base).as_ptr();
-		let load_info = load_elf(&file, &parser, &mem_space, load_base)?;
-		let user_stack = mem_space
-			.map(
-				MapConstraint::None,
-				process::USER_STACK_SIZE.try_into().unwrap(),
-				PROT_READ | PROT_WRITE,
-				MAP_PRIVATE | MAP_ANONYMOUS,
-				None,
-				0,
-			)?
-			.wrapping_add(process::USER_STACK_SIZE * PAGE_SIZE);
-		let vdso = vdso::map(&mem_space, compat)?;
-		// Initialize the userspace stack
-		let aux = build_auxiliary(&self.0, load_base, &load_info, &vdso)?;
-		let (_, init_stack_size) = get_init_stack_size(&self.0.argv, &self.0.envp, &aux, compat);
-		let mut exe_info = mem_space.exe_info.clone();
-		unsafe {
-			MemSpace::switch(&mem_space, |_| {
-				vmem::smap_disable(|| -> EResult<()> {
-					init_stack(
-						user_stack,
-						&self.0.argv,
-						&self.0.envp,
-						&aux,
-						&mut exe_info,
-						compat,
-					);
-					Ok(())
-				})
-			})?;
-		}
-		// Set immutable fields
-		let m = Arc::as_mut(&mut mem_space).unwrap(); // Cannot fail since no one else hold a reference
-		m.exe_info = exe_info;
-		m.set_brk_init(VirtAddr::from(load_info.load_end).align_to(PAGE_SIZE));
-		Ok(ProgramImage {
-			mem_space,
-			compat,
-
-			entry_point: load_info.entry_point,
-			user_stack: VirtAddr::from(user_stack) - init_stack_size,
-		})
+fn exec_impl(
+	ent: Arc<vfs::Entry>,
+	info: ExecInfo,
+	exec_fd: Option<c_int>,
+) -> EResult<ProgramImage> {
+	// Check that the file can be executed by the user
+	let stat = ent.stat();
+	if unlikely(stat.get_type() != Some(FileType::Regular)) {
+		return Err(errno!(EACCES));
 	}
+	if unlikely(!info.path_resolution.access_profile.can_execute_file(&stat)) {
+		return Err(errno!(EACCES));
+	}
+	// Open file
+	let file = File::open_entry(ent.clone(), O_RDONLY)?;
+	// Read and parse file
+	let image = file.read_all()?;
+	let parser = ELFParser::new(&image)?;
+	// If using an interpreter, execute it instead
+	if let Some(interp) = parser.get_interpreter_path() {
+		if unlikely(exec_fd.is_some()) {
+			return Err(errno!(ELOOP));
+		}
+		// Get interpreter
+		let interp = Path::new(interp)?;
+		let interp_ent = vfs::get_file_from_path(interp, info.path_resolution)?;
+		// Open program
+		let fds = Process::current().file_descriptors.deref().clone().unwrap();
+		let file = File::open_entry(interp_ent.clone(), O_RDONLY)?;
+		let (exec_fd, _) = fds.lock().create_fd(0, file)?;
+		let res = exec_impl(interp_ent, info, Some(exec_fd as _));
+		// Upon error, close the program's file descriptor
+		if res.is_err() {
+			fds.lock().close_fd(exec_fd as _)?;
+		}
+		return res;
+	}
+	let compat = parser.class() == Class::Bit32;
+	// Initialize memory space
+	let mut mem_space = MemSpace::new(ent)?;
+	let load_base = if parser.hdr().e_type == ET_DYN {
+		// TODO ASLR
+		PAGE_SIZE
+	} else {
+		0
+	};
+	let load_base = VirtAddr(load_base).as_ptr();
+	let load_info = load_elf(&file, &parser, &mem_space, load_base)?;
+	let user_stack = mem_space
+		.map(
+			MapConstraint::None,
+			process::USER_STACK_SIZE.try_into().unwrap(),
+			PROT_READ | PROT_WRITE,
+			MAP_PRIVATE | MAP_ANONYMOUS,
+			None,
+			0,
+		)?
+		.wrapping_add(process::USER_STACK_SIZE * PAGE_SIZE);
+	let vdso = vdso::map(&mem_space, compat)?;
+	// Initialize the userspace stack
+	let aux = build_auxiliary(&info, exec_fd, load_base, &load_info, &vdso)?;
+	let (_, init_stack_size) = get_init_stack_size(&info, &aux, compat);
+	let mut exe_info = mem_space.exe_info.clone();
+	unsafe {
+		MemSpace::switch(&mem_space, |_| {
+			vmem::smap_disable(|| -> EResult<()> {
+				init_stack(user_stack, &info, &aux, &mut exe_info, compat);
+				Ok(())
+			})
+		})?;
+	}
+	// Set immutable fields
+	let m = Arc::as_mut(&mut mem_space).unwrap(); // Cannot fail since no one else hold a reference
+	m.exe_info = exe_info;
+	m.set_brk_init(VirtAddr::from(load_info.load_end).align_to(PAGE_SIZE));
+	Ok(ProgramImage {
+		mem_space,
+		compat,
+
+		entry_point: load_info.entry_point,
+		user_stack: VirtAddr::from(user_stack) - init_stack_size,
+	})
+}
+
+// TODO Handle suid and sgid
+/// Builds a program image from the given executable file.
+///
+/// Arguments:
+/// - `ent` is the program's file
+/// - `info` is the set execution information for the program
+#[inline]
+pub fn exec(ent: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
+	exec_impl(ent, info, None)
 }

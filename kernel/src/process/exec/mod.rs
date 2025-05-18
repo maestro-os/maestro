@@ -29,7 +29,7 @@ pub mod vdso;
 
 use crate::{
 	arch::x86::{idt::IntFrame, tss},
-	file::{vfs, vfs::ResolutionSettings},
+	file::vfs::ResolutionSettings,
 	memory::VirtAddr,
 	process::{Process, mem_space::MemSpace},
 	sync::mutex::Mutex,
@@ -61,27 +61,6 @@ pub struct ProgramImage {
 	entry_point: VirtAddr,
 	/// A pointer to the initial value of the user stack pointer.
 	user_stack: VirtAddr,
-}
-
-/// A program executor, whose role is to load a program and to prepare it for execution.
-pub trait Executor {
-	/// Builds a program image.
-	///
-	/// `file` is the program's VFS entry.
-	fn build_image(&self, file: Arc<vfs::Entry>) -> EResult<ProgramImage>;
-}
-
-/// Builds a program image from the given executable file.
-///
-/// Arguments:
-/// - `file` is the program's file
-/// - `info` is the set execution information for the program
-///
-/// The function returns a memory space containing the program image and the
-/// pointer to the entry point.
-pub fn build_image(file: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
-	// TODO Support other formats than ELF (wasm?)
-	elf::ELFExecutor(info).build_image(file)
 }
 
 /// Executes the program image `image` on the process `proc`.
