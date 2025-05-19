@@ -35,8 +35,9 @@ use crate::{
 		mem_space,
 		mem_space::{MAP_ANONYMOUS, MAP_PRIVATE, MapConstraint, MemSpace, PROT_READ, PROT_WRITE},
 	},
+	sync::mutex::Mutex,
 };
-use core::{cmp::max, ffi::c_int, hint::unlikely, num::NonZeroUsize, ops::Deref, ptr, slice};
+use core::{cmp::max, ffi::c_int, hint::unlikely, num::NonZeroUsize, ptr, slice};
 use utils::{
 	collections::{path::Path, vec::Vec},
 	errno,
@@ -156,19 +157,20 @@ fn build_auxiliary(
 			a_type: AT_EXECFD,
 			a_val: AuxEntryDescValue::Number(fd as _),
 		})?;
+	} else {
+		vec.push(AuxEntryDesc {
+			a_type: AT_PHDR,
+			a_val: AuxEntryDescValue::Number(load_info.phdr.0),
+		})?;
+		vec.push(AuxEntryDesc {
+			a_type: AT_PHENT,
+			a_val: AuxEntryDescValue::Number(load_info.phentsize as _),
+		})?;
+		vec.push(AuxEntryDesc {
+			a_type: AT_PHNUM,
+			a_val: AuxEntryDescValue::Number(load_info.phnum as _),
+		})?;
 	}
-	vec.push(AuxEntryDesc {
-		a_type: AT_PHDR,
-		a_val: AuxEntryDescValue::Number(load_info.phdr.0),
-	})?;
-	vec.push(AuxEntryDesc {
-		a_type: AT_PHENT,
-		a_val: AuxEntryDescValue::Number(load_info.phentsize as _),
-	})?;
-	vec.push(AuxEntryDesc {
-		a_type: AT_PHNUM,
-		a_val: AuxEntryDescValue::Number(load_info.phnum as _),
-	})?;
 	vec.push(AuxEntryDesc {
 		a_type: AT_PAGESZ,
 		a_val: AuxEntryDescValue::Number(PAGE_SIZE),
@@ -468,6 +470,7 @@ unsafe fn init_stack(
 }
 
 fn exec_impl(
+	proc: &Process,
 	ent: Arc<vfs::Entry>,
 	info: ExecInfo,
 	exec_fd: Option<c_int>,
@@ -485,6 +488,13 @@ fn exec_impl(
 	// Read and parse file
 	let image = file.read_all()?;
 	let parser = ELFParser::new(&image)?;
+	// Duplicate file descriptors
+	let mut fds = proc
+		.file_descriptors
+		.as_ref()
+		.unwrap()
+		.lock()
+		.duplicate(true)?;
 	// If using an interpreter, execute it instead
 	if let Some(interp) = parser.get_interpreter_path() {
 		if unlikely(exec_fd.is_some()) {
@@ -494,15 +504,9 @@ fn exec_impl(
 		let interp = Path::new(interp)?;
 		let interp_ent = vfs::get_file_from_path(interp, info.path_resolution)?;
 		// Open program
-		let fds = Process::current().file_descriptors.deref().clone().unwrap();
 		let file = File::open_entry(interp_ent.clone(), O_RDONLY)?;
-		let (exec_fd, _) = fds.lock().create_fd(0, file)?;
-		let res = exec_impl(interp_ent, info, Some(exec_fd as _));
-		// Upon error, close the program's file descriptor
-		if res.is_err() {
-			fds.lock().close_fd(exec_fd as _)?;
-		}
-		return res;
+		let (exec_fd, _) = fds.create_fd(0, file)?;
+		return exec_impl(proc, interp_ent, info, Some(exec_fd as _));
 	}
 	let compat = parser.class() == Class::Bit32;
 	// Initialize memory space
@@ -544,6 +548,7 @@ fn exec_impl(
 	m.set_brk_init(VirtAddr::from(load_info.load_end).align_to(PAGE_SIZE));
 	Ok(ProgramImage {
 		mem_space,
+		fds: Arc::new(Mutex::new(fds))?,
 		compat,
 
 		entry_point: load_info.entry_point,
@@ -555,9 +560,10 @@ fn exec_impl(
 /// Builds a program image from the given executable file.
 ///
 /// Arguments:
+/// - `proc` is the process on which the program is executed
 /// - `ent` is the program's file
 /// - `info` is the set execution information for the program
 #[inline]
-pub fn exec(ent: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
-	exec_impl(ent, info, None)
+pub fn exec(proc: &Process, ent: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
+	exec_impl(proc, ent, info, None)
 }

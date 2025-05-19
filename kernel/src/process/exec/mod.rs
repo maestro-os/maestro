@@ -29,7 +29,7 @@ pub mod vdso;
 
 use crate::{
 	arch::x86::{idt::IntFrame, tss},
-	file::vfs::ResolutionSettings,
+	file::{fd::FileDescriptorTable, vfs::ResolutionSettings},
 	memory::VirtAddr,
 	process::{Process, mem_space::MemSpace},
 	sync::mutex::Mutex,
@@ -52,14 +52,16 @@ pub struct ExecInfo<'s> {
 
 /// A built program image.
 pub struct ProgramImage {
-	/// The image's memory space.
+	/// The image's memory space
 	mem_space: Arc<MemSpace>,
-	/// Tells whether the program runs in compatibility mode.
+	/// The image's file descriptor table
+	fds: Arc<Mutex<FileDescriptorTable>>,
+	/// Tells whether the program runs in compatibility mode
 	compat: bool,
 
-	/// A pointer to the entry point of the program.
+	/// A pointer to the entry point of the program
 	entry_point: VirtAddr,
-	/// A pointer to the initial value of the user stack pointer.
+	/// A pointer to the initial value of the user stack pointer
 	user_stack: VirtAddr,
 }
 
@@ -68,22 +70,12 @@ pub struct ProgramImage {
 /// `frame` is the interrupt frame of the current content. The function sets the appropriate values
 /// for each register so that the execution beings when the interrupt handler returns.
 pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResult<()> {
-	// Preform all fallible operations first before touching the process
-	let fds = proc
-		.file_descriptors
-		.as_ref()
-		.map(|fds_mutex| -> EResult<_> {
-			let fds = fds_mutex.lock();
-			let new_fds = fds.duplicate(true)?;
-			Ok(Arc::new(Mutex::new(new_fds))?)
-		})
-		.transpose()?;
 	let signal_handlers = Arc::new(Default::default())?;
 	// All fallible operations succeeded, flush to process
 	MemSpace::bind(&image.mem_space);
 	// Safe because no other thread can execute this function at the same time for the same process
 	unsafe {
-		*proc.file_descriptors.get_mut() = fds;
+		*proc.file_descriptors.get_mut() = Some(image.fds);
 		*proc.mem_space.get_mut() = Some(image.mem_space);
 	}
 	// Reset signals
