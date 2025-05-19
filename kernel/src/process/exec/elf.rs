@@ -463,7 +463,14 @@ unsafe fn init_stack(
 	}
 }
 
-fn exec_impl(ent: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
+// TODO Handle suid and sgid
+/// Builds a program image from the given executable file.
+///
+/// Arguments:
+/// - `ent` is the program's file
+/// - `info` is the set execution information for the program
+#[inline]
+pub fn exec(ent: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
 	// Check the file can be executed by the user
 	let stat = ent.stat();
 	if unlikely(stat.get_type() != Some(FileType::Regular)) {
@@ -551,15 +558,4 @@ fn exec_impl(ent: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
 		entry_point,
 		user_stack: VirtAddr::from(user_stack) - init_stack_size,
 	})
-}
-
-// TODO Handle suid and sgid
-/// Builds a program image from the given executable file.
-///
-/// Arguments:
-/// - `ent` is the program's file
-/// - `info` is the set execution information for the program
-#[inline]
-pub fn exec(ent: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
-	exec_impl(ent, info)
 }
