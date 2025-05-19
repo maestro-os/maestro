@@ -141,14 +141,12 @@ pub fn execve(
 ) -> EResult<usize> {
 	// Use scope to drop everything before calling `init_ctx`
 	{
-		let proc = Process::current();
 		let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 		let path = PathBuf::try_from(path)?;
 		let argv = argv.iter();
 		let (file, argv) = get_file(&path, &rs, argv)?;
 		let envp = envp.iter().collect::<EResult<CollectResult<Vec<_>>>>()?.0?;
 		let program_image = elf::exec(
-			&proc,
 			file,
 			ExecInfo {
 				path_resolution: &rs,
@@ -156,6 +154,7 @@ pub fn execve(
 				envp,
 			},
 		)?;
+		let proc = Process::current();
 		exec(&proc, frame, program_image)?;
 	}
 	// Use `init_ctx` to handle transition to compatibility mode

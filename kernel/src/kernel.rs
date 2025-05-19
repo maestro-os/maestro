@@ -118,12 +118,10 @@ pub static HOSTNAME: Mutex<Vec<u8>> = Mutex::new(Vec::new());
 fn init(init_path: String) -> EResult<IntFrame> {
 	let mut frame = IntFrame::default();
 	{
-		let proc = Process::init()?;
-		let rs = ResolutionSettings::kernel_follow();
 		let path = Path::new(&init_path)?;
+		let rs = ResolutionSettings::kernel_follow();
 		let ent = vfs::get_file_from_path(path, &rs)?;
 		let program_image = exec::elf::exec(
-			&proc,
 			ent,
 			ExecInfo {
 				path_resolution: &rs,
@@ -135,6 +133,7 @@ fn init(init_path: String) -> EResult<IntFrame> {
 				]?,
 			},
 		)?;
+		let proc = Process::init()?;
 		exec(&proc, &mut frame, program_image)?;
 		SCHEDULER.lock().swap_current_process(proc);
 	}
