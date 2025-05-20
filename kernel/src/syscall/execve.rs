@@ -24,8 +24,8 @@ use crate::{
 	file::{File, O_RDONLY, vfs, vfs::ResolutionSettings},
 	memory::user::{UserArray, UserSlice, UserString},
 	process::{
-		Process, exec,
-		exec::{ExecInfo, exec},
+		Process,
+		exec::{ExecInfo, elf, exec},
 		scheduler::switch::init_ctx,
 	},
 };
@@ -146,7 +146,7 @@ pub fn execve(
 		let argv = argv.iter();
 		let (file, argv) = get_file(&path, &rs, argv)?;
 		let envp = envp.iter().collect::<EResult<CollectResult<Vec<_>>>>()?.0?;
-		let program_image = exec::build_image(
+		let program_image = elf::exec(
 			file,
 			ExecInfo {
 				path_resolution: &rs,
