@@ -1,0 +1,77 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/rust
+{
+    "name": "Maestro dev",
+    "build": {
+        "dockerfile": "Dockerfile",
+        // TODO uncomment target when Jetbrains gateway fixes:  "ERROR: failed to solve: target stage "development-full" could not be found"
+        // "target": "devcontainer"
+    },
+    "hostRequirements": {
+        "cpus": 2,
+        "memory": "8gb",
+        "storage": "20gb",
+    },
+    "runArgs": ["--cap-add=SYS_PTRACE", "--security-opt", "seccomp=unconfined"],
+    "remoteEnv": {
+        "DEVCONTAINER_ID": "${devcontainerId}",
+    },
+    "mounts": [
+        {
+            // Persist the home.
+            "source": "vscode-home-${devcontainerId}",
+            "target": "/home/vscode/",
+            "type": "volume"
+        },
+        {
+            // make the cargo cache persistent in a Docker Volume.
+            "source": "devcontainer-cargo-cache-${devcontainerId}",
+            "target": "/usr/local/cargo",
+            "type": "volume"
+        },
+    ],
+    "features": {
+        // Features are very slow to build. Prefer fetching binaries in Dockerfile instead.
+        // DinD feature makes sense to use as it is non trivial to install docker in a container.
+        // FWIW DinD should work fine on any linux host, windows 11 using docker desktop and the default WSL2 backend. (not tested on MacOS).
+        "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    },
+    "postCreateCommand": ".devcontainer/scripts/post-create.sh",
+    "customizations": {
+        "jetbrains": {
+            "backend": "RustRover",
+            "plugins": {},
+            "settings":{
+              "org.jetbrains.plugins.terminal:app:TerminalOptionsProvider.myShellPath":"/bin/zsh",
+              "org.jetbrains.plugins.terminal:app:TerminalOptionsProvider.myTabName":"Zsh",
+            }
+        },
+        "vscode": {
+            "extensions": [
+                // rust related
+                "rust-lang.rust-analyzer",
+                "tamasfe.even-better-toml",
+                "vadimcn.vscode-lldb",
+                // others
+                "eamodio.gitlens",
+                "EditorConfig.EditorConfig",
+                "exiasr.hadolint",
+                "mutantdino.resourcemonitor",
+                "streetsidesoftware.code-spell-checker",
+                "timonwong.shellcheck",
+            ],
+            "settings": {
+                "terminal.integrated.defaultProfile.linux": "zsh",
+                "resmon.show.battery": false,
+                "resmon.show.cpufreq": false,
+                "hadolint.hadolintPath": "/usr/local/bin/hadolint",
+                "telemetry.enableTelemetry": false,
+            }
+        },
+        "codespaces": {
+            "repositories": {
+                "maestro-os/blimp": {},
+            }
+        },
+    },
+}
