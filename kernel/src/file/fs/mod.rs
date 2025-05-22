@@ -372,9 +372,6 @@ pub fn generic_file_read(file: &File, mut off: u64, buf: UserSlice<u8>) -> EResu
 pub fn generic_file_write(file: &File, mut off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 	let node = file.node().unwrap();
 	let size = file.stat()?.size;
-	if unlikely(off > size) {
-		return Err(errno!(EINVAL));
-	}
 	// Extend the file if necessary
 	let end = off.saturating_add(buf.len() as u64);
 	if end > size {
