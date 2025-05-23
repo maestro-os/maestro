@@ -35,7 +35,7 @@ use crate::{
 		mem_space::{MAP_ANONYMOUS, MAP_PRIVATE, MapConstraint, MemSpace, PROT_READ, PROT_WRITE},
 	},
 };
-use core::{cmp::max, hint::unlikely, num::NonZeroUsize, ptr, slice};
+use core::{cmp::max, hint::unlikely, num::NonZeroUsize, ptr, ptr::null_mut, slice};
 use utils::{
 	collections::{path::Path, vec::Vec},
 	errno,
@@ -485,16 +485,16 @@ pub fn exec(ent: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
 	let parser = ELFParser::new(&image)?;
 	// Initialize memory space
 	let mut mem_space = MemSpace::new(ent)?;
-	let load_base = if parser.hdr().e_type == ET_DYN {
+	let mut load_base = null_mut();
+	if parser.hdr().e_type == ET_DYN {
 		// TODO ASLR
-		PAGE_SIZE
-	} else {
-		0
-	};
-	let interp_load_base = VirtAddr(load_base).as_ptr();
-	let mut load_base = interp_load_base;
-	let mut entry_point = Default::default();
-	// If using an interpreter, execute it instead
+		load_base = ptr::with_exposed_provenance_mut(PAGE_SIZE);
+	}
+	// Load program
+	let load_info = load_elf(&file, &parser, &mem_space, load_base)?;
+	let mut entry_point = load_info.entry_point;
+	// If using an interpreter, load it
+	let mut interp_load_base = null_mut();
 	let interp = parser.get_interpreter_path();
 	if let Some(interp) = interp {
 		let interp = Path::new(interp)?;
@@ -511,14 +511,13 @@ pub fn exec(ent: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
 		let file = File::open_entry(interp_ent, O_RDONLY)?;
 		let image = file.read_all()?;
 		let parser = ELFParser::new(&image)?;
-		let load_info = load_elf(&file, &parser, &mem_space, load_base)?;
-		// Update offsets
-		load_base = load_info.load_end;
-		entry_point = load_info.entry_point;
-	}
-	// Load program
-	let load_info = load_elf(&file, &parser, &mem_space, load_base)?;
-	if interp.is_none() {
+		// Cannot load the interpreter at the beginning since it might be used by the program
+		// itself
+		if unlikely(parser.hdr().e_type != ET_DYN) {
+			return Err(errno!(EINVAL));
+		}
+		interp_load_base = load_info.load_end;
+		let load_info = load_elf(&file, &parser, &mem_space, interp_load_base)?;
 		entry_point = load_info.entry_point;
 	}
 	// Allocate the userspace stack
