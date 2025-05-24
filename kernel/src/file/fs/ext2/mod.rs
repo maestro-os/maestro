@@ -538,6 +538,7 @@ impl FileOps for Ext2FileOps {
 		}
 		// Update size
 		inode_.set_size(&fs.sp, size, false);
+		inode_.mark_dirty();
 		node.stat.lock().size = size;
 		Ok(())
 	}

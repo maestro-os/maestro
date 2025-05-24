@@ -74,7 +74,7 @@ pub fn read(
 /// - `iovcnt` the number of entries in the IO vector
 /// - `offset` is the offset in the file
 /// - `flags` is the set of flags
-pub fn do_readv(
+fn do_readv(
 	fd: c_int,
 	iov: UserIOVec,
 	iovcnt: c_int,
@@ -184,7 +184,7 @@ pub fn write(
 /// - `iovcnt` the number of entries in the IO vector
 /// - `offset` is the offset in the file
 /// - `flags` is the set of flags
-pub fn do_writev(
+fn do_writev(
 	fd: i32,
 	iov: UserIOVec,
 	iovcnt: i32,
