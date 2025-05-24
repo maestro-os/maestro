@@ -203,14 +203,14 @@ impl ProgramHeader {
 		// TODO Check p_type
 		let end = self.p_offset.checked_add(self.p_filesz as _);
 		if !matches!(end, Some(end) if end <= file_size) {
-			return Err(errno!(EINVAL));
+			return Err(errno!(ENOEXEC));
 		}
 		if self.p_align > 0 {
 			if !self.p_align.is_power_of_two() {
-				return Err(errno!(EINVAL));
+				return Err(errno!(ENOEXEC));
 			}
 			if self.p_offset % self.p_align != self.p_vaddr % self.p_align {
-				return Err(errno!(EINVAL));
+				return Err(errno!(ENOEXEC));
 			}
 		}
 		Ok(())
@@ -305,10 +305,10 @@ impl SectionHeader {
 		// TODO Check sh_name
 		let end = self.sh_offset.checked_add(self.sh_size);
 		if self.sh_type & SHT_NOBITS == 0 && !matches!(end, Some(end) if end <= file_size) {
-			return Err(errno!(EINVAL));
+			return Err(errno!(ENOEXEC));
 		}
 		if self.sh_addralign != 0 && !self.sh_addralign.is_power_of_two() {
-			return Err(errno!(EINVAL));
+			return Err(errno!(ENOEXEC));
 		}
 		Ok(())
 	}
@@ -481,7 +481,7 @@ fn iter<'data, T: 'data + Parse>(
 		table
 			.get(begin..end)
 			.and_then(|data| T::parse(data, class))
-			.ok_or_else(|| errno!(EINVAL))
+			.ok_or_else(|| errno!(ENOEXEC))
 	})
 }
 
@@ -498,23 +498,23 @@ impl<'data> ELFParser<'data> {
 	pub fn new(image: &'data [u8]) -> EResult<Self> {
 		// Check signature
 		if unlikely(image.len() < EI_NIDENT) {
-			return Err(errno!(EINVAL));
+			return Err(errno!(ENOEXEC));
 		}
 		if unlikely(!image.starts_with(b"\x7fELF")) {
-			return Err(errno!(EINVAL));
+			return Err(errno!(ENOEXEC));
 		}
 		// Detect 32/64 bit
-		let class = Class::from_value(image[EI_CLASS]).ok_or_else(|| errno!(EINVAL))?;
+		let class = Class::from_value(image[EI_CLASS]).ok_or_else(|| errno!(ENOEXEC))?;
 		// Check endianness
 		match image[EI_DATA] {
 			#[cfg(target_endian = "little")]
 			ELFDATA2LSB => {}
 			#[cfg(target_endian = "big")]
 			ELFDATA2MSB => {}
-			_ => return Err(errno!(EINVAL)),
+			_ => return Err(errno!(ENOEXEC)),
 		}
 		// Get full header
-		let ehdr = FileHeader::parse(image, class).ok_or_else(|| errno!(EINVAL))?;
+		let ehdr = FileHeader::parse(image, class).ok_or_else(|| errno!(ENOEXEC))?;
 		// Check machine type
 		let valid = match ehdr.e_machine {
 			// x86 | Intel 80860
@@ -524,7 +524,7 @@ impl<'data> ELFParser<'data> {
 			_ => false,
 		};
 		if unlikely(!valid) {
-			return Err(errno!(EINVAL));
+			return Err(errno!(ENOEXEC));
 		}
 		// Check header validity
 		let min_size = match class {
@@ -533,10 +533,10 @@ impl<'data> ELFParser<'data> {
 			Class::Bit64 => size_of::<ELF64ELFHeader>(),
 		};
 		if unlikely((ehdr.e_ehsize as usize) < min_size) {
-			return Err(errno!(EINVAL));
+			return Err(errno!(ENOEXEC));
 		}
 		if unlikely(ehdr.e_shstrndx >= ehdr.e_shnum) {
-			return Err(errno!(EINVAL));
+			return Err(errno!(ENOEXEC));
 		}
 		let p = Self(image);
 		p.try_iter_segments()

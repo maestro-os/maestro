@@ -23,7 +23,7 @@ use crate::{
 	arch::x86,
 	elf,
 	elf::{
-		ET_DYN,
+		ET_DYN, ET_EXEC,
 		parser::{Class, ELFParser, ProgramHeader},
 	},
 	file::{File, FileType, O_RDONLY, vfs},
@@ -253,10 +253,10 @@ fn map_segment(
 	seg: &ProgramHeader,
 ) -> EResult<Option<*mut u8>> {
 	if unlikely(seg.p_memsz < seg.p_filesz) {
-		return Err(errno!(EINVAL));
+		return Err(errno!(ENOEXEC));
 	}
 	if unlikely(seg.p_align as usize != PAGE_SIZE) {
-		return Err(errno!(EINVAL));
+		return Err(errno!(ENOEXEC));
 	}
 	let page_start = seg.p_vaddr as usize & !(PAGE_SIZE - 1);
 	let page_off = seg.p_vaddr as usize & (PAGE_SIZE - 1);
@@ -483,6 +483,9 @@ pub fn exec(ent: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
 	let file = File::open_entry(ent.clone(), O_RDONLY)?;
 	let image = file.read_all()?;
 	let parser = ELFParser::new(&image)?;
+	if unlikely(!matches!(parser.hdr().e_type, ET_EXEC | ET_DYN)) {
+		return Err(errno!(ENOEXEC));
+	}
 	// Initialize memory space
 	let mut mem_space = MemSpace::new(ent)?;
 	let mut load_base = null_mut();
@@ -514,7 +517,7 @@ pub fn exec(ent: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
 		// Cannot load the interpreter at the beginning since it might be used by the program
 		// itself
 		if unlikely(parser.hdr().e_type != ET_DYN) {
-			return Err(errno!(EINVAL));
+			return Err(errno!(ENOEXEC));
 		}
 		interp_load_base = load_info.load_end;
 		let load_info = load_elf(&file, &parser, &mem_space, interp_load_base)?;
