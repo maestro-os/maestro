@@ -118,34 +118,36 @@ struct ELFLoadInfo {
 }
 
 /// Enumeration of possible values for an auxiliary vector entry.
-enum AuxEntryDescValue {
+enum AuxEntryDescValue<'s> {
 	/// A single number.
 	Number(usize),
 	/// A string of bytes.
-	String(&'static [u8]),
+	String(&'s [u8]),
 }
 
 /// An auxiliary vector entry.
-struct AuxEntryDesc {
+struct AuxEntryDesc<'s> {
 	/// The entry's type.
 	pub a_type: i32,
 	/// The entry's value.
-	pub a_val: AuxEntryDescValue,
+	pub a_val: AuxEntryDescValue<'s>,
 }
 
 /// Builds an auxiliary vector.
 ///
 /// Arguments:
+/// - `exec_path` the executable file path
 /// - `exec_info` is the set of execution information
 /// - `load_base` is the base address at which the ELF is loaded
 /// - `load_info` is the set of ELF load information
 /// - `vdso` is the set of vDSO information
-fn build_auxiliary(
+fn build_auxiliary<'s>(
+	exec_path: &'s Path,
 	exec_info: &ExecInfo,
 	load_base: *mut u8,
 	load_info: &ELFLoadInfo,
 	vdso: &MappedVDSO,
-) -> AllocResult<Vec<AuxEntryDesc>> {
+) -> AllocResult<Vec<AuxEntryDesc<'s>>> {
 	let mut vec = vec![
 		AuxEntryDesc {
 			a_type: AT_PHDR,
@@ -213,7 +215,7 @@ fn build_auxiliary(
 		},
 		AuxEntryDesc {
 			a_type: AT_EXECFN,
-			a_val: AuxEntryDescValue::String(b"TODO\0"), // TODO
+			a_val: AuxEntryDescValue::String(exec_path.as_bytes()),
 		},
 		AuxEntryDesc {
 			a_type: AT_SYSINFO_EHDR,
@@ -538,7 +540,8 @@ pub fn exec(ent: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
 	let compat = parser.class() == Class::Bit32;
 	let vdso = vdso::map(&mem_space, compat)?;
 	// Initialize the userspace stack
-	let aux = build_auxiliary(&info, interp_load_base, &load_info, &vdso)?;
+	let exec_path = vfs::Entry::get_path(&mem_space.exe_info.exe)?;
+	let aux = build_auxiliary(&exec_path, &info, interp_load_base, &load_info, &vdso)?;
 	let (_, init_stack_size) = get_init_stack_size(&info, &aux, compat);
 	let mut exe_info = mem_space.exe_info.clone();
 	unsafe {
