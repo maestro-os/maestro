@@ -158,7 +158,7 @@ fn init_page(
 #[derive(Debug)]
 pub struct MemMapping {
 	/// Address on the virtual memory to the beginning of the mapping
-	pub(super) addr: *mut u8,
+	pub(super) addr: VirtAddr,
 	/// The size of the mapping in pages
 	pub(super) size: NonZeroUsize,
 	/// Memory protection
@@ -188,7 +188,7 @@ impl MemMapping {
 	/// - `file` is the mapped file. If `None`, no file is mapped
 	/// - `off` is the offset in `file`, if applicable
 	pub fn new(
-		addr: *mut u8,
+		addr: VirtAddr,
 		size: NonZeroUsize,
 		prot: u8,
 		flags: u8,
@@ -225,7 +225,7 @@ impl MemMapping {
 	/// Upon allocation failure, or failure to read a page from the disk, the function returns an
 	/// error.
 	pub fn map(&mut self, offset: usize, vmem: &mut VMem, write: bool) -> EResult<()> {
-		let virtaddr = VirtAddr::from(self.addr) + offset * PAGE_SIZE;
+		let virtaddr = self.addr + offset * PAGE_SIZE;
 		if let Some(page) = &self.pages[offset] {
 			// A page is already present, use it
 			let mut phys_addr = page.phys_addr();
@@ -313,7 +313,7 @@ impl MemMapping {
 			})
 			.transpose()?;
 		let gap = NonZeroUsize::new(size).map(|size| {
-			let addr = VirtAddr::from(self.addr) + begin * PAGE_SIZE;
+			let addr = self.addr + begin * PAGE_SIZE;
 			MemGap::new(addr, size)
 		});
 		// The gap's end
@@ -325,7 +325,7 @@ impl MemMapping {
 			.and_then(NonZeroUsize::new)
 			.map(|size| {
 				Ok(Self {
-					addr: self.addr.wrapping_add(end * PAGE_SIZE),
+					addr: self.addr + end * PAGE_SIZE,
 					size,
 					prot: self.prot,
 					flags: self.flags,
@@ -361,7 +361,7 @@ impl MemMapping {
 		}
 		let ts = current_time_ms(Clock::Boottime);
 		for frame in self.pages.iter().flatten() {
-			vmem.poll_dirty(VirtAddr::from(self.addr), self.size.get());
+			vmem.poll_dirty(self.addr, self.size.get());
 			if sync {
 				// TODO warn on error?
 				let _ = frame.writeback(Some(ts), false);

@@ -21,18 +21,17 @@
 use super::vdso;
 use crate::{
 	arch::x86,
-	elf,
 	elf::{
 		ET_DYN, ET_EXEC, PT_LOAD,
 		parser::{Class, ELFParser, ProgramHeader},
 	},
 	file::{File, FileType, O_RDONLY, vfs},
-	memory::{VirtAddr, vmem},
-	process,
+	memory::{COMPAT_PROCESS_END, PROCESS_END, VirtAddr, vmem},
 	process::{
+		USER_STACK_SIZE,
 		exec::{ExecInfo, ProgramImage, vdso::MappedVDSO},
 		mem_space,
-		mem_space::{MAP_ANONYMOUS, MAP_PRIVATE, MapConstraint, MemSpace, PROT_READ, PROT_WRITE},
+		mem_space::{MAP_ANONYMOUS, MAP_FIXED, MAP_PRIVATE, MemSpace, PROT_READ, PROT_WRITE},
 	},
 };
 use core::{cmp::max, hint::unlikely, num::NonZeroUsize, ops::Add, ptr, slice};
@@ -138,13 +137,13 @@ struct AuxEntryDesc<'s> {
 /// Arguments:
 /// - `exec_path` the executable file path
 /// - `exec_info` is the set of execution information
-/// - `load_base` is the base address at which the ELF is loaded
+/// - `interp_load_base` is the base address at which the interpreter is loaded
 /// - `load_info` is the set of ELF load information
 /// - `vdso` is the set of vDSO information
 fn build_auxiliary<'s>(
 	exec_path: &'s Path,
 	exec_info: &ExecInfo,
-	load_base: VirtAddr,
+	interp_load_base: VirtAddr,
 	load_info: &ELFLoadInfo,
 	vdso: &MappedVDSO,
 ) -> AllocResult<Vec<AuxEntryDesc<'s>>> {
@@ -167,7 +166,7 @@ fn build_auxiliary<'s>(
 		},
 		AuxEntryDesc {
 			a_type: AT_BASE,
-			a_val: AuxEntryDescValue::Number(load_base.0),
+			a_val: AuxEntryDescValue::Number(interp_load_base.0),
 		},
 		AuxEntryDesc {
 			a_type: AT_ENTRY,
@@ -267,10 +266,10 @@ fn map_segment(
 	let pages = size.div_ceil(PAGE_SIZE);
 	if let Some(pages) = NonZeroUsize::new(pages) {
 		mem_space.map(
-			MapConstraint::Fixed(addr),
+			addr,
 			pages,
 			seg.mmap_prot(),
-			MAP_PRIVATE,
+			MAP_PRIVATE | MAP_FIXED,
 			Some(file),
 			seg.p_offset - page_off as u64,
 		)?;
@@ -314,16 +313,19 @@ fn load_elf(
 			vmem::write_ro(|| {
 				vmem::smap_disable(|| {
 					for seg in elf.iter_segments() {
-						if seg.p_type != elf::PT_LOAD {
+						if seg.p_type != PT_LOAD {
 							continue;
 						}
-						if let Some(len) = seg.p_memsz.checked_sub(seg.p_filesz) {
-							let begin =
-								load_base.add(seg.p_vaddr as usize + seg.p_filesz as usize);
-							let slice =
-								slice::from_raw_parts_mut(begin.as_ptr::<u8>(), len as usize);
-							slice.fill(0);
+						if seg.p_memsz <= seg.p_filesz {
+							continue;
 						}
+						let begin = load_base.add(seg.p_vaddr as usize + seg.p_filesz as usize);
+						let end = load_base
+							.add(seg.p_vaddr as usize + seg.p_memsz as usize)
+							.next_multiple_of(PAGE_SIZE);
+						let len = end - begin.0;
+						let slice = slice::from_raw_parts_mut(begin.as_ptr::<u8>(), len);
+						slice.fill(0);
 					}
 				});
 			});
@@ -486,7 +488,8 @@ pub fn exec(ent: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
 		return Err(errno!(ENOEXEC));
 	}
 	// Initialize memory space
-	let mut mem_space = MemSpace::new(ent)?;
+	let compat = parser.class() == Class::Bit32;
+	let mut mem_space = MemSpace::new(ent, compat)?;
 	let mut load_base = VirtAddr(0);
 	if parser.hdr().e_type == ET_DYN {
 		// TODO ASLR
@@ -495,10 +498,10 @@ pub fn exec(ent: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
 	// Load program
 	let load_info = load_elf(&file, &parser, &mem_space, load_base)?;
 	let mut entry_point = load_info.entry_point;
+	let mut load_end = load_info.load_end;
 	// If using an interpreter, load it
 	let mut interp_load_base = VirtAddr(0);
-	let interp = parser.get_interpreter_path();
-	if let Some(interp) = interp {
+	if let Some(interp) = parser.get_interpreter_path() {
 		let interp = Path::new(interp)?;
 		let interp_ent = vfs::get_file_from_path(interp, info.path_resolution)?;
 		// Check the file can be executed by the user
@@ -518,23 +521,29 @@ pub fn exec(ent: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
 		if unlikely(parser.hdr().e_type != ET_DYN) {
 			return Err(errno!(ENOEXEC));
 		}
-		interp_load_base = load_info.load_end;
+		// Load
+		interp_load_base = load_info.load_end; // TODO ASLR
 		let load_info = load_elf(&file, &parser, &mem_space, interp_load_base)?;
 		entry_point = load_info.entry_point;
+		load_end = load_info.load_end;
 	}
-	// Allocate the userspace stack
+	// Allocate the userspace stack. We add one page to account for the copy buffer
+	let user_stack_addr = if !compat {
+		PROCESS_END - (USER_STACK_SIZE + 1) * PAGE_SIZE
+	} else {
+		COMPAT_PROCESS_END - (USER_STACK_SIZE + 1) * PAGE_SIZE
+	};
 	let user_stack = mem_space
 		.map(
-			MapConstraint::None,
-			process::USER_STACK_SIZE.try_into().unwrap(),
-			PROT_READ | PROT_WRITE,
+			user_stack_addr,
+			USER_STACK_SIZE.try_into().unwrap(),
+			PROT_READ | PROT_WRITE, // TODO PT_GNU_STACK
 			MAP_PRIVATE | MAP_ANONYMOUS,
 			None,
 			0,
 		)?
-		.wrapping_add(process::USER_STACK_SIZE * PAGE_SIZE);
+		.add(USER_STACK_SIZE * PAGE_SIZE);
 	// Map vDSO
-	let compat = parser.class() == Class::Bit32;
 	let vdso = vdso::map(&mem_space, compat)?;
 	// Initialize the userspace stack
 	let exec_path = vfs::Entry::get_path(&mem_space.exe_info.exe)?;
@@ -544,7 +553,7 @@ pub fn exec(ent: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
 	unsafe {
 		MemSpace::switch(&mem_space, |_| {
 			vmem::smap_disable(|| -> EResult<()> {
-				init_stack(user_stack, &info, &aux, &mut exe_info, compat);
+				init_stack(user_stack.as_ptr(), &info, &aux, &mut exe_info, compat);
 				Ok(())
 			})
 		})?;
@@ -552,12 +561,12 @@ pub fn exec(ent: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
 	// Set immutable fields
 	let m = Arc::as_mut(&mut mem_space).unwrap(); // Cannot fail since no one else hold a reference
 	m.exe_info = exe_info;
-	m.set_brk_init(load_info.load_end);
+	m.set_brk_init(load_end);
 	Ok(ProgramImage {
 		mem_space,
 		compat,
 
 		entry_point,
-		user_stack: VirtAddr::from(user_stack) - init_stack_size,
+		user_stack: user_stack - init_stack_size,
 	})
 }

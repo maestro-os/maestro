@@ -29,7 +29,7 @@ use crate::{
 	process::mem_space::{MAP_ANONYMOUS, MAP_PRIVATE, MemSpace, PROT_EXEC, PROT_READ, Page},
 	sync::once::OnceInit,
 };
-use core::{cmp::min, num::NonZeroUsize, ptr::NonNull};
+use core::{cmp::min, num::NonZeroUsize, ops::Add, ptr::NonNull};
 use utils::{
 	collections::vec::Vec,
 	errno::{AllocResult, CollectResult, EResult},
@@ -102,10 +102,10 @@ pub fn map(mem_space: &MemSpace, compat: bool) -> EResult<MappedVDSO> {
 		&vdso.pages,
 	)?;
 	Ok(MappedVDSO {
-		begin: begin.into(),
+		begin,
 		entry: vdso
 			.entry_off
-			.and_then(|off| NonNull::new(begin.wrapping_add(off.get()))),
+			.and_then(|off| NonNull::new(begin.add(off.get()).as_ptr())),
 	})
 }
 

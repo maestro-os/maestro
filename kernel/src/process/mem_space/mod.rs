@@ -33,8 +33,7 @@ use crate::{
 		paging::{PAGE_FAULT_INSTRUCTION, PAGE_FAULT_WRITE},
 	},
 	file::{File, perm::AccessProfile, vfs},
-	memory,
-	memory::{PROCESS_END, VirtAddr, cache::RcFrame, vmem::VMem},
+	memory::{COMPAT_PROCESS_END, PROCESS_END, VirtAddr, cache::RcFrame, vmem::VMem},
 	process::{mem_space::mapping::MappedFrame, scheduler::core_local},
 	sync::mutex::IntMutex,
 };
@@ -81,44 +80,6 @@ pub fn bound_check(addr: usize, n: usize) -> bool {
 	addr >= PAGE_SIZE && addr.saturating_add(n) <= COPY_BUFFER.0
 }
 
-// TODO Add a variant for ASLR
-/// Enumeration of constraints for the selection of the virtual address for a memory mapping.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum MapConstraint {
-	/// The mapping is done at a fixed address.
-	///
-	/// Previous allocation(s) in the range of the allocation are unmapped.
-	///
-	/// The allocation is allowed to take place outside ranges that are normally allowed, but not
-	/// in kernelspace.
-	Fixed(VirtAddr),
-
-	/// Providing a hint for the address to use. The allocator will try to use the address if
-	/// available.
-	///
-	/// If not available, the constraint is ignored and another address is selected.
-	Hint(VirtAddr),
-
-	/// No constraint.
-	None,
-}
-
-impl MapConstraint {
-	/// Tells whether the constraint is valid.
-	pub fn is_valid(self) -> bool {
-		match self {
-			// Checking the address is within userspace is required because `Fixed` allocations can
-			// take place *outside of gaps* but *not inside the kernelspace*
-			MapConstraint::Fixed(addr) => {
-				// The copy buffer is located right before the kernelspace
-				addr < COPY_BUFFER && addr.is_aligned_to(PAGE_SIZE)
-			}
-			MapConstraint::Hint(addr) => addr.is_aligned_to(PAGE_SIZE),
-			_ => true,
-		}
-	}
-}
-
 /// Removes gaps in `on` in the given range, using `transaction`.
 ///
 /// `start` is the start address of the range and `size` is the size of the range in pages.
@@ -149,12 +110,10 @@ fn remove_gaps_in_range(
 		let gap_begin = gap.get_begin();
 		let gap_end = gap.get_end();
 		// Compute range to remove
-		let start = start.0.clamp(gap_begin.0, gap_end.0);
-		let end = end.0.clamp(gap_begin.0, gap_end.0);
-		// Rounding is not a problem because all values are multiples of the page size
-		let size = (end - start) / PAGE_SIZE;
+		let off = start.0.saturating_sub(gap_begin.0) / PAGE_SIZE;
+		let end = end.0.clamp(gap_begin.0, gap_end.0) / PAGE_SIZE;
 		// Consume the gap and store new gaps
-		let (prev, next) = gap.consume(start, size);
+		let (prev, next) = gap.consume(off, end - off);
 		transaction.remove_gap(gap_begin)?;
 		if let Some(g) = prev {
 			transaction.insert_gap(g)?;
@@ -177,7 +136,7 @@ struct MemSpaceState {
 	/// Binary tree storing the list of memory mappings.
 	///
 	/// Sorted by pointer to the beginning of the mapping on the virtual memory.
-	mappings: BTreeMap<*mut u8, MemMapping>,
+	mappings: BTreeMap<VirtAddr, MemMapping>,
 
 	/// The initial pointer of the `[s]brk` system calls.
 	brk_init: VirtAddr,
@@ -215,7 +174,7 @@ impl MemSpaceState {
 	/// If no mapping contains the address, the function returns `None`.
 	pub fn get_mapping_for_addr(&self, addr: VirtAddr) -> Option<&MemMapping> {
 		self.mappings
-			.cmp_get(|key, value| range_cmp(*key as usize, value.size.get() * PAGE_SIZE, addr.0))
+			.cmp_get(|key, value| range_cmp(key.0, value.size.get() * PAGE_SIZE, addr.0))
 	}
 
 	/// Returns a mutable reference to the memory mapping containing the given virtual
@@ -223,9 +182,8 @@ impl MemSpaceState {
 	///
 	/// If no mapping contains the address, the function returns `None`.
 	pub fn get_mut_mapping_for_addr(&mut self, addr: VirtAddr) -> Option<&mut MemMapping> {
-		self.mappings.cmp_get_mut(|key, value| {
-			range_cmp(*key as usize, value.size.get() * PAGE_SIZE, addr.0)
-		})
+		self.mappings
+			.cmp_get_mut(|key, value| range_cmp(key.0, value.size.get() * PAGE_SIZE, addr.0))
 	}
 }
 
@@ -262,8 +220,10 @@ pub struct MemSpace {
 impl MemSpace {
 	/// Creates a new virtual memory object.
 	///
-	/// `exe` is the VFS entry of the program loaded on the memory space.
-	pub fn new(exe: Arc<vfs::Entry>) -> AllocResult<Arc<Self>> {
+	/// Arguments:
+	/// - `exe` is the VFS entry of the program loaded on the memory space
+	/// - `compat` tells whether the memory space be used in compat mode
+	pub fn new(exe: Arc<vfs::Entry>, compat: bool) -> AllocResult<Arc<Self>> {
 		let s = Self {
 			state: Default::default(),
 			vmem: IntMutex::new(unsafe { VMem::new() }),
@@ -277,9 +237,15 @@ impl MemSpace {
 				envp_end: Default::default(),
 			},
 		};
+		// Allocation begin and end addresses
+		let begin = VirtAddr(PAGE_SIZE);
+		let end = if compat {
+			COMPAT_PROCESS_END - PAGE_SIZE
+		} else {
+			COPY_BUFFER
+		};
 		// Create the default gap of memory which is present at the beginning
-		let begin = memory::ALLOC_BEGIN;
-		let size = (COPY_BUFFER.0 - begin.0) / PAGE_SIZE;
+		let size = (end.0 - begin.0) / PAGE_SIZE;
 		let gap = MemGap::new(begin, NonZeroUsize::new(size).unwrap());
 		let mut transaction = MemSpaceTransaction::new(&s);
 		transaction.insert_gap(gap)?;
@@ -295,64 +261,56 @@ impl MemSpace {
 
 	fn map_impl(
 		transaction: &mut MemSpaceTransaction,
-		map_constraint: MapConstraint,
+		addr: VirtAddr,
 		size: NonZeroUsize,
 		prot: u8,
 		flags: u8,
 		file: Option<Arc<File>>,
 		off: u64,
 	) -> EResult<MemMapping> {
-		if !map_constraint.is_valid() {
-			return Err(errno!(ENOMEM));
+		if unlikely(!addr.is_aligned_to(PAGE_SIZE)) {
+			return Err(errno!(EINVAL));
 		}
-		// Get suitable gap for the given constraint
-		let (gap, gap_off) = match map_constraint {
-			MapConstraint::Fixed(addr) => {
-				Self::unmap_impl(transaction, addr, size, true)?;
-				// Remove gaps that are present where the mapping is to be placed
-				remove_gaps_in_range(transaction, addr, size.get())?;
-				// Create a fictive gap. This is required because fixed allocations may be used
-				// outside allowed gaps
-				let gap = MemGap::new(addr, size);
-				(gap, 0)
-			}
-			MapConstraint::Hint(addr) => {
-				transaction
-					.state
-					// Get the gap for the pointer
-					.get_gap_for_addr(addr)
-					.and_then(|gap| {
-						// Offset in the gap
-						let off = gap.get_page_offset_for(addr);
-						// Check whether the mapping fits in the gap
-						let end = off.checked_add(size.get())?;
-						(end <= gap.get_size().get()).then_some((gap.clone(), off))
-					})
-					// Hint cannot be satisfied. Get a large enough gap
-					.or_else(|| {
-						let gap = transaction.state.get_gap(size)?;
-						Some((gap.clone(), 0))
-					})
-					.ok_or(AllocError)?
-					.clone()
-			}
-			MapConstraint::None => {
-				let gap = transaction.state.get_gap(size).ok_or(AllocError)?.clone();
-				(gap, 0)
-			}
-		};
-		let addr = (gap.get_begin() + gap_off * PAGE_SIZE).as_ptr();
-		// Split the old gap to fit the mapping, and insert new gaps
-		let (left_gap, right_gap) = gap.consume(gap_off, size.get());
-		transaction.remove_gap(gap.get_begin())?;
-		if let Some(new_gap) = left_gap {
-			transaction.insert_gap(new_gap)?;
+		if unlikely(flags & (MAP_PRIVATE | MAP_SHARED) == 0) {
+			return Err(errno!(EINVAL));
 		}
-		if let Some(new_gap) = right_gap {
-			transaction.insert_gap(new_gap)?;
+		if flags & MAP_FIXED == 0 {
+			// Use the address as a hint
+			let (gap, gap_off) = transaction
+				.state
+				// Get the gap for the address. If NULL, this should fail
+				.get_gap_for_addr(addr)
+				.and_then(|gap| {
+					// Offset in the gap
+					let off = gap.get_page_offset_for(addr);
+					// Check whether the mapping fits in the gap
+					let end = off.checked_add(size.get())?;
+					(end <= gap.get_size().get()).then_some((gap.clone(), off))
+				})
+				// If the hint cannot be satisfied, get a large enough gap somewhere else
+				.or_else(|| {
+					let gap = transaction.state.get_gap(size)?;
+					Some((gap.clone(), 0))
+				})
+				.ok_or(AllocError)?;
+			// Split the old gap to fit the mapping, and insert new gaps
+			let (left_gap, right_gap) = gap.consume(gap_off, size.get());
+			transaction.remove_gap(gap.get_begin())?;
+			if let Some(new_gap) = left_gap {
+				transaction.insert_gap(new_gap)?;
+			}
+			if let Some(new_gap) = right_gap {
+				transaction.insert_gap(new_gap)?;
+			}
+			let addr = gap.get_begin() + gap_off * PAGE_SIZE;
+			Ok(MemMapping::new(addr, size, prot, flags, file, off)?)
+		} else {
+			// Fixed mapping
+			Self::unmap_impl(transaction, addr, size, true)?;
+			// Remove gaps that are present where the mapping is to be placed
+			remove_gaps_in_range(transaction, addr, size.get())?;
+			Ok(MemMapping::new(addr, size, prot, flags, file, off)?)
 		}
-		// Create the mapping
-		Ok(MemMapping::new(addr, size, prot, flags, file, off)?)
 	}
 
 	/// Maps a chunk of memory.
@@ -375,23 +333,15 @@ impl MemSpace {
 	/// If the given pointer is not page-aligned, the function returns an error.
 	pub fn map(
 		&self,
-		map_constraint: MapConstraint,
+		addr: VirtAddr,
 		size: NonZeroUsize,
 		prot: u8,
 		flags: u8,
 		file: Option<Arc<File>>,
 		off: u64,
-	) -> EResult<*mut u8> {
+	) -> EResult<VirtAddr> {
 		let mut transaction = MemSpaceTransaction::new(self);
-		let map = Self::map_impl(
-			&mut transaction,
-			map_constraint,
-			size,
-			prot,
-			flags,
-			file,
-			off,
-		)?;
+		let map = Self::map_impl(&mut transaction, addr, size, prot, flags, file, off)?;
 		let addr = map.addr;
 		transaction.insert_mapping(map)?;
 		transaction.commit();
@@ -399,14 +349,14 @@ impl MemSpace {
 	}
 
 	/// Maps a chunk of memory population with the given static pages.
-	pub fn map_special(&self, prot: u8, flags: u8, pages: &[RcFrame]) -> AllocResult<*mut u8> {
+	pub fn map_special(&self, prot: u8, flags: u8, pages: &[RcFrame]) -> AllocResult<VirtAddr> {
 		let Some(len) = NonZeroUsize::new(pages.len()) else {
 			return Err(AllocError);
 		};
 		let mut transaction = MemSpaceTransaction::new(self);
 		let mut map = Self::map_impl(
 			&mut transaction,
-			MapConstraint::None,
+			VirtAddr::default(),
 			len,
 			prot,
 			flags,
@@ -451,7 +401,7 @@ impl MemSpace {
 			// The pointer to the beginning of the mapping
 			let mapping_begin = mapping.addr;
 			// The offset in the mapping to the beginning of pages to unmap
-			let inner_off = (page_addr.0 - mapping_begin as usize) / PAGE_SIZE;
+			let inner_off = (page_addr.0 - mapping_begin.0) / PAGE_SIZE;
 			// The number of pages to unmap in the mapping
 			let pages = min(size.get() - i, mapping.size.get() - inner_off);
 			i += pages;
@@ -562,7 +512,7 @@ impl MemSpace {
 		let mappings = state.mappings.try_clone()?;
 		// Unmap to invalidate the virtual memory context
 		for (_, m) in &state.mappings {
-			vmem.unmap_range(VirtAddr::from(m.addr), m.size.get());
+			vmem.unmap_range(m.addr, m.size.get());
 		}
 		Ok(Self {
 			state: IntMutex::new(MemSpaceState {
@@ -638,10 +588,10 @@ impl MemSpace {
 			};
 			let res = Self::map_impl(
 				&mut transaction,
-				MapConstraint::Fixed(begin),
+				begin,
 				pages,
 				PROT_READ | PROT_WRITE | PROT_EXEC,
-				MAP_ANONYMOUS,
+				MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS,
 				None,
 				0,
 			)
@@ -716,7 +666,7 @@ impl MemSpace {
 			return Ok(false);
 		}
 		// Map the accessed page
-		let page_offset = (addr.0 - mapping.addr as usize) / PAGE_SIZE;
+		let page_offset = (addr.0 - mapping.addr.0) / PAGE_SIZE;
 		mapping.map(page_offset, &mut vmem, write)?;
 		Ok(true)
 	}

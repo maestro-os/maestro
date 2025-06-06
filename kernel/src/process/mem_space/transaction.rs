@@ -28,6 +28,7 @@ use utils::{
 	collections::{
 		btreemap::BTreeMap,
 		hashmap::{Entry, HashMap},
+		hashset::HashSet,
 	},
 	errno::{AllocResult, EResult},
 };
@@ -61,7 +62,7 @@ fn insert<K: Clone + Ord + Hash, V>(
 	value: V,
 	on: &mut BTreeMap<K, V>,
 	complement: &mut HashMap<K, Option<V>>,
-	discard: &mut HashMap<K, ()>,
+	discard: &mut HashSet<K>,
 ) -> AllocResult<()> {
 	// Insert new value and get previous
 	let old = on.insert(key.clone(), value)?;
@@ -99,12 +100,12 @@ pub(super) struct MemSpaceTransaction<'m> {
 	/// The complement used to restore `gaps` on rollback.
 	gaps_complement: HashMap<VirtAddr, Option<MemGap>>,
 	/// The complement used to restore `mappings` on rollback.
-	mappings_complement: HashMap<*mut u8, Option<MemMapping>>,
+	mappings_complement: HashMap<VirtAddr, Option<MemMapping>>,
 
 	/// The list of gaps that must be discarded on commit.
-	gaps_discard: HashMap<VirtAddr, ()>,
+	gaps_discard: HashSet<VirtAddr>,
 	/// The list of mappings that must be discarded on commit.
-	mappings_discard: HashMap<*mut u8, ()>,
+	mappings_discard: HashSet<VirtAddr>,
 
 	/// The new value for the `vmem_usage` field.
 	vmem_usage: usize,
@@ -149,7 +150,7 @@ impl<'m> MemSpaceTransaction<'m> {
 	/// On failure, the transaction is dropped and rolled back.
 	pub fn remove_gap(&mut self, gap_begin: VirtAddr) -> AllocResult<()> {
 		if let Some(gap) = self.state.gaps.get(&gap_begin) {
-			self.gaps_discard.insert(gap.get_begin(), ())?;
+			self.gaps_discard.insert(gap.get_begin())?;
 		}
 		Ok(())
 	}
@@ -173,14 +174,13 @@ impl<'m> MemSpaceTransaction<'m> {
 	/// Removes the mapping beginning at the given address from the state.
 	///
 	/// On failure, the transaction is dropped and rolled back.
-	pub fn remove_mapping(&mut self, mapping_begin: *mut u8) -> EResult<()> {
+	pub fn remove_mapping(&mut self, mapping_begin: VirtAddr) -> EResult<()> {
 		if let Some(mapping) = self.state.mappings.get(&mapping_begin) {
-			self.mappings_discard.insert(mapping_begin, ())?;
+			self.mappings_discard.insert(mapping_begin)?;
 			// Sync to disk
 			mapping.sync(&self.vmem, true)?;
 			// Apply to vmem. No rollback is required since this would be corrected by a page fault
-			self.vmem
-				.unmap_range(VirtAddr::from(mapping.addr), mapping.size.get());
+			self.vmem.unmap_range(mapping.addr, mapping.size.get());
 			// Update usage
 			self.vmem_usage -= mapping.size.get();
 		}
@@ -193,12 +193,12 @@ impl<'m> MemSpaceTransaction<'m> {
 		self.gaps_complement.clear();
 		self.mappings_complement.clear();
 		// Discard gaps
-		for (ptr, _) in self.gaps_discard.iter() {
-			self.state.gaps.remove(ptr);
+		for addr in self.gaps_discard.iter() {
+			self.state.gaps.remove(addr);
 		}
 		// Discard mappings
-		for (ptr, _) in self.mappings_discard.iter() {
-			self.state.mappings.remove(ptr);
+		for addr in self.mappings_discard.iter() {
+			self.state.mappings.remove(addr);
 		}
 		// Update vmem
 		self.state.vmem_usage = self.vmem_usage;
