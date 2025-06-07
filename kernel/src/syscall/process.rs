@@ -18,11 +18,10 @@
 
 //! Process management system calls.
 
+#[cfg(target_arch = "x86_64")]
+use crate::{arch::x86, syscall::FromSyscallArg};
 use crate::{
-	arch::{
-		x86,
-		x86::{cli, gdt, idt::IntFrame},
-	},
+	arch::x86::{cli, gdt, idt::IntFrame},
 	memory::user::UserPtr,
 	process,
 	process::{
@@ -35,7 +34,7 @@ use crate::{
 		},
 		user_desc::UserDesc,
 	},
-	syscall::{Args, FromSyscallArg},
+	syscall::Args,
 };
 use core::{
 	ffi::{c_int, c_ulong, c_void},
@@ -369,6 +368,7 @@ pub fn set_thread_area(
 	Ok(0)
 }
 
+#[allow(unused_variables)]
 pub fn arch_prctl(Args((code, addr)): Args<(c_int, usize)>) -> EResult<usize> {
 	// For `gs`, use kernel base because it will get swapped when returning to userspace
 	match code {

@@ -124,7 +124,7 @@ pub fn sysinfo(Args(info): Args<UserPtr<Sysinfo>>) -> EResult<usize> {
 	let mem_info = MEM_INFO.lock().clone();
 	let procs = SCHEDULER.lock().processes_count();
 	info.copy_to_user(&Sysinfo {
-		uptime: current_time_sec(Clock::Boottime),
+		uptime: current_time_sec(Clock::Boottime) as _,
 		loads: [0; 3], // TODO
 		totalram: mem_info.mem_total as _,
 		freeram: mem_info.mem_free as _,

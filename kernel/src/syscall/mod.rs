@@ -44,6 +44,7 @@ mod user;
 mod util;
 mod wait;
 
+#[allow(unused_imports)]
 use crate::{
 	arch::x86::idt::IntFrame,
 	file::{Mode, fd::FileDescriptorTable, perm::AccessProfile, vfs::ResolutionSettings},
