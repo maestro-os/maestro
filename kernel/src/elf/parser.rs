@@ -20,11 +20,12 @@
 
 use super::*;
 use crate::{
+	memory::VirtAddr,
 	module::relocation::Relocation,
 	process::mem_space::{PROT_EXEC, PROT_READ, PROT_WRITE},
 };
 use core::hint::unlikely;
-use utils::bytes;
+use utils::{bytes, limits::PAGE_SIZE};
 
 /// The ELF's class.
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -516,15 +517,14 @@ impl<'data> ELFParser<'data> {
 		// Get full header
 		let ehdr = FileHeader::parse(image, class).ok_or_else(|| errno!(ENOEXEC))?;
 		// Check machine type
-		let valid = match ehdr.e_machine {
+		match ehdr.e_machine {
+			#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 			// x86 | Intel 80860
-			0x3 | 0x7 => cfg!(target_arch = "x86") || cfg!(target_arch = "x86_64"),
+			0x3 | 0x7 => {}
+			#[cfg(target_arch = "x86_64")]
 			// AMD x86_64
-			0x3e => cfg!(target_arch = "x86_64"),
-			_ => false,
-		};
-		if unlikely(!valid) {
-			return Err(errno!(ENOEXEC));
+			0x3e => {}
+			_ => return Err(errno!(ENOEXEC)),
 		}
 		// Check header validity
 		let min_size = match class {
@@ -582,6 +582,19 @@ impl<'data> ELFParser<'data> {
 	/// Returns an iterator on the image's segment headers.
 	pub fn iter_segments(&self) -> impl Iterator<Item = ProgramHeader> + use<'data> {
 		self.try_iter_segments().filter_map(Result::ok)
+	}
+
+	/// Computes and returns the highest end address of segments in the image, rounded to page
+	/// boundary.
+	pub fn get_load_size(&self) -> VirtAddr {
+		let addr = self
+			.iter_segments()
+			.filter(|seg| seg.p_type == PT_LOAD)
+			.map(|seg| seg.p_vaddr as usize + seg.p_memsz as usize)
+			.max()
+			.unwrap_or(0)
+			.next_multiple_of(PAGE_SIZE);
+		VirtAddr(addr)
 	}
 
 	/// Returns an iterator on the image's section headers.

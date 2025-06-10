@@ -487,18 +487,25 @@ pub fn exec(ent: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
 	if unlikely(!matches!(parser.hdr().e_type, ET_EXEC | ET_DYN)) {
 		return Err(errno!(ENOEXEC));
 	}
-	// Initialize memory space
-	let compat = parser.class() == Class::Bit32;
-	let mut mem_space = MemSpace::new(ent, compat)?;
+	// Determine load base
 	let mut load_base = VirtAddr(0);
 	if parser.hdr().e_type == ET_DYN {
 		// TODO ASLR
 		load_base = VirtAddr(PAGE_SIZE);
 	}
+	// Initialize memory space
+	let load_end = parser.get_load_size();
+	let compat = parser.class() == Class::Bit32;
+	let mut mem_space = MemSpace::new(ent, load_end, compat)?;
 	// Load program
 	let load_info = load_elf(&file, &parser, &mem_space, load_base)?;
 	let mut entry_point = load_info.entry_point;
-	let mut load_end = load_info.load_end;
+	// Compute the user stack address
+	let user_stack_addr = if !compat {
+		PROCESS_END - (USER_STACK_SIZE + 1) * PAGE_SIZE
+	} else {
+		COMPAT_PROCESS_END - (USER_STACK_SIZE + 1) * PAGE_SIZE
+	};
 	// If using an interpreter, load it
 	let mut interp_load_base = VirtAddr(0);
 	if let Some(interp) = parser.get_interpreter_path() {
@@ -521,18 +528,12 @@ pub fn exec(ent: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
 		if unlikely(parser.hdr().e_type != ET_DYN) {
 			return Err(errno!(ENOEXEC));
 		}
-		// Load
-		interp_load_base = load_info.load_end; // TODO ASLR
+		// Subtract one page to leave a space in between the stack and the interpreter
+		interp_load_base = user_stack_addr - PAGE_SIZE - parser.get_load_size().0; // TODO ASLR
 		let load_info = load_elf(&file, &parser, &mem_space, interp_load_base)?;
 		entry_point = load_info.entry_point;
-		load_end = load_info.load_end;
 	}
 	// Allocate the userspace stack. We add one page to account for the copy buffer
-	let user_stack_addr = if !compat {
-		PROCESS_END - (USER_STACK_SIZE + 1) * PAGE_SIZE
-	} else {
-		COMPAT_PROCESS_END - (USER_STACK_SIZE + 1) * PAGE_SIZE
-	};
 	let user_stack = mem_space
 		.map(
 			user_stack_addr,
@@ -561,7 +562,6 @@ pub fn exec(ent: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
 	// Set immutable fields
 	let m = Arc::as_mut(&mut mem_space).unwrap(); // Cannot fail since no one else hold a reference
 	m.exe_info = exe_info;
-	m.set_brk_init(load_end);
 	Ok(ProgramImage {
 		mem_space,
 		compat,

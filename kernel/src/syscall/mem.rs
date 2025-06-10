@@ -52,7 +52,6 @@ pub fn do_mmap(
 		return Err(errno!(EINVAL));
 	};
 	let prot = prot as u8;
-	let flags = flags as u8;
 	let file = if flags & MAP_ANONYMOUS == 0 {
 		// Validation
 		if unlikely(fd < 0) {

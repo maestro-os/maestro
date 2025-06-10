@@ -61,13 +61,15 @@ pub const PROT_WRITE: u8 = 0x2;
 pub const PROT_EXEC: u8 = 0x4;
 
 /// Changes are shared across mappings on the same region
-pub const MAP_SHARED: u8 = 0x1;
+pub const MAP_SHARED: i32 = 0x1;
 /// Changes are not carried to the underlying file
-pub const MAP_PRIVATE: u8 = 0x2;
+pub const MAP_PRIVATE: i32 = 0x2;
 /// Interpret `addr` exactly
-pub const MAP_FIXED: u8 = 0x10;
+pub const MAP_FIXED: i32 = 0x10;
 /// The mapping is not backed by any file
-pub const MAP_ANONYMOUS: u8 = 0x20;
+pub const MAP_ANONYMOUS: i32 = 0x20;
+/// Interpret `addr` exactly, failing if already used
+pub const MAP_FIXED_NOREPLACE: i32 = 0x100000;
 
 /// The virtual address of the buffer used to map pages for copy.
 const COPY_BUFFER: VirtAddr = VirtAddr(PROCESS_END.0 - PAGE_SIZE);
@@ -154,6 +156,7 @@ impl MemSpaceState {
 	///
 	/// If no gap large enough is available, the function returns `None`.
 	fn get_gap(&self, size: NonZeroUsize) -> Option<&MemGap> {
+		// TODO iterate starting from the end to minimize the likelihood to collide with brk
 		self.gaps
 			.iter()
 			.map(|(_, g)| g)
@@ -222,10 +225,15 @@ impl MemSpace {
 	///
 	/// Arguments:
 	/// - `exe` is the VFS entry of the program loaded on the memory space
+	/// - `brk_init` is the base address at which `brk` begins
 	/// - `compat` tells whether the memory space be used in compat mode
-	pub fn new(exe: Arc<vfs::Entry>, compat: bool) -> AllocResult<Arc<Self>> {
+	pub fn new(exe: Arc<vfs::Entry>, brk_init: VirtAddr, compat: bool) -> AllocResult<Arc<Self>> {
 		let s = Self {
-			state: Default::default(),
+			state: IntMutex::new(MemSpaceState {
+				brk_init,
+				brk: brk_init,
+				..Default::default()
+			}),
 			vmem: IntMutex::new(unsafe { VMem::new() }),
 
 			exe_info: ExeInfo {
@@ -264,7 +272,7 @@ impl MemSpace {
 		addr: VirtAddr,
 		size: NonZeroUsize,
 		prot: u8,
-		flags: u8,
+		flags: i32,
 		file: Option<Arc<File>>,
 		off: u64,
 	) -> EResult<MemMapping> {
@@ -274,7 +282,23 @@ impl MemSpace {
 		if unlikely(flags & (MAP_PRIVATE | MAP_SHARED) == 0) {
 			return Err(errno!(EINVAL));
 		}
-		if flags & MAP_FIXED == 0 {
+		if flags & MAP_FIXED_NOREPLACE != 0 {
+			// Check for mappings already present in range TODO: can be optimized
+			let used = transaction.state.mappings.iter().any(|(_, m)| {
+				let end = addr + size.get() * PAGE_SIZE;
+				let other_end = m.addr + m.size.get() * PAGE_SIZE;
+				addr < other_end && m.addr < end
+			});
+			if unlikely(used) {
+				return Err(errno!(EEXIST));
+			}
+			remove_gaps_in_range(transaction, addr, size.get())?;
+			Ok(MemMapping::new(addr, size, prot, flags, file, off)?)
+		} else if flags & MAP_FIXED != 0 {
+			Self::unmap_impl(transaction, addr, size, true)?;
+			remove_gaps_in_range(transaction, addr, size.get())?;
+			Ok(MemMapping::new(addr, size, prot, flags, file, off)?)
+		} else {
 			// Use the address as a hint
 			let (gap, gap_off) = transaction
 				.state
@@ -290,7 +314,10 @@ impl MemSpace {
 				// If the hint cannot be satisfied, get a large enough gap somewhere else
 				.or_else(|| {
 					let gap = transaction.state.get_gap(size)?;
-					Some((gap.clone(), 0))
+					// Put at the end of the gap the minimize the likelihood of colliding with
+					// `brk`
+					let off = gap.get_size().get() - size.get();
+					Some((gap.clone(), off))
 				})
 				.ok_or(AllocError)?;
 			// Split the old gap to fit the mapping, and insert new gaps
@@ -303,12 +330,6 @@ impl MemSpace {
 				transaction.insert_gap(new_gap)?;
 			}
 			let addr = gap.get_begin() + gap_off * PAGE_SIZE;
-			Ok(MemMapping::new(addr, size, prot, flags, file, off)?)
-		} else {
-			// Fixed mapping
-			Self::unmap_impl(transaction, addr, size, true)?;
-			// Remove gaps that are present where the mapping is to be placed
-			remove_gaps_in_range(transaction, addr, size.get())?;
 			Ok(MemMapping::new(addr, size, prot, flags, file, off)?)
 		}
 	}
@@ -336,7 +357,7 @@ impl MemSpace {
 		addr: VirtAddr,
 		size: NonZeroUsize,
 		prot: u8,
-		flags: u8,
+		flags: i32,
 		file: Option<Arc<File>>,
 		off: u64,
 	) -> EResult<VirtAddr> {
@@ -349,7 +370,7 @@ impl MemSpace {
 	}
 
 	/// Maps a chunk of memory population with the given static pages.
-	pub fn map_special(&self, prot: u8, flags: u8, pages: &[RcFrame]) -> AllocResult<VirtAddr> {
+	pub fn map_special(&self, prot: u8, flags: i32, pages: &[RcFrame]) -> AllocResult<VirtAddr> {
 		let Some(len) = NonZeroUsize::new(pages.len()) else {
 			return Err(AllocError);
 		};
@@ -556,18 +577,6 @@ impl MemSpace {
 		Ok(())
 	}
 
-	/// Sets the initial pointer for the `brk` syscall.
-	///
-	/// This function MUST be called *only once*, before the program starts.
-	///
-	/// `addr` MUST be page-aligned.
-	pub fn set_brk_init(&mut self, addr: VirtAddr) {
-		debug_assert!(addr.is_aligned_to(PAGE_SIZE));
-		let mut state = self.state.lock();
-		state.brk_init = addr;
-		state.brk = addr;
-	}
-
 	/// Performs the `brk` system call.
 	///
 	/// On failure, the function does nothing and returns the current brk address.
@@ -591,7 +600,7 @@ impl MemSpace {
 				begin,
 				pages,
 				PROT_READ | PROT_WRITE | PROT_EXEC,
-				MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS,
+				MAP_PRIVATE | MAP_FIXED_NOREPLACE | MAP_ANONYMOUS,
 				None,
 				0,
 			)

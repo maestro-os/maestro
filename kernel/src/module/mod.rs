@@ -130,15 +130,6 @@ impl Hash for NameHash {
 	}
 }
 
-/// Returns the size required to load the module image.
-fn get_load_size(parser: &ELFParser) -> usize {
-	parser
-		.iter_segments()
-		.map(|seg| seg.p_vaddr as usize + seg.p_memsz as usize)
-		.max()
-		.unwrap_or(0)
-}
-
 /// Resolves an external symbol from the kernel or another module.
 ///
 /// `name` is the name of the symbol to look for.
@@ -256,8 +247,8 @@ impl Module {
 			println!("Invalid ELF file as loaded module");
 		})?;
 		// Allocate memory for the module
-		let mem_size = get_load_size(&parser);
-		let mut mem = vec![0; mem_size]?;
+		let mem_size = parser.get_load_size().0;
+		let mut mem = vec![0; mem_size]?; // FIXME: memory alignment
 		// The base virtual address at which the module is loaded
 		let load_base = mem.as_mut_ptr();
 		// Copy the module's image

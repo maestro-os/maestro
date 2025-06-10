@@ -164,7 +164,7 @@ pub struct MemMapping {
 	/// Memory protection
 	pub(super) prot: u8,
 	/// Mapping flags
-	pub(super) flags: u8,
+	pub(super) flags: i32,
 
 	/// The mapped file, if any
 	file: Option<Arc<File>>,
@@ -191,7 +191,7 @@ impl MemMapping {
 		addr: VirtAddr,
 		size: NonZeroUsize,
 		prot: u8,
-		flags: u8,
+		flags: i32,
 		file: Option<Arc<File>>,
 		off: u64,
 	) -> AllocResult<Self> {
