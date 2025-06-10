@@ -22,7 +22,7 @@ use super::vdso;
 use crate::{
 	arch::x86,
 	elf::{
-		ET_DYN, ET_EXEC, PT_LOAD,
+		ET_DYN, ET_EXEC, PF_X, PT_GNU_STACK, PT_LOAD,
 		parser::{Class, ELFParser, ProgramHeader},
 	},
 	file::{File, FileType, O_RDONLY, vfs},
@@ -31,7 +31,9 @@ use crate::{
 		USER_STACK_SIZE,
 		exec::{ExecInfo, ProgramImage, vdso::MappedVDSO},
 		mem_space,
-		mem_space::{MAP_ANONYMOUS, MAP_FIXED, MAP_PRIVATE, MemSpace, PROT_READ, PROT_WRITE},
+		mem_space::{
+			MAP_ANONYMOUS, MAP_FIXED, MAP_PRIVATE, MemSpace, PROT_EXEC, PROT_READ, PROT_WRITE,
+		},
 	},
 };
 use core::{cmp::max, hint::unlikely, num::NonZeroUsize, ops::Add, ptr, slice};
@@ -114,6 +116,8 @@ struct ELFLoadInfo {
 
 	/// The pointer to the entry point
 	entry_point: VirtAddr,
+	/// Tells whether the stack is executable
+	exec_stack: bool,
 }
 
 /// Enumeration of possible values for an auxiliary vector entry.
@@ -295,18 +299,23 @@ fn load_elf(
 	let ehdr = elf.hdr();
 	let mut load_end = load_base;
 	let mut phdr_addr = VirtAddr(0);
+	let mut exec_stack = true;
 	unsafe {
 		MemSpace::switch(mem_space, |mem_space| -> EResult<()> {
 			// Map segments
 			for seg in elf.iter_segments() {
-				if seg.p_type != PT_LOAD {
-					continue;
-				}
-				let seg_end = map_segment(file.clone(), mem_space, load_base, &seg)?;
-				load_end = max(seg_end, load_end);
-				// If the segment contains the phdr, keep its address
-				if (seg.p_offset..seg.p_offset + seg.p_filesz).contains(&ehdr.e_phoff) {
-					phdr_addr = load_base + (ehdr.e_phoff - seg.p_offset + seg.p_vaddr) as usize;
+				match seg.p_type {
+					PT_LOAD => {
+						let seg_end = map_segment(file.clone(), mem_space, load_base, &seg)?;
+						load_end = max(seg_end, load_end);
+						// If the segment contains the phdr, keep its address
+						if (seg.p_offset..seg.p_offset + seg.p_filesz).contains(&ehdr.e_phoff) {
+							phdr_addr =
+								load_base + (ehdr.e_phoff - seg.p_offset + seg.p_vaddr) as usize;
+						}
+					}
+					PT_GNU_STACK => exec_stack = seg.p_flags & PF_X != 0,
+					_ => {}
 				}
 			}
 			// Zero the end of segments when needed
@@ -340,6 +349,7 @@ fn load_elf(
 		phnum: ehdr.e_phnum as _,
 
 		entry_point: load_base + elf.hdr().e_entry as usize,
+		exec_stack,
 	})
 }
 
@@ -534,11 +544,15 @@ pub fn exec(ent: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
 		entry_point = load_info.entry_point;
 	}
 	// Allocate the userspace stack. We add one page to account for the copy buffer
+	let mut stack_prot = PROT_READ | PROT_WRITE;
+	if load_info.exec_stack {
+		stack_prot |= PROT_EXEC;
+	}
 	let user_stack = mem_space
 		.map(
 			user_stack_addr,
 			USER_STACK_SIZE.try_into().unwrap(),
-			PROT_READ | PROT_WRITE, // TODO PT_GNU_STACK
+			stack_prot,
 			MAP_PRIVATE | MAP_ANONYMOUS,
 			None,
 			0,
