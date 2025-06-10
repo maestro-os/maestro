@@ -42,7 +42,7 @@ mod sync;
 mod time;
 mod user;
 mod util;
-mod wait;
+pub mod wait;
 
 #[allow(unused_imports)]
 use crate::{

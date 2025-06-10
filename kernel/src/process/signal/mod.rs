@@ -26,6 +26,7 @@ use crate::{
 	file::perm::Uid,
 	memory::VirtAddr,
 	process::{mem_space::MemSpace, pid::Pid},
+	syscall::wait::{WCONTINUED, WUNTRACED},
 	time::unit::ClockIdT,
 };
 use core::{
@@ -34,6 +35,7 @@ use core::{
 	ptr,
 	ptr::NonNull,
 	slice,
+	sync::atomic::Ordering::Release,
 };
 use ucontext::UContext32;
 #[cfg(target_pointer_width = "64")]
@@ -89,8 +91,14 @@ impl SignalAction {
 			// TODO when `Abort`ing, dump core
 			SignalAction::Terminate | SignalAction::Abort => process.set_state(State::Zombie),
 			SignalAction::Ignore => {}
-			SignalAction::Stop => process.set_state(State::Stopped),
-			SignalAction::Continue => process.set_state(State::Running),
+			SignalAction::Stop => {
+				process.set_state(State::Stopped);
+				process.parent_event.fetch_or(WUNTRACED as _, Release);
+			}
+			SignalAction::Continue => {
+				process.set_state(State::Running);
+				process.parent_event.fetch_or(WCONTINUED as _, Release);
+			}
 		}
 	}
 }
