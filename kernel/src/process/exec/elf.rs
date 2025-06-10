@@ -504,7 +504,7 @@ pub fn exec(ent: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
 		load_base = VirtAddr(PAGE_SIZE);
 	}
 	// Initialize memory space
-	let load_end = parser.get_load_size();
+	let load_end = load_base + parser.get_load_size();
 	let compat = parser.class() == Class::Bit32;
 	let mut mem_space = MemSpace::new(ent, load_end, compat)?;
 	// Load program
@@ -539,7 +539,7 @@ pub fn exec(ent: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
 			return Err(errno!(ENOEXEC));
 		}
 		// Subtract one page to leave a space in between the stack and the interpreter
-		interp_load_base = user_stack_addr - PAGE_SIZE - parser.get_load_size().0; // TODO ASLR
+		interp_load_base = user_stack_addr - PAGE_SIZE - parser.get_load_size(); // TODO ASLR
 		let load_info = load_elf(&file, &parser, &mem_space, interp_load_base)?;
 		entry_point = load_info.entry_point;
 	}

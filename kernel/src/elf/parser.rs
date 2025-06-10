@@ -20,7 +20,6 @@
 
 use super::*;
 use crate::{
-	memory::VirtAddr,
 	module::relocation::Relocation,
 	process::mem_space::{PROT_EXEC, PROT_READ, PROT_WRITE},
 };
@@ -584,17 +583,14 @@ impl<'data> ELFParser<'data> {
 		self.try_iter_segments().filter_map(Result::ok)
 	}
 
-	/// Computes and returns the highest end address of segments in the image, rounded to page
-	/// boundary.
-	pub fn get_load_size(&self) -> VirtAddr {
-		let addr = self
-			.iter_segments()
+	/// Computes and returns the offset of the end of the loaded image, rounded to page boundary.
+	pub fn get_load_size(&self) -> usize {
+		self.iter_segments()
 			.filter(|seg| seg.p_type == PT_LOAD)
 			.map(|seg| seg.p_vaddr as usize + seg.p_memsz as usize)
 			.max()
 			.unwrap_or(0)
-			.next_multiple_of(PAGE_SIZE);
-		VirtAddr(addr)
+			.next_multiple_of(PAGE_SIZE)
 	}
 
 	/// Returns an iterator on the image's section headers.

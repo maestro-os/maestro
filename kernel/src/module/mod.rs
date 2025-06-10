@@ -247,7 +247,7 @@ impl Module {
 			println!("Invalid ELF file as loaded module");
 		})?;
 		// Allocate memory for the module
-		let mem_size = parser.get_load_size().0;
+		let mem_size = parser.get_load_size();
 		let mut mem = vec![0; mem_size]?; // FIXME: memory alignment
 		// The base virtual address at which the module is loaded
 		let load_base = mem.as_mut_ptr();
