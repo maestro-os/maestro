@@ -32,11 +32,10 @@ use core::{
 };
 use utils::{
 	boxed::Box,
-	collections::{path::PathBuf, string::String},
+	collections::{path::PathBuf, string::String, vec::Vec},
 	errno::EResult,
 	limits::SYMLINK_MAX,
 	ptr::arc::Arc,
-	vec,
 };
 
 /// A filesystem node, cached by the VFS.
@@ -86,7 +85,7 @@ impl Node {
 	/// Reads the symbolic link.
 	pub fn readlink(&self) -> EResult<PathBuf> {
 		const INCREMENT: usize = 64;
-		let mut buf = vec![0u8; INCREMENT]?;
+		let mut buf = unsafe { Vec::new_uninit(INCREMENT)? };
 		let mut len;
 		loop {
 			let b = UserSlice::from_slice_mut(&mut buf);

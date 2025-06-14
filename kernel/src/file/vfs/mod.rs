@@ -55,13 +55,13 @@ use utils::{
 		list::ListNode,
 		path::{Component, Path, PathBuf},
 		string::String,
+		vec::Vec,
 	},
 	errno,
 	errno::{AllocResult, EResult},
 	limits::{LINK_MAX, PATH_MAX, SYMLOOP_MAX},
 	list, list_type,
 	ptr::arc::Arc,
-	vec,
 };
 
 /// A child of a VFS entry.
@@ -162,7 +162,7 @@ impl Entry {
 		if this.parent.is_none() {
 			return Ok(PathBuf::root()?);
 		}
-		let mut buf = vec![0u8; PATH_MAX]?;
+		let mut buf = unsafe { Vec::new_uninit(PATH_MAX)? };
 		let mut off = PATH_MAX;
 		let mut cur = this;
 		while let Some(parent) = &cur.parent {
