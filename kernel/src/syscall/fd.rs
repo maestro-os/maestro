@@ -31,7 +31,7 @@ use core::{
 	cmp::min,
 	ffi::{c_int, c_uint},
 	hint::unlikely,
-	sync::atomic,
+	sync::atomic::Ordering::{Acquire, Release},
 };
 use utils::{errno, errno::EResult, limits::IOV_MAX, ptr::arc::Arc};
 
@@ -57,11 +57,11 @@ pub fn read(
 		return Err(errno!(EINVAL));
 	}
 	// Read
-	let off = file.off.load(atomic::Ordering::Acquire);
+	let off = file.off.load(Acquire);
 	let len = file.ops.read(&file, off, buf)?;
 	// Update offset
 	let new_off = off.saturating_add(len as u64);
-	file.off.store(new_off, atomic::Ordering::Release);
+	file.off.store(new_off, Release);
 	Ok(len as _)
 }
 
@@ -108,11 +108,11 @@ fn do_readv(
 			let file_off = offset + off as u64;
 			file.ops.read(&file, file_off, buf)?
 		} else {
-			let off = file.off.load(atomic::Ordering::Acquire);
+			let off = file.off.load(Acquire);
 			let len = file.ops.read(&file, off, buf)?;
 			// Update offset
 			let new_off = off.saturating_add(len as u64);
-			file.off.store(new_off, atomic::Ordering::Release);
+			file.off.store(new_off, Release);
 			len
 		};
 		off += len;
@@ -167,11 +167,11 @@ pub fn write(
 		return Err(errno!(EINVAL));
 	}
 	// Write
-	let off = file.off.load(atomic::Ordering::Acquire);
+	let off = file.off.load(Acquire);
 	let len = file.ops.write(&file, off, buf)?;
 	// Update offset
 	let new_off = off.saturating_add(len as u64);
-	file.off.store(new_off, atomic::Ordering::Release);
+	file.off.store(new_off, Release);
 	Ok(len)
 }
 
@@ -217,11 +217,11 @@ fn do_writev(
 			let file_off = offset + off as u64;
 			file.ops.write(&file, file_off, buf)?
 		} else {
-			let off = file.off.load(atomic::Ordering::Acquire);
+			let off = file.off.load(Acquire);
 			let len = file.ops.write(&file, off, buf)?;
 			// Update offset
 			let new_off = off.saturating_add(len as u64);
-			file.off.store(new_off, atomic::Ordering::Release);
+			file.off.store(new_off, Release);
 			len
 		};
 		off += len;
@@ -270,7 +270,7 @@ fn do_lseek(
 	// Compute the offset
 	let base = match whence {
 		SEEK_SET => 0,
-		SEEK_CUR => file.off.load(atomic::Ordering::Acquire),
+		SEEK_CUR => file.off.load(Acquire),
 		SEEK_END => file.stat()?.size,
 		_ => return Err(errno!(EINVAL)),
 	};
@@ -280,7 +280,7 @@ fn do_lseek(
 		result.copy_to_user(&offset)?;
 	}
 	// Set the new offset
-	file.off.store(offset, atomic::Ordering::Release);
+	file.off.store(offset, Release);
 	Ok(offset as _)
 }
 
