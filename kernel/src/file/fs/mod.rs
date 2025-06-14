@@ -355,10 +355,10 @@ pub fn generic_file_read(file: &File, mut off: u64, buf: UserSlice<u8>) -> EResu
 	for page_off in start..end {
 		let page = node.node_ops.read_page(node, page_off)?;
 		let inner_off = off as usize % PAGE_SIZE;
-		let len = min(size - off, (PAGE_SIZE - inner_off) as u64) as usize;
+		let max_len = min(size - off, (PAGE_SIZE - inner_off) as u64) as usize;
 		let len = unsafe {
 			let page_ptr = page.virt_addr().as_ptr::<u8>().add(inner_off);
-			buf.copy_to_user_raw(buf_off, page_ptr, len)?
+			buf.copy_to_user_raw(buf_off, page_ptr, max_len)?
 		};
 		buf_off += len;
 		off += len as u64;

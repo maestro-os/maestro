@@ -261,7 +261,7 @@ pub fn pwritev2(
 fn do_lseek(
 	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
 	fd: c_uint,
-	offset: u64,
+	offset: i64,
 	result: Option<UserPtr<u64>>,
 	whence: c_uint,
 ) -> EResult<usize> {
@@ -274,7 +274,19 @@ fn do_lseek(
 		SEEK_END => file.stat()?.size,
 		_ => return Err(errno!(EINVAL)),
 	};
-	let offset = base.checked_add(offset).ok_or_else(|| errno!(EOVERFLOW))?;
+	let offset = match offset {
+		0 => base,
+		// Positive offset
+		1.. => base
+			.checked_add(offset as _)
+			.ok_or_else(|| errno!(EOVERFLOW))?,
+		// Negative offset
+		..0 => {
+			let offset = offset.checked_abs().ok_or_else(|| errno!(EOVERFLOW))?;
+			base.checked_sub(offset as _)
+				.ok_or_else(|| errno!(EOVERFLOW))?
+		}
+	};
 	if let Some(result) = result {
 		// Write the result to the userspace
 		result.copy_to_user(&offset)?;
@@ -287,20 +299,20 @@ fn do_lseek(
 pub fn _llseek(
 	Args((fd, offset_high, offset_low, result, whence)): Args<(
 		c_uint,
-		u32,
-		u32,
+		i32,
+		i32,
 		UserPtr<u64>,
 		c_uint,
 	)>,
 	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
-	let offset = ((offset_high as u64) << 32) | (offset_low as u64);
+	let offset = ((offset_high as i64) << 32) | (offset_low as i64);
 	do_lseek(fds_mutex, fd, offset, Some(result), whence)?;
 	Ok(0)
 }
 
 pub fn lseek(
-	Args((fd, offset, whence)): Args<(c_uint, u64, c_uint)>,
+	Args((fd, offset, whence)): Args<(c_uint, i64, c_uint)>,
 	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	do_lseek(fds_mutex, fd, offset, None, whence)
