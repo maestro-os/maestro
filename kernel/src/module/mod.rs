@@ -243,7 +243,7 @@ pub struct Module {
 impl Module {
 	/// Loads a kernel module from the given image.
 	pub fn load(image: &[u8]) -> EResult<Self> {
-		let parser = ELFParser::new(image).inspect_err(|_| {
+		let parser = ELFParser::from_slice(image).inspect_err(|_| {
 			println!("Invalid ELF file as loaded module");
 		})?;
 		// Allocate memory for the module
@@ -253,7 +253,8 @@ impl Module {
 		let load_base = mem.as_mut_ptr();
 		// Copy the module's image
 		parser
-			.iter_segments()
+			.segments()
+			.iter()
 			.filter(|seg| seg.p_type != elf::PT_NULL)
 			.for_each(|seg| {
 				let len = min(seg.p_memsz, seg.p_filesz) as usize;
@@ -267,15 +268,15 @@ impl Module {
 			get_symbol_value(&parser, load_base, sym_section, sym).ok_or(RelocationError)
 		};
 		let mut relocation_failure = false;
-		for section in parser.iter_sections() {
-			for rel in parser.iter_rel::<Rel>(&section) {
-				let res = unsafe { relocation::perform(&rel, load_base, &section, get_sym) };
+		for section in parser.sections() {
+			for rel in parser.iter_rel::<Rel>(section) {
+				let res = unsafe { relocation::perform(&rel, load_base, section, get_sym) };
 				if res.is_err() {
 					relocation_failure = true;
 				}
 			}
-			for rela in parser.iter_rel::<Rela>(&section) {
-				let res = unsafe { relocation::perform(&rela, load_base, &section, get_sym) };
+			for rela in parser.iter_rel::<Rela>(section) {
+				let res = unsafe { relocation::perform(&rela, load_base, section, get_sym) };
 				if res.is_err() {
 					relocation_failure = true;
 				}

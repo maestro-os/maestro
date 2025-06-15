@@ -61,7 +61,7 @@ static VDSO_COMPAT: OnceInit<Vdso> = unsafe { OnceInit::new() };
 
 /// Loads the vDSO in memory and returns the image.
 fn load_image(elf: &[u8]) -> EResult<Vdso> {
-	let parser = ELFParser::new(elf)?;
+	let parser = ELFParser::from_slice(elf)?;
 	// Load image into pages
 	let pages_count = elf.len().div_ceil(PAGE_SIZE);
 	let pages = (0..pages_count)

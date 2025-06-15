@@ -303,10 +303,10 @@ fn load_elf(
 	unsafe {
 		MemSpace::switch(mem_space, |mem_space| -> EResult<()> {
 			// Map segments
-			for seg in elf.iter_segments() {
+			for seg in elf.segments() {
 				match seg.p_type {
 					PT_LOAD => {
-						let seg_end = map_segment(file.clone(), mem_space, load_base, &seg)?;
+						let seg_end = map_segment(file.clone(), mem_space, load_base, seg)?;
 						load_end = max(seg_end, load_end);
 						// If the segment contains the phdr, keep its address
 						if (seg.p_offset..seg.p_offset + seg.p_filesz).contains(&ehdr.e_phoff) {
@@ -321,7 +321,7 @@ fn load_elf(
 			// Zero the end of segments when needed
 			vmem::write_ro(|| {
 				vmem::smap_disable(|| {
-					for seg in elf.iter_segments() {
+					for seg in elf.segments() {
 						if seg.p_type != PT_LOAD {
 							continue;
 						}
@@ -492,8 +492,7 @@ pub fn exec(ent: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
 	}
 	// Read and parse file
 	let file = File::open_entry(ent.clone(), O_RDONLY)?;
-	let image = file.read_all()?;
-	let parser = ELFParser::new(&image)?;
+	let parser = ELFParser::from_file(&file)?;
 	if unlikely(!matches!(parser.hdr().e_type, ET_EXEC | ET_DYN)) {
 		return Err(errno!(ENOEXEC));
 	}
@@ -531,8 +530,7 @@ pub fn exec(ent: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
 		}
 		// Read and parse file
 		let file = File::open_entry(interp_ent, O_RDONLY)?;
-		let image = file.read_all()?;
-		let parser = ELFParser::new(&image)?;
+		let parser = ELFParser::from_file(&file)?;
 		// Cannot load the interpreter at the beginning since it might be used by the program
 		// itself
 		if unlikely(parser.hdr().e_type != ET_DYN) {

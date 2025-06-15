@@ -20,11 +20,13 @@
 
 use super::*;
 use crate::{
+	file::File,
+	memory::user::UserSlice,
 	module::relocation::Relocation,
 	process::mem_space::{PROT_EXEC, PROT_READ, PROT_WRITE},
 };
 use core::hint::unlikely;
-use utils::{bytes, limits::PAGE_SIZE};
+use utils::{bytes, collections::vec::Vec, errno::CollectResult, limits::PAGE_SIZE};
 
 /// The ELF's class.
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -93,6 +95,44 @@ pub struct FileHeader {
 	/// The section header table index holding the header of the section name
 	/// string table.
 	pub e_shstrndx: u16,
+}
+
+impl FileHeader {
+	/// Checks if the header is valid.
+	pub fn is_valid(&self) -> bool {
+		// Check endianness
+		match self.e_ident[EI_DATA] {
+			#[cfg(target_endian = "little")]
+			ELFDATA2LSB => {}
+			#[cfg(target_endian = "big")]
+			ELFDATA2MSB => {}
+			_ => return false,
+		}
+		// Check machine type
+		match self.e_machine {
+			#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+			// x86 | Intel 80860
+			0x3 | 0x7 => {}
+			#[cfg(target_arch = "x86_64")]
+			// AMD x86_64
+			0x3e => {}
+			_ => return false,
+		}
+		// Check header validity
+		let min_size = match self.e_ident[EI_CLASS] {
+			ELFCLASS32 => size_of::<ELF32ELFHeader>(),
+			#[cfg(target_pointer_width = "64")]
+			ELFCLASS64 => size_of::<ELF64ELFHeader>(),
+			_ => return false,
+		};
+		if unlikely((self.e_ehsize as usize) < min_size) {
+			return false;
+		}
+		if unlikely(self.e_shstrndx >= self.e_shnum) {
+			return false;
+		}
+		true
+	}
 }
 
 impl Parse for FileHeader {
@@ -490,18 +530,101 @@ fn iter<'elf, T: 'elf + Parse>(
 ///
 /// It is especially useful to load a kernel module or userspace program.
 pub struct ELFParser<'elf> {
-	/// The ELF data
-	pub src: &'elf [u8],
+	/// ELF data
+	src: Option<&'elf [u8]>,
 	/// ELF header
 	ehdr: FileHeader,
+	/// ELF program headers
+	phdr: Vec<ProgramHeader>,
+	/// ELF section headers
+	shdr: Vec<SectionHeader>,
+	/// The interpreter path, if any.
+	interp: Option<Vec<u8>>,
 }
 
-impl<'elf> ELFParser<'elf> {
-	/// Creates a new instance for the given image.
+impl ELFParser<'static> {
+	/// Parse ELF data from a file.
 	///
 	/// The function checks if the image is valid. If not, the function returns
 	/// an error.
-	pub fn new(src: &'elf [u8]) -> EResult<Self> {
+	///
+	/// **Note**: this function does not parse the sections table. As such, sections and symbols
+	/// will not be available.
+	pub fn from_file(file: &File) -> EResult<Self> {
+		let len = file.stat()?.size;
+		if unlikely(len < EI_NIDENT as u64) {
+			return Err(errno!(ENOEXEC));
+		}
+		// Read data
+		let mut src = unsafe { Vec::new_uninit(EI_NIDENT)? };
+		file.ops
+			.read(file, 0, UserSlice::from_slice_mut(&mut src))?;
+		// Check signature
+		if unlikely(!src.starts_with(b"\x7fELF")) {
+			return Err(errno!(ENOEXEC));
+		}
+		// Get full header
+		let class = Class::from_value(src[EI_CLASS]).ok_or_else(|| errno!(ENOEXEC))?;
+		// Read more data
+		let size = match class {
+			Class::Bit32 => size_of::<ELF32ELFHeader>(),
+			#[cfg(target_pointer_width = "64")]
+			Class::Bit64 => size_of::<ELF64ELFHeader>(),
+		};
+		src.resize(size, 0)?;
+		file.ops
+			.read(file, 0, UserSlice::from_slice_mut(&mut src))?;
+		let ehdr = FileHeader::parse(&src, class).ok_or_else(|| errno!(ENOEXEC))?;
+		if unlikely(!ehdr.is_valid()) {
+			return Err(errno!(ENOEXEC));
+		}
+		// Read program headers
+		let mut src =
+			unsafe { Vec::new_uninit(ehdr.e_phnum as usize * ehdr.e_phentsize as usize)? };
+		file.ops
+			.read(file, ehdr.e_phoff, UserSlice::from_slice_mut(&mut src))?;
+		let phdr: Vec<ProgramHeader> = iter(
+			&src,
+			class,
+			ehdr.e_phnum as usize,
+			ehdr.e_phentsize as usize,
+		)
+		.collect::<EResult<CollectResult<_>>>()?
+		.0?;
+		// Read interpreter path
+		let interp = phdr
+			.iter()
+			.find(|seg| seg.p_type == PT_INTERP)
+			.map(|seg| -> EResult<_> {
+				// Read from file
+				let mut path = unsafe { Vec::new_uninit(seg.p_filesz as usize) }?;
+				file.ops
+					.read(file, seg.p_offset, UserSlice::from_slice_mut(&mut path))?;
+				// Exclude trailing `\0` if present
+				let end = path.iter().position(|c| *c == b'\0').unwrap_or(path.len());
+				path.truncate(end);
+				Ok(path)
+			})
+			.transpose()?;
+		Ok(Self {
+			src: None,
+			ehdr,
+			phdr,
+			shdr: Vec::new(),
+			interp,
+		})
+	}
+}
+
+impl<'elf> ELFParser<'elf> {
+	/// Parse ELF data from a slice.
+	///
+	/// The function checks if the image is valid. If not, the function returns
+	/// an error.
+	///
+	/// **Note**: this function does not parse the interpreter path. As such, it will not be
+	/// available.
+	pub fn from_slice(src: &'elf [u8]) -> EResult<Self> {
 		if unlikely(src.len() < EI_NIDENT) {
 			return Err(errno!(ENOEXEC));
 		}
@@ -509,43 +632,36 @@ impl<'elf> ELFParser<'elf> {
 		if unlikely(!src.starts_with(b"\x7fELF")) {
 			return Err(errno!(ENOEXEC));
 		}
-		// Detect 32/64 bit
-		let class = Class::from_value(src[EI_CLASS]).ok_or_else(|| errno!(ENOEXEC))?;
-		// Check endianness
-		match src[EI_DATA] {
-			#[cfg(target_endian = "little")]
-			ELFDATA2LSB => {}
-			#[cfg(target_endian = "big")]
-			ELFDATA2MSB => {}
-			_ => return Err(errno!(ENOEXEC)),
-		}
 		// Get full header
+		let class = Class::from_value(src[EI_CLASS]).ok_or_else(|| errno!(ENOEXEC))?;
 		let ehdr = FileHeader::parse(src, class).ok_or_else(|| errno!(ENOEXEC))?;
-		// Check machine type
-		match ehdr.e_machine {
-			#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-			// x86 | Intel 80860
-			0x3 | 0x7 => {}
-			#[cfg(target_arch = "x86_64")]
-			// AMD x86_64
-			0x3e => {}
-			_ => return Err(errno!(ENOEXEC)),
-		}
-		// Check header validity
-		let min_size = match class {
-			Class::Bit32 => size_of::<ELF32ELFHeader>(),
-			#[cfg(target_pointer_width = "64")]
-			Class::Bit64 => size_of::<ELF64ELFHeader>(),
-		};
-		if unlikely((ehdr.e_ehsize as usize) < min_size) {
+		if unlikely(!ehdr.is_valid()) {
 			return Err(errno!(ENOEXEC));
 		}
-		if unlikely(ehdr.e_shstrndx >= ehdr.e_shnum) {
-			return Err(errno!(ENOEXEC));
-		}
+		// Parse program headers
+		let phdr = iter(
+			&src[ehdr.e_phoff as usize..],
+			class,
+			ehdr.e_phnum as usize,
+			ehdr.e_phentsize as usize,
+		)
+		.collect::<EResult<CollectResult<_>>>()?
+		.0?;
+		// Parse section headers
+		let shdr = iter(
+			&src[ehdr.e_shoff as usize..],
+			class,
+			ehdr.e_shnum as usize,
+			ehdr.e_shentsize as usize,
+		)
+		.collect::<EResult<CollectResult<_>>>()?
+		.0?;
 		Ok(Self {
-			src,
+			src: Some(src),
 			ehdr,
+			phdr,
+			shdr,
+			interp: None,
 		})
 	}
 
@@ -562,28 +678,22 @@ impl<'elf> ELFParser<'elf> {
 		&self.ehdr
 	}
 
-	/// Returns an iterator on the image's segment headers.
-	///
-	/// If a section is out of bounds, the iterator returns an error.
-	fn try_iter_segments(&self) -> impl Iterator<Item = EResult<ProgramHeader>> + use<'elf> {
-		let ehdr = self.hdr();
-		let table = &self.src[ehdr.e_phoff as usize..];
-		iter(
-			table,
-			self.class(),
-			ehdr.e_phnum as usize,
-			ehdr.e_phentsize as usize,
-		)
+	/// Returns the image's program headers.
+	#[inline]
+	pub fn segments(&self) -> &[ProgramHeader] {
+		&self.phdr
 	}
 
-	/// Returns an iterator on the image's segment headers.
-	pub fn iter_segments(&self) -> impl Iterator<Item = ProgramHeader> + use<'elf> {
-		self.try_iter_segments().filter_map(Result::ok)
+	/// Returns the image's section headers.
+	#[inline]
+	pub fn sections(&self) -> &[SectionHeader] {
+		&self.shdr
 	}
 
 	/// Computes and returns the offset of the end of the loaded image, rounded to page boundary.
 	pub fn get_load_size(&self) -> usize {
-		self.iter_segments()
+		self.segments()
+			.iter()
 			.filter(|seg| seg.p_type == PT_LOAD)
 			.map(|seg| seg.p_vaddr as usize + seg.p_memsz as usize)
 			.max()
@@ -591,29 +701,11 @@ impl<'elf> ELFParser<'elf> {
 			.next_multiple_of(PAGE_SIZE)
 	}
 
-	/// Returns an iterator on the image's section headers.
-	///
-	/// If a section is out of bounds, the iterator returns an error.
-	fn try_iter_sections(&self) -> impl Iterator<Item = EResult<SectionHeader>> + use<'elf> {
-		let ehdr = self.hdr();
-		let table = &self.src[ehdr.e_shoff as usize..];
-		iter(
-			table,
-			self.class(),
-			ehdr.e_shnum as usize,
-			ehdr.e_shentsize as usize,
-		)
-	}
-
-	/// Returns an iterator on the image's section headers.
-	pub fn iter_sections(&self) -> impl Iterator<Item = SectionHeader> + use<'elf> {
-		self.try_iter_sections().filter_map(Result::ok)
-	}
-
 	/// Returns the section with the given index.
 	///
 	/// If the section does not exist, the function returns `None`.
 	pub fn get_section_by_index(&self, i: usize) -> Option<SectionHeader> {
+		let src = self.src?;
 		let hdr = self.hdr();
 		// Bound check
 		if i >= hdr.e_shnum as usize {
@@ -621,7 +713,7 @@ impl<'elf> ELFParser<'elf> {
 		}
 		let off = hdr.e_shoff as usize + i * hdr.e_shentsize as usize;
 		let end = off + hdr.e_shentsize as usize;
-		SectionHeader::parse(self.src.get(off..end)?, self.class())
+		SectionHeader::parse(src.get(off..end)?, self.class())
 	}
 
 	/// Returns an iterator on the relocations of the given section.
@@ -633,7 +725,10 @@ impl<'elf> ELFParser<'elf> {
 		&self,
 		section: &SectionHeader,
 	) -> impl Iterator<Item = EResult<R>> + use<'elf, R> {
-		let table = &self.src[section.sh_offset as usize..];
+		let table = self
+			.src
+			.and_then(|src| src.get(section.sh_offset as usize..))
+			.unwrap_or(&[]);
 		let mut num = (section.sh_size as usize)
 			.checked_div(section.sh_entsize as usize)
 			.unwrap_or(0);
@@ -663,7 +758,10 @@ impl<'elf> ELFParser<'elf> {
 		&self,
 		section: &SectionHeader,
 	) -> impl Iterator<Item = EResult<Sym>> + use<'elf> {
-		let table = &self.src[section.sh_offset as usize..];
+		let table = self
+			.src
+			.and_then(|src| src.get(section.sh_offset as usize..))
+			.unwrap_or(&[]);
 		let mut num = (section.sh_size as usize)
 			.checked_div(section.sh_entsize as usize)
 			.unwrap_or(0);
@@ -687,13 +785,14 @@ impl<'elf> ELFParser<'elf> {
 	///
 	/// If the symbol does not exist, the function returns `None`.
 	pub fn get_symbol_by_index(&self, symtab: &SectionHeader, i: usize) -> Option<Sym> {
+		let src = self.src?;
 		// Bound check
 		if i >= (symtab.sh_size / symtab.sh_entsize) as usize {
 			return None;
 		}
 		let off = symtab.sh_offset as usize + i * symtab.sh_entsize as usize;
 		let end = off + symtab.sh_entsize as usize;
-		Sym::parse(self.src.get(off..end)?, self.class())
+		Sym::parse(src.get(off..end)?, self.class())
 	}
 
 	/// Returns the symbol with name `name`.
@@ -702,19 +801,21 @@ impl<'elf> ELFParser<'elf> {
 	pub fn get_symbol_by_name(&self, name: &[u8]) -> Option<Sym> {
 		// Fast path: get symbol from hash table
 		if let Some(section) = self.get_hash_section() {
-			return self.hash_find(&section, name);
+			return self.hash_find(section, name);
 		}
 		// Slow path: iterate
-		self.iter_sections()
+		let src = self.src?;
+		self.sections()
+			.iter()
 			.filter_map(|section| {
 				let strtab_section = self.get_section_by_index(section.sh_link as _)?;
 				Some((section, strtab_section))
 			})
 			.flat_map(|(section, strtab_section)| {
-				self.iter_symbols(&section).filter(move |sym| {
+				self.iter_symbols(section).filter(move |sym| {
 					let sym_name_begin = strtab_section.sh_offset as usize + sym.st_name as usize;
 					let sym_name_end = sym_name_begin + name.len();
-					let sym_name = self.src.get(sym_name_begin..sym_name_end);
+					let sym_name = src.get(sym_name_begin..sym_name_end);
 					match sym_name {
 						Some(sym_name) => sym_name == name,
 						None => false,
@@ -728,16 +829,15 @@ impl<'elf> ELFParser<'elf> {
 	///
 	/// If the symbol name doesn't exist, the function returns `None`.
 	pub fn get_symbol_name(&self, strtab: &SectionHeader, sym: &Sym) -> Option<&[u8]> {
+		let src = self.src?;
 		if sym.st_name != 0 {
 			let begin = strtab.sh_offset as usize + sym.st_name as usize;
 			let max_len = strtab.sh_size as usize - sym.st_name as usize;
 			let end = begin + max_len;
-			let len = self.src[begin..end]
-				.iter()
-				.position(|b| *b == b'\0')
-				.unwrap_or(max_len);
-			let end = begin + len;
-			Some(&self.src[begin..end])
+			let name = src.get(begin..end)?;
+			// Exclude trailing `\0` if present
+			let end = name.iter().position(|b| *b == b'\0').unwrap_or(max_len);
+			Some(&name[..end])
 		} else {
 			None
 		}
@@ -745,24 +845,16 @@ impl<'elf> ELFParser<'elf> {
 
 	/// Returns the path to the ELF's interpreter.
 	///
-	/// If the ELF doesn't have an interpreter, the function returns `None`.
+	/// If the ELF does not have an interpreter, the function returns `None`.
 	pub fn get_interpreter_path(&self) -> Option<&[u8]> {
-		let seg = self.iter_segments().find(|seg| seg.p_type == PT_INTERP)?;
-		let begin = seg.p_offset as usize;
-		let end = begin + seg.p_filesz as usize;
-		// The slice won't exceed the size of the image since this is checked at parser
-		// instantiation
-		let path = &self.src[begin..end];
-		// Exclude trailing `\0` if present
-		let end = path.iter().position(|c| *c == b'\0').unwrap_or(path.len());
-		Some(&path[..end])
+		self.interp.as_deref()
 	}
 
 	/// Returns the section containing the hash table.
 	///
 	/// If the section does not exist, the function returns `None`.
-	fn get_hash_section(&self) -> Option<SectionHeader> {
-		self.iter_sections().find(|s| s.sh_type == SHT_HASH)
+	fn get_hash_section(&self) -> Option<&SectionHeader> {
+		self.sections().iter().find(|s| s.sh_type == SHT_HASH)
 	}
 
 	/// Finds a symbol with the given name in the hash table.
@@ -770,6 +862,7 @@ impl<'elf> ELFParser<'elf> {
 	/// If the ELF does not have a hash table, if the table is invalid, or if the symbol could not
 	/// be found, the function returns `None`.
 	pub fn hash_find(&self, hash_section: &SectionHeader, name: &[u8]) -> Option<Sym> {
+		let src = self.src?;
 		// TODO implement SHT_GNU_HASH
 		// TODO if not present, fallback to this:
 		// Get required sections
@@ -778,7 +871,7 @@ impl<'elf> ELFParser<'elf> {
 		// Get slice over hash table
 		let begin = hash_section.sh_offset as usize;
 		let end = begin + hash_section.sh_size as usize;
-		let slice = &self.src[begin..end];
+		let slice = src.get(begin..end)?;
 		// Closure to get a word from the slice
 		let get = |off: usize| {
 			let last = *slice.get(off * 4 + 3)?;
