@@ -42,6 +42,7 @@ impl Class {
 	/// 64 bit may be valid only if the kernel is compiled for a 64 bit target.
 	///
 	/// If invalid, the function returns `None`.
+	#[inline]
 	fn from_value(value: u8) -> Option<Self> {
 		match value {
 			ELFCLASS32 => Some(Class::Bit32),
@@ -469,12 +470,12 @@ impl Relocation for Rela {
 /// - `class` is the class to parse for.
 /// - `num` is the number of elements in the table.
 /// - `entsize` is the size of an element in the table.
-fn iter<'data, T: 'data + Parse>(
-	table: &'data [u8],
+fn iter<'elf, T: 'elf + Parse>(
+	table: &'elf [u8],
 	class: Class,
 	num: usize,
 	entsize: usize,
-) -> impl Iterator<Item = EResult<T>> + use<'data, T> {
+) -> impl Iterator<Item = EResult<T>> + use<'elf, T> {
 	(0..num).map(move |i| {
 		let begin = i * entsize;
 		let end = begin + entsize;
@@ -488,25 +489,30 @@ fn iter<'data, T: 'data + Parse>(
 /// The ELF parser allows to parse an ELF image and retrieve information on it.
 ///
 /// It is especially useful to load a kernel module or userspace program.
-pub struct ELFParser<'data>(&'data [u8]);
+pub struct ELFParser<'elf> {
+	/// The ELF data
+	pub src: &'elf [u8],
+	/// ELF header
+	ehdr: FileHeader,
+}
 
-impl<'data> ELFParser<'data> {
+impl<'elf> ELFParser<'elf> {
 	/// Creates a new instance for the given image.
 	///
 	/// The function checks if the image is valid. If not, the function returns
 	/// an error.
-	pub fn new(image: &'data [u8]) -> EResult<Self> {
-		// Check signature
-		if unlikely(image.len() < EI_NIDENT) {
+	pub fn new(src: &'elf [u8]) -> EResult<Self> {
+		if unlikely(src.len() < EI_NIDENT) {
 			return Err(errno!(ENOEXEC));
 		}
-		if unlikely(!image.starts_with(b"\x7fELF")) {
+		// Check signature
+		if unlikely(!src.starts_with(b"\x7fELF")) {
 			return Err(errno!(ENOEXEC));
 		}
 		// Detect 32/64 bit
-		let class = Class::from_value(image[EI_CLASS]).ok_or_else(|| errno!(ENOEXEC))?;
+		let class = Class::from_value(src[EI_CLASS]).ok_or_else(|| errno!(ENOEXEC))?;
 		// Check endianness
-		match image[EI_DATA] {
+		match src[EI_DATA] {
 			#[cfg(target_endian = "little")]
 			ELFDATA2LSB => {}
 			#[cfg(target_endian = "big")]
@@ -514,7 +520,7 @@ impl<'data> ELFParser<'data> {
 			_ => return Err(errno!(ENOEXEC)),
 		}
 		// Get full header
-		let ehdr = FileHeader::parse(image, class).ok_or_else(|| errno!(ENOEXEC))?;
+		let ehdr = FileHeader::parse(src, class).ok_or_else(|| errno!(ENOEXEC))?;
 		// Check machine type
 		match ehdr.e_machine {
 			#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -537,39 +543,31 @@ impl<'data> ELFParser<'data> {
 		if unlikely(ehdr.e_shstrndx >= ehdr.e_shnum) {
 			return Err(errno!(ENOEXEC));
 		}
-		let p = Self(image);
-		p.try_iter_segments()
-			.try_for_each(|phdr| phdr?.is_valid(image.len() as _))?;
-		p.try_iter_sections()
-			.try_for_each(|shdr| shdr?.is_valid(image.len() as _))?;
-		// TODO check symbols
-		// TODO check relocations
-		Ok(p)
-	}
-
-	/// Returns a slice to the raw ELF data.
-	pub fn as_slice(&self) -> &[u8] {
-		self.0
+		Ok(Self {
+			src,
+			ehdr,
+		})
 	}
 
 	/// Returns the image's class.
+	#[inline]
 	pub fn class(&self) -> Class {
 		// Will not fail, because this is checked on instantiation
-		Class::from_value(self.0[EI_CLASS]).unwrap()
+		Class::from_value(self.ehdr.e_ident[EI_CLASS]).unwrap()
 	}
 
 	/// Returns the image's header.
-	pub fn hdr(&self) -> FileHeader {
-		// Will not fail, because the size is checked on parser instantiation
-		Parse::parse(self.0, self.class()).unwrap()
+	#[inline]
+	pub fn hdr(&self) -> &FileHeader {
+		&self.ehdr
 	}
 
 	/// Returns an iterator on the image's segment headers.
 	///
 	/// If a section is out of bounds, the iterator returns an error.
-	fn try_iter_segments(&self) -> impl Iterator<Item = EResult<ProgramHeader>> + use<'data> {
+	fn try_iter_segments(&self) -> impl Iterator<Item = EResult<ProgramHeader>> + use<'elf> {
 		let ehdr = self.hdr();
-		let table = &self.0[ehdr.e_phoff as usize..];
+		let table = &self.src[ehdr.e_phoff as usize..];
 		iter(
 			table,
 			self.class(),
@@ -579,7 +577,7 @@ impl<'data> ELFParser<'data> {
 	}
 
 	/// Returns an iterator on the image's segment headers.
-	pub fn iter_segments(&self) -> impl Iterator<Item = ProgramHeader> + use<'data> {
+	pub fn iter_segments(&self) -> impl Iterator<Item = ProgramHeader> + use<'elf> {
 		self.try_iter_segments().filter_map(Result::ok)
 	}
 
@@ -596,9 +594,9 @@ impl<'data> ELFParser<'data> {
 	/// Returns an iterator on the image's section headers.
 	///
 	/// If a section is out of bounds, the iterator returns an error.
-	fn try_iter_sections(&self) -> impl Iterator<Item = EResult<SectionHeader>> + use<'data> {
+	fn try_iter_sections(&self) -> impl Iterator<Item = EResult<SectionHeader>> + use<'elf> {
 		let ehdr = self.hdr();
-		let table = &self.0[ehdr.e_shoff as usize..];
+		let table = &self.src[ehdr.e_shoff as usize..];
 		iter(
 			table,
 			self.class(),
@@ -608,7 +606,7 @@ impl<'data> ELFParser<'data> {
 	}
 
 	/// Returns an iterator on the image's section headers.
-	pub fn iter_sections(&self) -> impl Iterator<Item = SectionHeader> + use<'data> {
+	pub fn iter_sections(&self) -> impl Iterator<Item = SectionHeader> + use<'elf> {
 		self.try_iter_sections().filter_map(Result::ok)
 	}
 
@@ -623,7 +621,7 @@ impl<'data> ELFParser<'data> {
 		}
 		let off = hdr.e_shoff as usize + i * hdr.e_shentsize as usize;
 		let end = off + hdr.e_shentsize as usize;
-		SectionHeader::parse(self.0.get(off..end)?, self.class())
+		SectionHeader::parse(self.src.get(off..end)?, self.class())
 	}
 
 	/// Returns an iterator on the relocations of the given section.
@@ -631,11 +629,11 @@ impl<'data> ELFParser<'data> {
 	/// If the section does not have the correct type, the function returns an empty iterator.
 	///
 	/// If a relocation is out of bounds, the iterator returns an error.
-	fn try_iter_rel<R: 'data + Parse + Relocation>(
+	fn try_iter_rel<R: 'elf + Parse + Relocation>(
 		&self,
 		section: &SectionHeader,
-	) -> impl Iterator<Item = EResult<R>> + use<'data, R> {
-		let table = &self.0[section.sh_offset as usize..];
+	) -> impl Iterator<Item = EResult<R>> + use<'elf, R> {
+		let table = &self.src[section.sh_offset as usize..];
 		let mut num = (section.sh_size as usize)
 			.checked_div(section.sh_entsize as usize)
 			.unwrap_or(0);
@@ -649,10 +647,10 @@ impl<'data> ELFParser<'data> {
 	/// Returns an iterator on the section's relocations.
 	///
 	/// If the section doesn't have the correct type, the function returns an empty iterator.
-	pub fn iter_rel<R: 'data + Parse + Relocation>(
+	pub fn iter_rel<R: 'elf + Parse + Relocation>(
 		&self,
 		section: &SectionHeader,
-	) -> impl Iterator<Item = R> + use<'data, R> {
+	) -> impl Iterator<Item = R> + use<'elf, R> {
 		self.try_iter_rel(section).filter_map(Result::ok)
 	}
 
@@ -664,8 +662,8 @@ impl<'data> ELFParser<'data> {
 	pub fn try_iter_symbols(
 		&self,
 		section: &SectionHeader,
-	) -> impl Iterator<Item = EResult<Sym>> + use<'data> {
-		let table = &self.0[section.sh_offset as usize..];
+	) -> impl Iterator<Item = EResult<Sym>> + use<'elf> {
+		let table = &self.src[section.sh_offset as usize..];
 		let mut num = (section.sh_size as usize)
 			.checked_div(section.sh_entsize as usize)
 			.unwrap_or(0);
@@ -679,7 +677,7 @@ impl<'data> ELFParser<'data> {
 	/// Returns an iterator on the section's relocations.
 	///
 	/// If the section doesn't have the correct type, the function returns an empty iterator.
-	pub fn iter_symbols(&self, section: &SectionHeader) -> impl Iterator<Item = Sym> + use<'data> {
+	pub fn iter_symbols(&self, section: &SectionHeader) -> impl Iterator<Item = Sym> + use<'elf> {
 		self.try_iter_symbols(section).filter_map(Result::ok)
 	}
 
@@ -695,7 +693,7 @@ impl<'data> ELFParser<'data> {
 		}
 		let off = symtab.sh_offset as usize + i * symtab.sh_entsize as usize;
 		let end = off + symtab.sh_entsize as usize;
-		Sym::parse(self.0.get(off..end)?, self.class())
+		Sym::parse(self.src.get(off..end)?, self.class())
 	}
 
 	/// Returns the symbol with name `name`.
@@ -716,7 +714,7 @@ impl<'data> ELFParser<'data> {
 				self.iter_symbols(&section).filter(move |sym| {
 					let sym_name_begin = strtab_section.sh_offset as usize + sym.st_name as usize;
 					let sym_name_end = sym_name_begin + name.len();
-					let sym_name = self.0.get(sym_name_begin..sym_name_end);
+					let sym_name = self.src.get(sym_name_begin..sym_name_end);
 					match sym_name {
 						Some(sym_name) => sym_name == name,
 						None => false,
@@ -734,12 +732,12 @@ impl<'data> ELFParser<'data> {
 			let begin = strtab.sh_offset as usize + sym.st_name as usize;
 			let max_len = strtab.sh_size as usize - sym.st_name as usize;
 			let end = begin + max_len;
-			let len = self.0[begin..end]
+			let len = self.src[begin..end]
 				.iter()
 				.position(|b| *b == b'\0')
 				.unwrap_or(max_len);
 			let end = begin + len;
-			Some(&self.0[begin..end])
+			Some(&self.src[begin..end])
 		} else {
 			None
 		}
@@ -754,7 +752,7 @@ impl<'data> ELFParser<'data> {
 		let end = begin + seg.p_filesz as usize;
 		// The slice won't exceed the size of the image since this is checked at parser
 		// instantiation
-		let path = &self.0[begin..end];
+		let path = &self.src[begin..end];
 		// Exclude trailing `\0` if present
 		let end = path.iter().position(|c| *c == b'\0').unwrap_or(path.len());
 		Some(&path[..end])
@@ -780,7 +778,7 @@ impl<'data> ELFParser<'data> {
 		// Get slice over hash table
 		let begin = hash_section.sh_offset as usize;
 		let end = begin + hash_section.sh_size as usize;
-		let slice = &self.0[begin..end];
+		let slice = &self.src[begin..end];
 		// Closure to get a word from the slice
 		let get = |off: usize| {
 			let last = *slice.get(off * 4 + 3)?;
