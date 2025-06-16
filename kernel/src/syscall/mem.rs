@@ -22,7 +22,7 @@ use crate::{
 	file::{FileType, fd::FileDescriptorTable, perm::AccessProfile},
 	memory,
 	memory::VirtAddr,
-	process::mem_space::{MAP_ANONYMOUS, MemSpace, PROT_EXEC, PROT_READ, PROT_WRITE},
+	process::mem_space::{MAP_ANONYMOUS, MAP_SHARED, MemSpace, PROT_WRITE},
 	sync::mutex::Mutex,
 	syscall::Args,
 };
@@ -43,7 +43,6 @@ pub fn do_mmap(
 	fd: i32,
 	offset: u64,
 	fds: Arc<Mutex<FileDescriptorTable>>,
-	ap: AccessProfile,
 	mem_space: Arc<MemSpace>,
 ) -> EResult<usize> {
 	// The length in number of pages
@@ -63,18 +62,11 @@ pub fn do_mmap(
 		// Get file
 		let file = fds.lock().get_fd(fd)?.get_file().clone();
 		// Check permissions
-		let stat = file.stat()?;
-		if stat.get_type() != Some(FileType::Regular) {
+		if unlikely(file.stat()?.get_type() != Some(FileType::Regular)) {
 			return Err(errno!(EACCES));
 		}
-		if prot & PROT_READ != 0 && !ap.can_read_file(&stat) {
-			return Err(errno!(EPERM));
-		}
-		if prot & PROT_WRITE != 0 && !ap.can_write_file(&stat) {
-			return Err(errno!(EPERM));
-		}
-		if prot & PROT_EXEC != 0 && !ap.can_execute_file(&stat) {
-			return Err(errno!(EPERM));
+		if unlikely(flags & MAP_SHARED != 0 && prot & PROT_WRITE != 0 && !file.can_write()) {
+			return Err(errno!(EACCES));
 		}
 		Some(file)
 	} else {
@@ -94,20 +86,9 @@ pub fn mmap(
 		u64,
 	)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
-	ap: AccessProfile,
 	mem_space: Arc<MemSpace>,
 ) -> EResult<usize> {
-	do_mmap(
-		addr,
-		length,
-		prot,
-		flags,
-		fd,
-		offset as _,
-		fds,
-		ap,
-		mem_space,
-	)
+	do_mmap(addr, length, prot, flags, fd, offset as _, fds, mem_space)
 }
 
 pub fn mmap2(
@@ -120,20 +101,9 @@ pub fn mmap2(
 		u64,
 	)>,
 	fds: Arc<Mutex<FileDescriptorTable>>,
-	ap: AccessProfile,
 	mem_space: Arc<MemSpace>,
 ) -> EResult<usize> {
-	do_mmap(
-		addr,
-		length,
-		prot,
-		flags,
-		fd,
-		offset * 4096,
-		fds,
-		ap,
-		mem_space,
-	)
+	do_mmap(addr, length, prot, flags, fd, offset * 4096, fds, mem_space)
 }
 
 pub fn brk(Args(addr): Args<VirtAddr>, mem_space: Arc<MemSpace>) -> EResult<usize> {
