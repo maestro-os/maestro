@@ -46,7 +46,6 @@ use core::{
 	borrow::Borrow,
 	hash::{Hash, Hasher},
 	hint::unlikely,
-	sync::atomic::Ordering::Release,
 };
 use node::Node;
 use utils::{
@@ -579,7 +578,7 @@ pub fn set_stat(node: &Node, set: &StatSet) -> EResult<()> {
 	if let Some(atime) = set.atime {
 		stat.atime = atime;
 	}
-	node.dirty.store(true, Release);
+	node.node_ops.set_stat(node, &stat)?;
 	Ok(())
 }
 

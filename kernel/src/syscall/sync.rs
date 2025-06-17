@@ -64,8 +64,13 @@ fn do_fsync(fd: c_int, fds: Arc<Mutex<FileDescriptorTable>>, metadata: bool) -> 
 		return Err(errno!(EBADF));
 	}
 	let file = fds.get_fd(fd)?.get_file();
-	if let Some(node) = file.node() {
-		node.sync(metadata)?;
+	let Some(node) = file.node() else {
+		return Ok(0);
+	};
+	node.sync_data()?;
+	if metadata {
+		// TODO sync only the file, not the whole filesystem
+		node.fs.ops.sync_fs()?;
 	}
 	Ok(0)
 }

@@ -448,9 +448,8 @@ impl NodeOps for Ext2NodeOps {
 		fs.dev.ops.write_pages(frame.dev_offset(), frame.slice())
 	}
 
-	fn sync_stat(&self, node: &Node) -> EResult<()> {
+	fn set_stat(&self, node: &Node, stat: &Stat) -> EResult<()> {
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		let stat = node.stat.lock().clone();
 		let mut inode_ = Ext2INode::get(node, fs)?;
 		inode_.set_permissions(stat.mode);
 		inode_.i_uid = stat.uid;

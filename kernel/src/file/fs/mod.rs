@@ -240,11 +240,11 @@ pub trait NodeOps: Any + Debug {
 		Err(errno!(EINVAL))
 	}
 
-	/// Updates the node's status back to disk.
+	/// Updates the node's status.
 	///
 	/// The default implementation of this function does nothing.
-	fn sync_stat(&self, node: &Node) -> EResult<()> {
-		let _ = node;
+	fn set_stat(&self, node: &Node, stat: &Stat) -> EResult<()> {
+		let _ = (node, stat);
 		Ok(())
 	}
 }
@@ -549,7 +549,7 @@ impl Filesystem {
 		// Synchronize all nodes to disk
 		let nodes = self.nodes.lock();
 		for node in nodes.iter() {
-			node.0.sync(true)?;
+			node.0.sync_data()?;
 		}
 		// Synchronize filesystem structures
 		self.ops.sync_fs()

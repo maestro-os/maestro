@@ -26,10 +26,7 @@ use crate::{
 	memory::{cache::MappedNode, user::UserSlice},
 	sync::mutex::Mutex,
 };
-use core::{
-	ptr,
-	sync::atomic::{AtomicBool, Ordering::Acquire},
-};
+use core::ptr;
 use utils::{
 	boxed::Box,
 	collections::{list::ListNode, path::PathBuf, string::String, vec::Vec},
@@ -47,9 +44,10 @@ pub struct Node {
 	pub fs: Arc<Filesystem>,
 
 	/// The node's status.
+	///
+	/// From the user of this structure's point of view, this is a read-only cache. It is updated
+	/// only by the VFS
 	pub stat: Mutex<Stat>,
-	/// Tells whether the node's stat is dirty.
-	pub dirty: AtomicBool,
 
 	/// Handle for node operations
 	pub node_ops: Box<dyn NodeOps>,
@@ -86,7 +84,6 @@ impl Node {
 			fs,
 
 			stat: Mutex::new(stat),
-			dirty: AtomicBool::new(false),
 
 			node_ops,
 			file_ops,
@@ -135,12 +132,8 @@ impl Node {
 	}
 
 	/// Synchronizes the node's cached content to disk.
-	///
-	/// `metadata` tells whether the node's metadata are also synchronized to disk
-	pub fn sync(&self, metadata: bool) -> EResult<()> {
-		if metadata && self.dirty.swap(false, Acquire) {
-			self.node_ops.sync_stat(self)?;
-		}
+	#[inline]
+	pub fn sync_data(&self) -> EResult<()> {
 		self.mapped.sync()
 	}
 
