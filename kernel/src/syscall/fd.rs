@@ -275,9 +275,8 @@ fn do_lseek(
 		_ => return Err(errno!(EINVAL)),
 	};
 	let offset = match offset {
-		0 => base,
 		// Positive offset
-		1.. => base
+		0.. => base
 			.checked_add(offset as _)
 			.ok_or_else(|| errno!(EOVERFLOW))?,
 		// Negative offset

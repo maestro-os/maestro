@@ -119,9 +119,9 @@ fn get_waitable(
 			} else {
 				proc.parent_event.load(Acquire)
 			};
-			let stopped = events & WUNTRACED as u8 != 0;
+			let stopped = options & WUNTRACED != 0 && events & WUNTRACED as u8 != 0;
 			let exited = options & WEXITED != 0 && proc.get_state() == State::Zombie;
-			let continued = events & WCONTINUED as u8 != 0;
+			let continued = options & WCONTINUED != 0 && events & WCONTINUED as u8 != 0;
 			stopped || exited || continued
 		});
 	let Some(proc) = proc else {
