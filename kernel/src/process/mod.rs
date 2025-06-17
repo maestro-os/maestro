@@ -50,7 +50,7 @@ use crate::{
 			SCHEDULER, Scheduler, core_local, switch,
 			switch::{KThreadEntry, idle_task},
 		},
-		signal::SigSet,
+		signal::{SIGNALS_COUNT, SigSet},
 	},
 	register_get,
 	sync::mutex::Mutex,
@@ -255,7 +255,7 @@ impl Clone for ProcessFs {
 /// A process's signal management information.
 pub struct ProcessSignal {
 	/// The list of signal handlers.
-	pub handlers: Arc<Mutex<[SignalHandler; signal::SIGNALS_COUNT]>>,
+	pub handlers: Arc<Mutex<[SignalHandler; SIGNALS_COUNT]>>,
 	/// A bitfield storing the set of blocked signals.
 	pub sigmask: SigSet,
 	/// A bitfield storing the set of pending signals.
@@ -343,6 +343,8 @@ pub struct Process {
 	pub timer_manager: Arc<Mutex<TimerManager>>,
 	/// The process's signal management structure.
 	pub signal: Mutex<ProcessSignal>, // TODO rwlock
+	/// Events to be notified to the parent process upon `wait`.
+	pub parent_event: AtomicU8,
 
 	/// The process's resources usage.
 	pub rusage: Mutex<Rusage>,
@@ -490,6 +492,7 @@ impl Process {
 			file_descriptors: Default::default(),
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(0)?))?,
 			signal: Mutex::new(ProcessSignal::new()?),
+			parent_event: Default::default(),
 
 			rusage: Default::default(),
 		})?;
@@ -564,6 +567,7 @@ impl Process {
 				exit_status: 0,
 				termsig: 0,
 			}),
+			parent_event: Default::default(),
 
 			rusage: Default::default(),
 		})?;
@@ -888,6 +892,7 @@ impl Process {
 				exit_status: 0,
 				termsig: 0,
 			}),
+			parent_event: Default::default(),
 
 			rusage: Default::default(),
 		})?;
@@ -915,12 +920,12 @@ impl Process {
 		}
 		// Statistics
 		self.rusage.lock().ru_nsignals += 1;
-		#[cfg(feature = "strace")]
+		/*#[cfg(feature = "strace")]
 		println!(
 			"[strace {pid}] received signal `{sig}`",
 			pid = self.get_pid(),
 			sig = sig as c_int
-		);
+		);*/
 		signal_manager.sigpending.set(sig as _);
 	}
 

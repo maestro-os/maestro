@@ -101,6 +101,9 @@ pub const PT_PHDR: u32 = 6;
 /// Program header type: Thread-Local Storage (TLS).
 pub const PT_TLS: u32 = 7;
 
+/// Program header type (GNU): Specifies whether the stack is executable.
+pub const PT_GNU_STACK: u32 = 0x6474e551;
+
 /// Segment flag: Execute.
 pub const PF_X: u32 = 0x1;
 /// Segment flag: Write.

@@ -73,7 +73,7 @@ fn do_rt_sigaction<S: Debug + From<SigAction> + Into<SigAction>>(
 	oldact.copy_to_user(&old)?;
 	// Set the new structure
 	if let Some(new) = act.copy_from_user()? {
-		signal_handlers[signal as usize] = SignalHandler::Handler(new.into());
+		signal_handlers[signal as usize] = SignalHandler::from(new.into());
 	}
 	Ok(0)
 }

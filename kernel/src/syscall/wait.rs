@@ -28,7 +28,11 @@ use crate::{
 	},
 	syscall::Args,
 };
-use core::{ffi::c_int, iter};
+use core::{
+	ffi::c_int,
+	iter,
+	sync::atomic::Ordering::{Acquire, Release},
+};
 use utils::{errno, errno::EResult};
 
 /// Wait flag. Returns immediately if no child has exited.
@@ -110,11 +114,14 @@ fn get_waitable(
 		.filter_map(|pid| sched.get_by_pid(pid))
 		// Select a waitable process
 		.find(|proc| {
-			let state = proc.get_state();
-			let stopped = options & WUNTRACED != 0 && matches!(state, State::Stopped);
-			let exited = options & WEXITED != 0 && matches!(state, State::Zombie);
-			let continued =
-				options & WCONTINUED != 0 && matches!(state, State::Running | State::Sleeping);
+			let events = if options & WNOWAIT == 0 {
+				proc.parent_event.fetch_and(!(options as u8), Release)
+			} else {
+				proc.parent_event.load(Acquire)
+			};
+			let stopped = options & WUNTRACED != 0 && events & WUNTRACED as u8 != 0;
+			let exited = options & WEXITED != 0 && proc.get_state() == State::Zombie;
+			let continued = options & WCONTINUED != 0 && events & WCONTINUED as u8 != 0;
 			stopped || exited || continued
 		});
 	let Some(proc) = proc else {
@@ -125,17 +132,14 @@ fn get_waitable(
 			Ok(None)
 		};
 	};
-	let pid = proc.get_pid();
 	// Write values back
 	wstatus.copy_to_user(&get_wstatus(&proc))?;
 	rusage.copy_to_user(&proc.rusage.lock())?;
-	// Clear the waitable flag if requested
-	if options & WNOWAIT == 0 {
-		// If the process was a zombie, remove it
-		if matches!(proc.get_state(), State::Zombie) {
-			proc.unlink();
-			sched.remove_process(pid);
-		}
+	// Remove zombie process if requested
+	let pid = proc.get_pid();
+	if options & WNOWAIT == 0 && proc.get_state() == State::Zombie {
+		proc.unlink();
+		sched.remove_process(pid);
 	}
 	Ok(Some(pid))
 }
@@ -167,12 +171,14 @@ pub fn do_waitpid(
 	}
 }
 
+#[allow(missing_docs)]
 pub fn waitpid(
 	Args((pid, wstatus, options)): Args<(c_int, UserPtr<c_int>, c_int)>,
 ) -> EResult<usize> {
 	do_waitpid(pid, wstatus, options | WEXITED, UserPtr(None))
 }
 
+#[allow(missing_docs)]
 pub fn wait4(
 	Args((pid, wstatus, options, rusage)): Args<(c_int, UserPtr<c_int>, c_int, UserPtr<Rusage>)>,
 ) -> EResult<usize> {

@@ -42,8 +42,9 @@ mod sync;
 mod time;
 mod user;
 mod util;
-mod wait;
+pub mod wait;
 
+#[allow(unused_imports)]
 use crate::{
 	arch::x86::idt::IntFrame,
 	file::{Mode, fd::FileDescriptorTable, perm::AccessProfile, vfs::ResolutionSettings},
@@ -64,7 +65,7 @@ use crate::{
 			unlinkat, utimensat,
 		},
 		getrandom::getrandom,
-		host::{reboot, sethostname, uname},
+		host::{reboot, sethostname, sysinfo, uname},
 		ioctl::ioctl,
 		mem::{brk, madvise, mmap, mmap2, mprotect, munmap},
 		module::{delete_module, finit_module, init_module},
@@ -451,7 +452,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		// TODO 0x071 => syscall!(vm86old, frame),
 		0x072 => syscall!(wait4, frame),
 		// TODO 0x073 => syscall!(swapoff, frame),
-		// TODO 0x074 => syscall!(sysinfo, frame),
+		0x074 => syscall!(sysinfo, frame),
 		// TODO 0x075 => syscall!(ipc, frame),
 		0x076 => syscall!(fsync, frame),
 		SIGRETURN_ID => syscall!(sigreturn, frame),
@@ -880,7 +881,7 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		// TODO 0x060 => syscall!(gettimeofday, frame),
 		// TODO 0x061 => syscall!(getrlimit, frame),
 		0x062 => syscall!(getrusage, frame),
-		// TODO 0x063 => syscall!(sysinfo, frame),
+		0x063 => syscall!(sysinfo, frame),
 		// TODO 0x064 => syscall!(times, frame),
 		// TODO 0x065 => syscall!(ptrace, frame),
 		0x066 => syscall!(getuid, frame),

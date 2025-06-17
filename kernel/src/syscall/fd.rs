@@ -31,7 +31,7 @@ use core::{
 	cmp::min,
 	ffi::{c_int, c_uint},
 	hint::unlikely,
-	sync::atomic,
+	sync::atomic::Ordering::{Acquire, Release},
 };
 use utils::{errno, errno::EResult, limits::IOV_MAX, ptr::arc::Arc};
 
@@ -57,11 +57,11 @@ pub fn read(
 		return Err(errno!(EINVAL));
 	}
 	// Read
-	let off = file.off.load(atomic::Ordering::Acquire);
+	let off = file.off.load(Acquire);
 	let len = file.ops.read(&file, off, buf)?;
 	// Update offset
 	let new_off = off.saturating_add(len as u64);
-	file.off.store(new_off, atomic::Ordering::Release);
+	file.off.store(new_off, Release);
 	Ok(len as _)
 }
 
@@ -74,7 +74,7 @@ pub fn read(
 /// - `iovcnt` the number of entries in the IO vector
 /// - `offset` is the offset in the file
 /// - `flags` is the set of flags
-pub fn do_readv(
+fn do_readv(
 	fd: c_int,
 	iov: UserIOVec,
 	iovcnt: c_int,
@@ -108,11 +108,11 @@ pub fn do_readv(
 			let file_off = offset + off as u64;
 			file.ops.read(&file, file_off, buf)?
 		} else {
-			let off = file.off.load(atomic::Ordering::Acquire);
+			let off = file.off.load(Acquire);
 			let len = file.ops.read(&file, off, buf)?;
 			// Update offset
 			let new_off = off.saturating_add(len as u64);
-			file.off.store(new_off, atomic::Ordering::Release);
+			file.off.store(new_off, Release);
 			len
 		};
 		off += len;
@@ -167,11 +167,11 @@ pub fn write(
 		return Err(errno!(EINVAL));
 	}
 	// Write
-	let off = file.off.load(atomic::Ordering::Acquire);
+	let off = file.off.load(Acquire);
 	let len = file.ops.write(&file, off, buf)?;
 	// Update offset
 	let new_off = off.saturating_add(len as u64);
-	file.off.store(new_off, atomic::Ordering::Release);
+	file.off.store(new_off, Release);
 	Ok(len)
 }
 
@@ -184,7 +184,7 @@ pub fn write(
 /// - `iovcnt` the number of entries in the IO vector
 /// - `offset` is the offset in the file
 /// - `flags` is the set of flags
-pub fn do_writev(
+fn do_writev(
 	fd: i32,
 	iov: UserIOVec,
 	iovcnt: i32,
@@ -217,11 +217,11 @@ pub fn do_writev(
 			let file_off = offset + off as u64;
 			file.ops.write(&file, file_off, buf)?
 		} else {
-			let off = file.off.load(atomic::Ordering::Acquire);
+			let off = file.off.load(Acquire);
 			let len = file.ops.write(&file, off, buf)?;
 			// Update offset
 			let new_off = off.saturating_add(len as u64);
-			file.off.store(new_off, atomic::Ordering::Release);
+			file.off.store(new_off, Release);
 			len
 		};
 		off += len;
@@ -261,7 +261,7 @@ pub fn pwritev2(
 fn do_lseek(
 	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
 	fd: c_uint,
-	offset: u64,
+	offset: i64,
 	result: Option<UserPtr<u64>>,
 	whence: c_uint,
 ) -> EResult<usize> {
@@ -270,37 +270,48 @@ fn do_lseek(
 	// Compute the offset
 	let base = match whence {
 		SEEK_SET => 0,
-		SEEK_CUR => file.off.load(atomic::Ordering::Acquire),
+		SEEK_CUR => file.off.load(Acquire),
 		SEEK_END => file.stat()?.size,
 		_ => return Err(errno!(EINVAL)),
 	};
-	let offset = base.checked_add(offset).ok_or_else(|| errno!(EOVERFLOW))?;
+	let offset = match offset {
+		// Positive offset
+		0.. => base
+			.checked_add(offset as _)
+			.ok_or_else(|| errno!(EOVERFLOW))?,
+		// Negative offset
+		..0 => {
+			let offset = offset.checked_abs().ok_or_else(|| errno!(EOVERFLOW))?;
+			base.checked_sub(offset as _)
+				.ok_or_else(|| errno!(EOVERFLOW))?
+		}
+	};
 	if let Some(result) = result {
 		// Write the result to the userspace
 		result.copy_to_user(&offset)?;
 	}
 	// Set the new offset
-	file.off.store(offset, atomic::Ordering::Release);
+	file.off.store(offset, Release);
 	Ok(offset as _)
 }
 
 pub fn _llseek(
 	Args((fd, offset_high, offset_low, result, whence)): Args<(
 		c_uint,
-		u32,
-		u32,
+		i32,
+		i32,
 		UserPtr<u64>,
 		c_uint,
 	)>,
 	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
-	let offset = ((offset_high as u64) << 32) | (offset_low as u64);
+	let offset = ((offset_high as i64) << 32) | (offset_low as i64);
 	do_lseek(fds_mutex, fd, offset, Some(result), whence)?;
 	Ok(0)
 }
 
 pub fn lseek(
-	Args((fd, offset, whence)): Args<(c_uint, u64, c_uint)>,
+	Args((fd, offset, whence)): Args<(c_uint, i64, c_uint)>,
 	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	do_lseek(fds_mutex, fd, offset, None, whence)

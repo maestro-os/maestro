@@ -32,12 +32,10 @@ use crate::{
 		vfs::node::Node,
 	},
 	memory::user::UserSlice,
-	sync::mutex::Mutex,
 };
 use core::{
 	fmt,
 	fmt::{Debug, Write},
-	sync::atomic::AtomicBool,
 };
 use utils::{
 	DisplayableStr,
@@ -287,19 +285,7 @@ impl<T: 'static + Clone + Debug> NodeOps for StaticDir<T> {
 						(node_ops, file_ops)
 					}
 				};
-				Arc::new(Node {
-					inode: 0,
-					fs: dir.fs.clone(),
-
-					stat: Mutex::new(stat),
-					dirty: AtomicBool::new(false),
-
-					node_ops,
-					file_ops,
-
-					lock: Default::default(),
-					mapped: Default::default(),
-				})
+				Arc::new(Node::new(0, dir.fs.clone(), stat, node_ops, file_ops))
 			})
 			.transpose()?;
 		Ok(())

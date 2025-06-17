@@ -22,12 +22,17 @@ use crate::{
 	NAME, VERSION,
 	arch::ARCH,
 	file::perm::AccessProfile,
-	memory::user::{UserPtr, UserSlice},
+	memory::{
+		stats::MEM_INFO,
+		user::{UserPtr, UserSlice},
+	},
 	power,
+	process::scheduler::SCHEDULER,
 	syscall::Args,
+	time::clock::{Clock, current_time_sec},
 };
 use core::{
-	ffi::{c_int, c_void},
+	ffi::{c_char, c_int, c_uint, c_ulong, c_ushort, c_void},
 	hint::unlikely,
 };
 use utils::{errno, errno::EResult, limits::HOST_NAME_MAX, slice_copy};
@@ -50,8 +55,8 @@ const CMD_HALT: c_int = 2;
 const CMD_SUSPEND: c_int = 3;
 
 /// Userspace structure storing uname information.
-#[repr(C)]
 #[derive(Debug)]
+#[repr(C)]
 pub struct Utsname {
 	/// Operating system name.
 	sysname: [u8; UTSNAME_LENGTH],
@@ -79,6 +84,61 @@ pub fn uname(Args(buf): Args<UserPtr<Utsname>>) -> EResult<usize> {
 	slice_copy(&[], &mut utsname.version);
 	slice_copy(ARCH.as_bytes(), &mut utsname.machine);
 	buf.copy_to_user(&utsname)?;
+	Ok(0)
+}
+
+/// Userspace structure storing some system usage statistics.
+#[derive(Debug)]
+#[repr(C)]
+pub struct Sysinfo {
+	/// Seconds since boot
+	uptime: c_ulong,
+	/// 1, 5 and 15 minute load averages
+	loads: [c_ulong; 3],
+	/// Total usable main memory size
+	totalram: c_ulong,
+	/// Available memory size
+	freeram: c_ulong,
+	/// Amount of shared memory
+	sharedram: c_ulong,
+	/// Memory used by buffers
+	bufferram: c_ulong,
+	/// Total swap space size
+	totalswap: c_ulong,
+	/// Swap space still available
+	freeswap: c_ulong,
+	/// Number of current processes
+	procs: c_ushort,
+	/// Padding
+	pad: c_ushort,
+	/// Total high memory size
+	totalhigh: c_ulong,
+	/// Available high memory size
+	freehigh: c_ulong,
+	/// Memory unit size in bytes
+	mem_unit: c_uint,
+	__reserved: [c_char; 256],
+}
+
+pub fn sysinfo(Args(info): Args<UserPtr<Sysinfo>>) -> EResult<usize> {
+	let mem_info = MEM_INFO.lock().clone();
+	let procs = SCHEDULER.lock().processes_count();
+	info.copy_to_user(&Sysinfo {
+		uptime: current_time_sec(Clock::Boottime) as _,
+		loads: [0; 3], // TODO
+		totalram: mem_info.mem_total as _,
+		freeram: mem_info.mem_free as _,
+		sharedram: 0, // TODO
+		bufferram: 0, // TODO
+		totalswap: 0, // TODO
+		freeswap: 0,  // TODO
+		procs: procs as _,
+		pad: 0,
+		totalhigh: 0, // TODO
+		freehigh: 0,  // TODO
+		mem_unit: 0,  // TODO
+		__reserved: [0; 256],
+	})?;
 	Ok(0)
 }
 

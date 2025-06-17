@@ -145,6 +145,12 @@ impl Scheduler {
 		self.total_ticks.load(atomic::Ordering::Relaxed)
 	}
 
+	/// Returns the current number of processes on the scheduler.
+	#[inline]
+	pub fn processes_count(&self) -> usize {
+		self.processes.len()
+	}
+
 	/// Returns an iterator on the scheduler's processes.
 	pub fn iter_process(&self) -> MapIterator<'_, Pid, Arc<Process>> {
 		self.processes.iter()

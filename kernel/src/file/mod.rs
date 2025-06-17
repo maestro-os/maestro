@@ -57,7 +57,6 @@ use utils::{
 	errno,
 	errno::EResult,
 	ptr::arc::Arc,
-	vec,
 };
 use vfs::{mountpoint, mountpoint::MountSource};
 
@@ -495,7 +494,7 @@ impl File {
 			.checked_add(INCREMENT)
 			.ok_or_else(|| errno!(EOVERFLOW))?;
 		// Add more space to allow check for EOF
-		let mut buf = vec![0u8; len]?;
+		let mut buf = unsafe { Vec::new_uninit(len)? };
 		let mut off = 0;
 		// Read until EOF
 		loop {

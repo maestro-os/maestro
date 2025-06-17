@@ -203,6 +203,17 @@ impl<T> Vec<T> {
 		Ok(vec)
 	}
 
+	/// Creates a vector with `len` *uninitialized* elements.
+	///
+	/// # Safety
+	///
+	/// It is the caller's responsibility to ensure the content of the initialized before using it.
+	pub unsafe fn new_uninit(len: usize) -> AllocResult<Self> {
+		let mut v = Self::with_capacity(len)?;
+		v.set_len(len);
+		Ok(v)
+	}
+
 	/// Returns the number of elements inside the vector.
 	#[inline(always)]
 	pub fn len(&self) -> usize {

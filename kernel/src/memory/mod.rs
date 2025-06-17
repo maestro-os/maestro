@@ -49,11 +49,11 @@ mod trace;
 pub mod user;
 pub mod vmem;
 
-/// Address of the beginning of the allocatable region in the virtual memory.
-pub const ALLOC_BEGIN: VirtAddr = VirtAddr(0x40000000);
+/// Address of the end of the virtual memory reserved to the process, in compatibility mode.
+pub const COMPAT_PROCESS_END: VirtAddr = VirtAddr(0xc0000000);
 /// Address of the end of the virtual memory reserved to the process.
 #[cfg(target_arch = "x86")]
-pub const PROCESS_END: VirtAddr = VirtAddr(0xc0000000);
+pub const PROCESS_END: VirtAddr = COMPAT_PROCESS_END;
 /// Address of the end of the virtual memory reserved to the process.
 #[cfg(target_arch = "x86_64")]
 pub const PROCESS_END: VirtAddr = VirtAddr(0x800000000000);

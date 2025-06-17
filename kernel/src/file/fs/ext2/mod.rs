@@ -74,7 +74,7 @@ use core::{
 	cmp::max,
 	hint::unlikely,
 	sync::atomic::{
-		AtomicBool, AtomicU8, AtomicU16, AtomicU32, AtomicUsize,
+		AtomicU8, AtomicU16, AtomicU32, AtomicUsize,
 		Ordering::{Acquire, Relaxed, Release},
 	},
 };
@@ -200,19 +200,13 @@ impl NodeOps for Ext2NodeOps {
 			.get_dirent(&ent.name, fs)?
 			.map(|(inode, ..)| -> EResult<_> {
 				dir.fs.node_get_or_insert(inode as _, || {
-					let mut node = Node {
-						inode: inode as _,
-						fs: dir.fs.clone(),
-
-						stat: Default::default(),
-						dirty: AtomicBool::new(false),
-
-						node_ops: Box::new(Ext2NodeOps)?,
-						file_ops: Box::new(Ext2FileOps)?,
-
-						lock: Default::default(),
-						mapped: Default::default(),
-					};
+					let mut node = Node::new(
+						inode as _,
+						dir.fs.clone(),
+						Default::default(),
+						Box::new(Ext2NodeOps)?,
+						Box::new(Ext2FileOps)?,
+					);
 					let stat = Ext2INode::get(&node, fs)?.stat(&fs.sp);
 					node.stat = Mutex::new(stat);
 					Ok(Arc::new(node)?)
@@ -454,9 +448,8 @@ impl NodeOps for Ext2NodeOps {
 		fs.dev.ops.write_pages(frame.dev_offset(), frame.slice())
 	}
 
-	fn sync_stat(&self, node: &Node) -> EResult<()> {
+	fn set_stat(&self, node: &Node, stat: &Stat) -> EResult<()> {
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		let stat = node.stat.lock().clone();
 		let mut inode_ = Ext2INode::get(node, fs)?;
 		inode_.set_permissions(stat.mode);
 		inode_.i_uid = stat.uid;
@@ -538,6 +531,7 @@ impl FileOps for Ext2FileOps {
 		}
 		// Update size
 		inode_.set_size(&fs.sp, size, false);
+		inode_.mark_dirty();
 		node.stat.lock().size = size;
 		Ok(())
 	}
@@ -880,19 +874,13 @@ impl FilesystemOps for Ext2Fs {
 
 	fn root(&self, fs: &Arc<Filesystem>) -> EResult<Arc<Node>> {
 		fs.node_get_or_insert(ROOT_DIRECTORY_INODE as _, || {
-			let mut node = Node {
-				inode: ROOT_DIRECTORY_INODE as _,
-				fs: fs.clone(),
-
-				stat: Default::default(),
-				dirty: AtomicBool::new(false),
-
-				node_ops: Box::new(Ext2NodeOps)?,
-				file_ops: Box::new(Ext2FileOps)?,
-
-				lock: Default::default(),
-				mapped: Default::default(),
-			};
+			let mut node = Node::new(
+				ROOT_DIRECTORY_INODE as _,
+				fs.clone(),
+				Default::default(),
+				Box::new(Ext2NodeOps)?,
+				Box::new(Ext2FileOps)?,
+			);
 			let stat = Ext2INode::get(&node, self)?.stat(&self.sp);
 			node.stat = Mutex::new(stat);
 			Ok(Arc::new(node)?)
@@ -907,19 +895,13 @@ impl FilesystemOps for Ext2Fs {
 		// Allocate an inode
 		let inode_index = self.alloc_inode(file_type == FileType::Directory)?;
 		// Create inode
-		let mut node = Node {
-			inode: inode_index as _,
-			fs: fs.clone(),
-
-			stat: Default::default(),
-			dirty: AtomicBool::new(false),
-
-			node_ops: Box::new(Ext2NodeOps)?,
-			file_ops: Box::new(Ext2FileOps)?,
-
-			lock: Default::default(),
-			mapped: Default::default(),
-		};
+		let mut node = Node::new(
+			inode_index as _,
+			fs.clone(),
+			Default::default(),
+			Box::new(Ext2NodeOps)?,
+			Box::new(Ext2FileOps)?,
+		);
 		let mut inode = Ext2INode::get(&node, self)?;
 		*inode = Ext2INode {
 			i_mode: stat.mode as _,

@@ -26,17 +26,13 @@ use crate::{
 	memory::{cache::MappedNode, user::UserSlice},
 	sync::mutex::Mutex,
 };
-use core::{
-	ptr,
-	sync::atomic::{AtomicBool, Ordering::Acquire},
-};
+use core::ptr;
 use utils::{
 	boxed::Box,
-	collections::{path::PathBuf, string::String},
+	collections::{list::ListNode, path::PathBuf, string::String, vec::Vec},
 	errno::EResult,
 	limits::SYMLINK_MAX,
 	ptr::arc::Arc,
-	vec,
 };
 
 /// A filesystem node, cached by the VFS.
@@ -48,9 +44,10 @@ pub struct Node {
 	pub fs: Arc<Filesystem>,
 
 	/// The node's status.
+	///
+	/// From the user of this structure's point of view, this is a read-only cache. It is updated
+	/// only by the VFS
 	pub stat: Mutex<Stat>,
-	/// Tells whether the node's stat is dirty.
-	pub dirty: AtomicBool,
 
 	/// Handle for node operations
 	pub node_ops: Box<dyn NodeOps>,
@@ -61,9 +58,43 @@ pub struct Node {
 	pub lock: Mutex<()>,
 	/// The node as mapped
 	pub mapped: MappedNode,
+
+	/// LRU node
+	lru: ListNode,
 }
 
 impl Node {
+	/// Creates a new instance.
+	///
+	/// Arguments:
+	/// - `inode` is the node's ID
+	/// - `fs` is the filesystem on which the node is located
+	/// - `stat` is the node's status
+	/// - `node_ops` is the handle for node operations
+	/// - `file_ops` is the handle for open file operations
+	pub fn new(
+		inode: INode,
+		fs: Arc<Filesystem>,
+		stat: Stat,
+		node_ops: Box<dyn NodeOps>,
+		file_ops: Box<dyn FileOps>,
+	) -> Self {
+		Self {
+			inode,
+			fs,
+
+			stat: Mutex::new(stat),
+
+			node_ops,
+			file_ops,
+
+			lock: Default::default(),
+			mapped: Default::default(),
+
+			lru: Default::default(),
+		}
+	}
+
 	/// Returns the current status of the node.
 	#[inline]
 	pub fn stat(&self) -> Stat {
@@ -86,7 +117,7 @@ impl Node {
 	/// Reads the symbolic link.
 	pub fn readlink(&self) -> EResult<PathBuf> {
 		const INCREMENT: usize = 64;
-		let mut buf = vec![0u8; INCREMENT]?;
+		let mut buf = unsafe { Vec::new_uninit(INCREMENT)? };
 		let mut len;
 		loop {
 			let b = UserSlice::from_slice_mut(&mut buf);
@@ -101,12 +132,8 @@ impl Node {
 	}
 
 	/// Synchronizes the node's cached content to disk.
-	///
-	/// `metadata` tells whether the node's metadata are also synchronized to disk
-	pub fn sync(&self, metadata: bool) -> EResult<()> {
-		if metadata && self.dirty.swap(false, Acquire) {
-			self.node_ops.sync_stat(self)?;
-		}
+	#[inline]
+	pub fn sync_data(&self) -> EResult<()> {
 		self.mapped.sync()
 	}
 

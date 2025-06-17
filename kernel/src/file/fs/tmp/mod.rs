@@ -41,7 +41,7 @@ use crate::{
 	},
 	sync::mutex::Mutex,
 };
-use core::{any::Any, hint::unlikely, sync::atomic::AtomicBool};
+use core::{any::Any, hint::unlikely};
 use utils::{
 	TryClone, TryToOwned,
 	boxed::Box,
@@ -435,19 +435,13 @@ impl FilesystemOps for TmpFS {
 		// Insert node
 		let mut nodes = self.nodes.lock();
 		let (inode, slot) = nodes.get_free_slot()?;
-		let node = Arc::new(Node {
+		let node = Arc::new(Node::new(
 			inode,
-			fs: fs.clone(),
-
-			stat: Mutex::new(stat),
-			dirty: AtomicBool::new(false),
-
-			node_ops: Box::new(content)?,
-			file_ops: Box::new(TmpFSFile)?,
-
-			lock: Default::default(),
-			mapped: Default::default(),
-		})?;
+			fs.clone(),
+			stat,
+			Box::new(content)?,
+			Box::new(TmpFSFile)?,
+		))?;
 		*slot = Some(node.clone());
 		Ok(node)
 	}
@@ -486,11 +480,10 @@ impl FilesystemType for TmpFsType {
 				nodes: Mutex::new(NodeStorage::new()?),
 			})?,
 		)?;
-		let root = Arc::new(Node {
-			inode: 0,
-			fs: fs.clone(),
-
-			stat: Mutex::new(Stat {
+		let root = Arc::new(Node::new(
+			0,
+			fs.clone(),
+			Stat {
 				mode: FileType::Directory.to_mode() | 0o1777,
 				nlink: 2, // `.` and `..`
 				uid: ROOT_UID,
@@ -502,15 +495,10 @@ impl FilesystemType for TmpFsType {
 				ctime: 0,
 				mtime: 0,
 				atime: 0,
-			}),
-			dirty: AtomicBool::new(false),
-
-			node_ops: Box::new(NodeContent::Directory(Default::default()))?,
-			file_ops: Box::new(TmpFSFile)?,
-
-			lock: Default::default(),
-			mapped: Default::default(),
-		})?;
+			},
+			Box::new(NodeContent::Directory(Default::default()))?,
+			Box::new(TmpFSFile)?,
+		))?;
 		// Insert node
 		downcast_fs::<TmpFS>(&*fs.ops)
 			.nodes
