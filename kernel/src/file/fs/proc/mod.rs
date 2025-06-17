@@ -43,9 +43,7 @@ use crate::{
 		vfs::node::Node,
 	},
 	process::{Process, pid::Pid, scheduler::SCHEDULER},
-	sync::mutex::Mutex,
 };
-use core::sync::atomic::AtomicBool;
 use mem_info::MemInfo;
 use proc_dir::{
 	cmdline::Cmdline, cwd::Cwd, exe::Exe, mounts::Mounts, stat::StatNode, status::Status,
@@ -179,14 +177,11 @@ impl NodeOps for RootDir {
 		};
 		ent.node = Process::get_by_pid(pid)
 			.map(|_| {
-				Arc::new(Node {
-					inode: 0,
-					fs: dir.fs.clone(),
-
-					stat: Mutex::new(static_dir_stat()),
-					dirty: AtomicBool::new(false),
-
-					node_ops: Box::new(StaticDir {
+				Arc::new(Node::new(
+					0,
+					dir.fs.clone(),
+					static_dir_stat(),
+					Box::new(StaticDir {
 						entries: &[
 							StaticEntry {
 								name: b"cmdline",
@@ -236,11 +231,8 @@ impl NodeOps for RootDir {
 						],
 						data: pid,
 					})?,
-					file_ops: Box::new(DummyOps)?,
-
-					lock: Default::default(),
-					mapped: Default::default(),
-				})
+					Box::new(DummyOps)?,
+				))
 			})
 			.transpose()?;
 		Ok(())
@@ -312,19 +304,13 @@ impl FilesystemOps for ProcFS {
 	}
 
 	fn root(&self, fs: &Arc<Filesystem>) -> EResult<Arc<Node>> {
-		Ok(Arc::new(Node {
-			inode: 0,
-			fs: fs.clone(),
-
-			stat: Mutex::new(RootDir::stat()),
-			dirty: AtomicBool::new(false),
-
-			node_ops: Box::new(RootDir)?,
-			file_ops: Box::new(DummyOps)?,
-
-			lock: Default::default(),
-			mapped: Default::default(),
-		})?)
+		Ok(Arc::new(Node::new(
+			0,
+			fs.clone(),
+			RootDir::stat(),
+			Box::new(RootDir)?,
+			Box::new(DummyOps)?,
+		))?)
 	}
 
 	fn create_node(&self, _fs: &Arc<Filesystem>, _stat: Stat) -> EResult<Arc<Node>> {

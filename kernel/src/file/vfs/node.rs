@@ -32,7 +32,7 @@ use core::{
 };
 use utils::{
 	boxed::Box,
-	collections::{path::PathBuf, string::String, vec::Vec},
+	collections::{list::ListNode, path::PathBuf, string::String, vec::Vec},
 	errno::EResult,
 	limits::SYMLINK_MAX,
 	ptr::arc::Arc,
@@ -60,9 +60,44 @@ pub struct Node {
 	pub lock: Mutex<()>,
 	/// The node as mapped
 	pub mapped: MappedNode,
+
+	/// LRU node
+	lru: ListNode,
 }
 
 impl Node {
+	/// Creates a new instance.
+	///
+	/// Arguments:
+	/// - `inode` is the node's ID
+	/// - `fs` is the filesystem on which the node is located
+	/// - `stat` is the node's status
+	/// - `node_ops` is the handle for node operations
+	/// - `file_ops` is the handle for open file operations
+	pub fn new(
+		inode: INode,
+		fs: Arc<Filesystem>,
+		stat: Stat,
+		node_ops: Box<dyn NodeOps>,
+		file_ops: Box<dyn FileOps>,
+	) -> Self {
+		Self {
+			inode,
+			fs,
+
+			stat: Mutex::new(stat),
+			dirty: AtomicBool::new(false),
+
+			node_ops,
+			file_ops,
+
+			lock: Default::default(),
+			mapped: Default::default(),
+
+			lru: Default::default(),
+		}
+	}
+
 	/// Returns the current status of the node.
 	#[inline]
 	pub fn stat(&self) -> Stat {
