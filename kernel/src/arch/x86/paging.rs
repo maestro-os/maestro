@@ -343,8 +343,7 @@ pub unsafe fn unmap(mut table: &mut Table, virtaddr: VirtAddr) {
 		let index = get_addr_element_index(virtaddr, level);
 		let entry = table[index].load(Relaxed);
 		tables[level] = Some((NonNull::from(table), index));
-		// If the entry does not exist or is PSE, stop here
-		if entry & FLAG_PRESENT == 0 || entry & FLAG_PAGE_SIZE != 0 {
+		if level == 0 || entry & FLAG_PRESENT == 0 || entry & FLAG_PAGE_SIZE != 0 {
 			break;
 		}
 		// Jump to next table
