@@ -20,16 +20,19 @@
 //! of the terminal.
 
 use super::TTYDisplay;
-use crate::tty::vga;
+use crate::tty::{
+	vga,
+	vga::{Color, HEIGHT, Pos, WIDTH},
+};
 use core::{
 	cmp::{max, min},
 	str,
 };
 
 /// The character used to initialize ANSI escape sequences.
-pub const ESCAPE_CHAR: u8 = 0x1b;
+pub const ESCAPE: u8 = 0x1b;
 /// The Control Sequence Introducer character.
-const CSI_CHAR: u8 = b'[';
+const CSI: u8 = b'[';
 
 /// The size of the buffer used to parse ANSI escape codes.
 pub const BUFFER_SIZE: usize = 128;
@@ -164,18 +167,20 @@ impl<'tty> ANSIBufferView<'tty> {
 	///
 	/// The function takes a buffer to write the sequence on. If the buffer is not large enough to
 	/// fit the whole sequence, it is truncated.
-	fn next_nbr_sequence<'b>(&mut self, buf: &'b mut [Option<u32>]) -> &'b [Option<u32>] {
-		let mut i = 0;
+	fn next_nbr_sequence<'b>(&mut self, buf: &'b mut [u32]) -> &'b [u32] {
+		let mut len = 0;
 		for b in buf.iter_mut() {
-			*b = self.next_nbr();
-			i += 1;
-
+			let Some(nbr) = self.next_nbr() else {
+				break;
+			};
+			*b = nbr;
+			len += 1;
+			// skip `;`
 			if self.peek_char() != Some(b';') {
 				break;
 			}
 			self.cursor += 1;
 		}
-
 		// skip remaining numbers of the sequence
 		loop {
 			if self.next_nbr().is_some() {
@@ -187,13 +192,12 @@ impl<'tty> ANSIBufferView<'tty> {
 			}
 			break;
 		}
-
-		&buf[..i]
+		&buf[..len]
 	}
 }
 
 /// Returns the VGA color associated with the given command.
-fn get_vga_color_from_cmd(cmd: u8) -> vga::Color {
+fn get_vga_color_from_cmd(cmd: u8) -> Color {
 	match cmd {
 		30 | 40 => vga::COLOR_BLACK,
 		31 | 41 => vga::COLOR_RED,
@@ -211,13 +215,12 @@ fn get_vga_color_from_cmd(cmd: u8) -> vga::Color {
 		95 | 105 => vga::COLOR_LIGHT_MAGENTA,
 		96 | 106 => vga::COLOR_LIGHT_CYAN,
 		97 | 107 => vga::COLOR_WHITE,
-
 		_ => vga::COLOR_BLACK,
 	}
 }
 
 /// Returns the VGA color associated with the given ID.
-fn get_vga_color_from_id(id: u8) -> vga::Color {
+fn get_vga_color_from_id(id: u8) -> Color {
 	match id {
 		0 => vga::COLOR_BLACK,
 		1 => vga::COLOR_RED,
@@ -235,7 +238,6 @@ fn get_vga_color_from_id(id: u8) -> vga::Color {
 		13 => vga::COLOR_LIGHT_MAGENTA,
 		14 => vga::COLOR_LIGHT_CYAN,
 		15 => vga::COLOR_WHITE,
-
 		_ => vga::COLOR_BLACK,
 	}
 }
@@ -245,125 +247,106 @@ fn get_vga_color_from_id(id: u8) -> vga::Color {
 /// Arguments:
 /// - `d` is the direction character.
 /// - `n` is the number of cells to travel. If `None`, the default is used (`1`).
-fn move_cursor(tty: &mut TTYDisplay, d: u8, n: Option<u32>) -> ANSIState {
-	let n = n.unwrap_or(1).clamp(0, i16::MAX as _) as i16;
+fn move_cursor(tty: &mut TTYDisplay, d: u8, n: u32) -> ANSIState {
+	let n = n.clamp(0, i16::MAX as _) as i16;
 	match d {
 		b'A' => {
 			let n = tty.cursor_y.checked_sub(n).unwrap_or(0);
 			tty.cursor_y = max(n, 0);
-			ANSIState::Valid
 		}
 		b'B' => {
-			let n = tty.cursor_y.checked_add(n).unwrap_or(vga::HEIGHT - 1);
-			tty.cursor_y = min(n, vga::HEIGHT - 1);
-			ANSIState::Valid
+			let n = tty.cursor_y.checked_add(n).unwrap_or(HEIGHT - 1);
+			tty.cursor_y = min(n, HEIGHT - 1);
 		}
 		b'C' => {
-			let n = tty.cursor_x.checked_add(n).unwrap_or(vga::WIDTH - 1);
-			tty.cursor_x = min(n, vga::WIDTH - 1);
-			ANSIState::Valid
+			let n = tty.cursor_x.checked_add(n).unwrap_or(WIDTH - 1);
+			tty.cursor_x = min(n, WIDTH - 1);
 		}
 		b'D' => {
 			let n = tty.cursor_x.checked_sub(n).unwrap_or(0);
 			tty.cursor_x = max(n, 0);
-			ANSIState::Valid
 		}
-		_ => ANSIState::Invalid,
+		_ => return ANSIState::Invalid,
 	}
+	ANSIState::Valid
 }
 
-/// Handles an Select Graphics Renderition (SGR) command.
+/// Handles a Select Graphics Renderition (SGR) command.
 ///
 /// `seq` is the id of the numbers describing the command.
-fn parse_sgr(tty: &mut TTYDisplay, seq: &[Option<u32>]) -> ANSIState {
-	match seq.first().cloned().flatten().unwrap_or(0) {
-		0 => {
-			tty.reset_attrs();
-			ANSIState::Valid
-		}
-		1 => ANSIState::Valid, // TODO Bold
-		2 => ANSIState::Valid, // TODO Faint
-		3 => ANSIState::Valid, // TODO Italic
-		4 => ANSIState::Valid, // TODO Underline
-		5 | 6 => {
-			tty.set_blinking(true);
-			ANSIState::Valid
-		}
-		7 => {
-			tty.swap_colors();
-			ANSIState::Valid
-		}
-		8 => ANSIState::Valid,
-		9 => ANSIState::Valid,  // TODO Crossed-out
-		10 => ANSIState::Valid, // TODO Primary font
-		11 => ANSIState::Valid, // TODO Alternative font
-		12 => ANSIState::Valid, // TODO Alternative font
-		13 => ANSIState::Valid, // TODO Alternative font
-		14 => ANSIState::Valid, // TODO Alternative font
-		15 => ANSIState::Valid, // TODO Alternative font
-		16 => ANSIState::Valid, // TODO Alternative font
-		17 => ANSIState::Valid, // TODO Alternative font
-		18 => ANSIState::Valid, // TODO Alternative font
-		19 => ANSIState::Valid, // TODO Alternative font
-		20 | 21 => ANSIState::Valid,
-		22 => ANSIState::Valid, // TODO Normal intensity
-		23 => ANSIState::Valid, // TODO Not italic
-		24 => ANSIState::Valid, // TODO Not underlined
-		25 => {
-			tty.set_blinking(false);
-			ANSIState::Valid
-		}
-		26 => ANSIState::Valid,
-		27 => ANSIState::Valid, // TODO Not reversed
-		28 => ANSIState::Valid,
-		29 => ANSIState::Valid, // TODO Not crossed-out
-		c @ (30..=37 | 90..=97) => {
-			tty.set_fgcolor(get_vga_color_from_cmd(c as _));
-			ANSIState::Valid
-		}
-		38 => match seq.get(1).cloned().flatten() {
-			Some(2) => {
-				// TODO with VGA, use closest color
-				ANSIState::Invalid
-			}
-			Some(5) => {
-				let Some(nbr) = seq.get(2).cloned().flatten() else {
-					return ANSIState::Invalid;
-				};
-				tty.set_fgcolor(get_vga_color_from_id(nbr as _));
-				ANSIState::Valid
-			}
-			_ => ANSIState::Invalid,
-		},
-		39 => {
-			tty.reset_fgcolor();
-			ANSIState::Valid
-		}
-		c @ (40..=47 | 100..=107) => {
-			tty.set_bgcolor(get_vga_color_from_cmd(c as _));
-			ANSIState::Valid
-		}
-		48 => match seq.get(1).cloned().flatten() {
-			Some(2) => {
-				// TODO with VGA, use closest color
-				ANSIState::Invalid
-			}
-			Some(5) => {
-				let Some(nbr) = seq.get(2).cloned().flatten() else {
-					return ANSIState::Invalid;
-				};
-				tty.set_bgcolor(get_vga_color_from_id(nbr as _));
-				ANSIState::Valid
-			}
-			_ => ANSIState::Invalid,
-		},
-		49 => {
-			tty.reset_bgcolor();
-			ANSIState::Valid
-		}
-		50..=107 => ANSIState::Valid,
-		_ => ANSIState::Invalid,
+fn parse_sgr(tty: &mut TTYDisplay, seq: &[u32]) -> ANSIState {
+	if seq.is_empty() {
+		tty.reset_attrs();
+		return ANSIState::Valid;
 	}
+	let mut iter = seq.iter();
+	while let Some(cmd) = iter.next() {
+		match *cmd {
+			0 => tty.reset_attrs(),
+			1 => {} // TODO Bold
+			2 => {} // TODO Faint
+			3 => {} // TODO Italic
+			4 => {} // TODO Underline
+			5 | 6 => tty.set_blinking(true),
+			7 => tty.swap_colors(),
+			8 => {}
+			9 => {}  // TODO Crossed-out
+			10 => {} // TODO Primary font
+			11 => {} // TODO Alternative font
+			12 => {} // TODO Alternative font
+			13 => {} // TODO Alternative font
+			14 => {} // TODO Alternative font
+			15 => {} // TODO Alternative font
+			16 => {} // TODO Alternative font
+			17 => {} // TODO Alternative font
+			18 => {} // TODO Alternative font
+			19 => {} // TODO Alternative font
+			20 | 21 => {}
+			22 => {} // TODO Normal intensity
+			23 => {} // TODO Not italic
+			24 => {} // TODO Not underlined
+			25 => tty.set_blinking(false),
+			26 => {}
+			27 => {} // TODO Not reversed
+			28 => {}
+			29 => {} // TODO Not crossed-out
+			c @ (30..=37 | 90..=97) => {
+				tty.set_fgcolor(get_vga_color_from_cmd(c as _));
+			}
+			38 => match iter.next() {
+				Some(2) => {
+					// TODO with VGA, use closest color
+				}
+				Some(5) => {
+					let Some(nbr) = iter.next() else {
+						return ANSIState::Invalid;
+					};
+					tty.set_fgcolor(get_vga_color_from_id(*nbr as _));
+				}
+				_ => return ANSIState::Invalid,
+			},
+			39 => tty.reset_fgcolor(),
+			c @ (40..=47 | 100..=107) => {
+				tty.set_bgcolor(get_vga_color_from_cmd(c as _));
+			}
+			48 => match iter.next() {
+				Some(2) => {
+					// TODO with VGA, use closest color
+				}
+				Some(5) => {
+					let Some(nbr) = iter.next() else {
+						return ANSIState::Invalid;
+					};
+					tty.set_bgcolor(get_vga_color_from_id(*nbr as _));
+				}
+				_ => return ANSIState::Invalid,
+			},
+			49 => tty.reset_bgcolor(),
+			50..=107 => {}
+			_ => return ANSIState::Invalid,
+		}
+	}
+	ANSIState::Valid
 }
 
 /// Parses the CSI sequence in the given buffer view.
@@ -371,63 +354,51 @@ fn parse_sgr(tty: &mut TTYDisplay, seq: &[Option<u32>]) -> ANSIState {
 /// The function returns the state of the sequence. If valid, the length of the
 /// sequence is also returned.
 fn parse_csi(view: &mut ANSIBufferView) -> ANSIState {
-	let mut seq_buf: [Option<u32>; SEQ_MAX] = [None; SEQ_MAX];
-	let seq = view.next_nbr_sequence(seq_buf.as_mut_slice());
+	let mut seq_buf: [u32; SEQ_MAX] = [0; SEQ_MAX];
+	let seq = view.next_nbr_sequence(&mut seq_buf);
 	let Some(cmd) = view.next_char() else {
 		return ANSIState::Incomplete;
 	};
-
-	let status = match (seq, cmd) {
+	match (seq, cmd) {
 		(_, b'?') => match (view.next_nbr(), view.next_char()) {
-			(Some(7 | 25), Some(b'h')) => {
-				view.tty.set_cursor_visible(true);
-				ANSIState::Valid
-			}
-			(Some(7 | 25), Some(b'l')) => {
-				view.tty.set_cursor_visible(false);
-				ANSIState::Valid
-			}
-			_ => ANSIState::Invalid,
+			(Some(7 | 25), Some(b'h')) => view.tty.set_cursor_visible(true),
+			(Some(7 | 25), Some(b'l')) => view.tty.set_cursor_visible(false),
+			_ => return ANSIState::Invalid,
 		},
-		(&[nbr], b'A'..=b'D') => move_cursor(view.tty, cmd, nbr.map(|i| i as _)),
-		(&[nbr], b'E') => {
-			view.tty.newline(nbr.unwrap_or(1) as _);
-			ANSIState::Valid
+		(seq, b'A'..=b'D') => {
+			return move_cursor(view.tty, cmd, seq.first().cloned().unwrap_or(1) as _);
 		}
-		(&[_nbr], b'F') => {
+		(seq, b'E') => view.tty.newline(seq.first().cloned().unwrap_or(1) as _),
+		(_seq, b'F') => {
 			// TODO Previous line
-			ANSIState::Valid
 		}
-		(&[nbr], b'G') => {
-			view.tty.cursor_y = nbr.map(|i| i as _).unwrap_or(1).clamp(1, vga::WIDTH + 1) - 1;
-			ANSIState::Valid
+		(seq, b'G') => {
+			let y = seq.first().cloned().unwrap_or(1).clamp(1, WIDTH as u32 + 1) - 1;
+			view.tty.cursor_y = y as _;
 		}
-		(&[row, column], b'H') => {
-			view.tty.cursor_x = column.map(|i| i as _).unwrap_or(1).clamp(1, vga::WIDTH + 1) - 1;
-			view.tty.cursor_y = row.map(|i| i as _).unwrap_or(1).clamp(1, vga::HEIGHT + 1) - 1;
-			ANSIState::Valid
+		(seq, b'H') => {
+			let x = seq.first().cloned().unwrap_or(1).clamp(1, WIDTH as u32 + 1) - 1;
+			let y = seq.get(1).cloned().unwrap_or(1).clamp(1, HEIGHT as u32 + 1) - 1;
+			view.tty.cursor_x = x as Pos;
+			view.tty.cursor_y = view.tty.screen_y + y as Pos;
 		}
-		(&[_nbr], b'J') => {
+		(_seq, b'J') => {
 			// TODO Erase in display
-			ANSIState::Valid
 		}
-		(&[_nbr], b'K') => {
+		(_seq, b'K') => {
 			// TODO Erase in line
-			ANSIState::Valid
 		}
-		(&[_nbr], b'S') => {
+		(_seq, b'S') => {
 			// TODO Scroll up
-			ANSIState::Valid
 		}
-		(&[_nbr], b'T') => {
+		(_seq, b'T') => {
 			// TODO Scroll down
-			ANSIState::Valid
 		}
-		(seq, b'm') => parse_sgr(view.tty, seq),
-		_ => ANSIState::Invalid,
-	};
+		(seq, b'm') => return parse_sgr(view.tty, seq),
+		_ => return ANSIState::Invalid,
+	}
 	view.tty.update();
-	status
+	ANSIState::Valid
 }
 
 /// Parses the sequence in the given buffer.
@@ -435,16 +406,13 @@ fn parse_csi(view: &mut ANSIBufferView) -> ANSIState {
 /// The function returns the state of the sequence. If valid, the length of the
 /// sequence is also returned.
 fn parse(view: &mut ANSIBufferView) -> ANSIState {
-	if view.next_char() != Some(ESCAPE_CHAR) {
+	if view.next_char() != Some(ESCAPE) {
 		return ANSIState::Invalid;
 	}
-	let Some(prefix) = view.next_char() else {
-		return ANSIState::Incomplete;
-	};
-
-	match prefix {
-		CSI_CHAR => parse_csi(view),
+	match view.next_char() {
+		Some(CSI) => parse_csi(view),
 		// TODO
+		None => ANSIState::Incomplete,
 		_ => ANSIState::Invalid,
 	}
 }
@@ -460,7 +428,7 @@ pub fn handle(tty: &mut TTYDisplay, buffer: &[u8]) -> usize {
 	let mut n = 0;
 	while !tty.ansi_buffer.is_empty() {
 		let mut view = ANSIBufferView::new(tty);
-		if view.peek_char() != Some(ESCAPE_CHAR) {
+		if view.peek_char() != Some(ESCAPE) {
 			tty.ansi_buffer.clear();
 			break;
 		}

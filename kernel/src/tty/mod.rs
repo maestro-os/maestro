@@ -35,7 +35,7 @@ use crate::{
 	process::{Process, pid::Pid, signal::Signal},
 	sync::mutex::IntMutex,
 	tty::{
-		ansi::ANSIBuffer,
+		ansi::{ANSIBuffer, ESCAPE},
 		termios::{Termios, consts::*},
 	},
 };
@@ -338,7 +338,7 @@ impl TTYDisplay {
 		let mut i = 0;
 		while i < buf.len() {
 			let c = buf[i];
-			if c == ansi::ESCAPE_CHAR {
+			if c == ESCAPE {
 				let j = ansi::handle(self, &buf[i..buf.len()]);
 				if j > 0 {
 					i += j;
