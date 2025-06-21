@@ -79,7 +79,7 @@ static mut REMAP: Table = const {
 		// TODO use for loop when stabilized
 		let mut i = 0;
 		while i < 256 {
-			let addr = i * PAGE_SIZE * 1024;
+			let addr = i * PAGE_SIZE * 1024; // 4 MB entry
 			let ent = addr | FLAG_PAGE_SIZE | FLAG_WRITE | FLAG_PRESENT;
 			dir.0[i] = AtomicUsize::new(ent);
 			dir.0[i + 768] = AtomicUsize::new(ent);
@@ -94,7 +94,7 @@ static mut REMAP: Table = const {
 
 /// Directory use for the stage 1 of kernel remapping to higher memory under `x86_64`.
 ///
-/// This directory identity maps the first GiB of physical memory.
+/// This directory identity maps the first 512 GiB of physical memory.
 ///
 /// The static is marked as **mutable** because the CPU will set the dirty flag.
 #[unsafe(no_mangle)]
@@ -108,7 +108,7 @@ static mut REMAP_DIR: Table = const {
 	// TODO use for loop when stabilized
 	let mut i = 0;
 	while i < dir.0.len() {
-		let addr = i * PAGE_SIZE * 512;
+		let addr = i * PAGE_SIZE * 512 * 512; // 1 GB entry
 		dir.0[i] = AtomicUsize::new(addr | FLAG_PAGE_SIZE | FLAG_WRITE | FLAG_PRESENT);
 		i += 1;
 	}
