@@ -23,12 +23,7 @@
 //! This data is meant to be used by the memory allocators.
 
 use super::{PhysAddr, VirtAddr, stats};
-use crate::{
-	elf::kernel::sections,
-	multiboot,
-	multiboot::{BootInfo, MmapEntry},
-	sync::once::OnceInit,
-};
+use crate::{elf::kernel::sections, multiboot, multiboot::BootInfo, sync::once::OnceInit};
 use core::{cmp::min, iter, ptr};
 use utils::limits::PAGE_SIZE;
 
@@ -52,7 +47,7 @@ pub struct PhysMapInfo {
 pub static PHYS_MAP: OnceInit<PhysMapInfo> = unsafe { OnceInit::new() };
 
 /// Returns an iterator over the physical memory maps.
-pub fn mmap_iter() -> impl Iterator<Item = MmapEntry> {
+pub fn mmap_iter() -> impl Iterator<Item = multiboot::MmapEntry> {
 	debug_assert!(!PHYS_MAP.memory_maps.is_null());
 	(0..PHYS_MAP.memory_maps_size)
 		.step_by(PHYS_MAP.memory_maps_entry_size)
@@ -60,7 +55,6 @@ pub fn mmap_iter() -> impl Iterator<Item = MmapEntry> {
 			// Safe because in range
 			unsafe { ptr::read_unaligned(PHYS_MAP.memory_maps.byte_add(off)) }
 		})
-		.filter(|e| e.is_valid())
 }
 
 /// Prints the physical memory mapping.
