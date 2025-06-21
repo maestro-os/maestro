@@ -19,7 +19,7 @@
 //! ANSI escape sequences allow to control the terminal by specifying commands in standard output
 //! of the terminal.
 
-use super::TTYDisplay;
+use super::{TTYDisplay, get_history_offset};
 use crate::tty::{
 	vga,
 	vga::{Color, HEIGHT, Pos, WIDTH},
@@ -382,11 +382,30 @@ fn parse_csi(view: &mut ANSIBufferView) -> ANSIState {
 			view.tty.cursor_x = x as Pos;
 			view.tty.cursor_y = view.tty.screen_y + y as Pos;
 		}
-		(_seq, b'J') => {
-			// TODO Erase in display
+		(seq, b'J') => {
+			// Erase in display
+			let screen_start = get_history_offset(0, view.tty.screen_y);
+			let screen_end = screen_start + (WIDTH * HEIGHT) as usize;
+			let cursor_pos = get_history_offset(view.tty.cursor_x, view.tty.cursor_y);
+			match seq.first().cloned().unwrap_or(0) {
+				0 => view.tty.clear(cursor_pos, screen_end, false, false),
+				1 => view.tty.clear(screen_start, cursor_pos, false, false),
+				2 => view.tty.clear(screen_start, screen_end, true, false),
+				3 => view.tty.clear(0, 0, true, true),
+				_ => return ANSIState::Invalid,
+			}
 		}
-		(_seq, b'K') => {
-			// TODO Erase in line
+		(seq, b'K') => {
+			// Erase in line
+			let line_start = get_history_offset(0, view.tty.cursor_y);
+			let line_end = line_start + WIDTH as usize;
+			let cursor_pos = get_history_offset(view.tty.cursor_x, view.tty.cursor_y);
+			match seq.first().cloned().unwrap_or(0) {
+				0 => view.tty.clear(cursor_pos, line_end, false, false),
+				1 => view.tty.clear(line_start, cursor_pos, false, false),
+				2 => view.tty.clear(line_start, line_end, false, false),
+				_ => return ANSIState::Invalid,
+			}
 		}
 		(_seq, b'S') => {
 			// TODO Scroll up
