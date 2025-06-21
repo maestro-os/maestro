@@ -27,6 +27,7 @@
 use crate::{
 	acpi::{madt::ProcessorLocalApic, rsdt::Sdt},
 	memory::{KERNEL_BEGIN, PhysAddr},
+	println,
 	process::scheduler::{CPU, Cpu},
 };
 use core::{
@@ -35,7 +36,6 @@ use core::{
 	slice,
 	sync::{atomic, atomic::AtomicBool},
 };
-use dsdt::Dsdt;
 use fadt::Fadt;
 use madt::Madt;
 use utils::errno::AllocResult;
@@ -175,7 +175,7 @@ pub struct TableHdr {
 	/// The manufacturer model ID.
 	oem_table_id: [u8; 8],
 	/// OEM revision for supplied OEM table ID.
-	oemrevision: u32,
+	oem_revision: u32,
 	/// Vendor ID of utility that created the table.
 	creator_id: u32,
 	/// Revision of utility that created the table.
@@ -241,23 +241,11 @@ pub(crate) fn init() -> AllocResult<()> {
 	if unlikely(!rsdp.check()) {
 		panic!("ACPI: invalid RSDP checksum");
 	}
-	let (madt, fadt, dsdt) = if let Some(xsdt) = unsafe { rsdp.get_xsdt() } {
-		let fadt = xsdt.get_table::<Fadt>();
-		(
-			xsdt.get_table::<Madt>(),
-			fadt,
-			xsdt.get_table_unsized::<Dsdt>()
-				.or_else(|| fadt.and_then(Fadt::get_dsdt)),
-		)
+	let (madt, fadt) = if let Some(xsdt) = unsafe { rsdp.get_xsdt() } {
+		(xsdt.get_table::<Madt>(), xsdt.get_table::<Fadt>())
 	} else {
 		let rsdt = unsafe { rsdp.get_rsdt() };
-		let fadt = rsdt.get_table::<Fadt>();
-		(
-			rsdt.get_table::<Madt>(),
-			fadt,
-			rsdt.get_table_unsized::<Dsdt>()
-				.or_else(|| fadt.and_then(Fadt::get_dsdt)),
-		)
+		(rsdt.get_table::<Madt>(), rsdt.get_table::<Fadt>())
 	};
 	if let Some(madt) = madt {
 		// Register CPU cores
@@ -265,9 +253,10 @@ pub(crate) fn init() -> AllocResult<()> {
 			if e.entry_type == 0 {
 				// TODO rationalize to avoid unsafe here
 				let ent = unsafe { &*(e as *const _ as *const ProcessorLocalApic) };
-				if ent.apic_id & 0b11 == 0 {
+				if ent.apic_flags & 0b11 == 0 {
 					continue;
 				}
+				println!("Register CPU {}", ent.processor_id);
 				CPU.lock().push(Cpu {
 					id: ent.processor_id,
 					apic_id: ent.apic_id,
@@ -278,12 +267,12 @@ pub(crate) fn init() -> AllocResult<()> {
 	}
 	if let Some(fadt) = fadt {
 		CENTURY_REGISTER.store(fadt.century != 0, atomic::Ordering::Relaxed);
-	}
-	if let Some(dsdt) = dsdt {
-		// Parse AML code
-		let aml = dsdt.get_aml();
-		let _ast = aml::parse(aml);
-		// TODO
+		// FIXME: pointer issue (bad alignment?)
+		/*if let Some(dsdt) = fadt.get_dsdt() {
+			// Parse AML code
+			let _aml = dsdt.get_aml();
+			// TODO let _ast = aml::parse(aml);
+		}*/
 	}
 	Ok(())
 }

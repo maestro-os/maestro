@@ -19,18 +19,14 @@
 //! ACPI's Multiple APIC Description Table (MADT) handling.
 
 use super::{Table, TableHdr};
-use core::{ffi::c_void, hint::likely};
-
-/// The offset of the entries in the MADT.
-const ENTRIES_OFF: usize = 0x2c;
+use core::hint::likely;
 
 /// Indicates that the system also has a PC-AT-compatible dual-8259 setup (which
 /// must be disabled when enabling ACPI APIC).
 const PCAT_COMPAT: u32 = 0b1;
 
 /// The Multiple APIC Description Table.
-#[repr(C)]
-#[derive(Debug)]
+#[repr(C, packed)]
 pub struct Madt {
 	/// The table's header.
 	pub header: TableHdr,
@@ -57,7 +53,7 @@ impl Table for Madt {
 }
 
 /// Represents an MADT entry header.
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Debug)]
 pub struct EntryHeader {
 	/// The entry type.
@@ -69,7 +65,6 @@ pub struct EntryHeader {
 /// Iterator over MADT entries.
 pub struct EntriesIterator<'m> {
 	madt: &'m Madt,
-	/// Cursor.
 	cursor: usize,
 }
 
@@ -77,12 +72,11 @@ impl<'m> Iterator for EntriesIterator<'m> {
 	type Item = &'m EntryHeader;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		let entries_len = self.madt.header.length as usize - ENTRIES_OFF;
+		let entries_len = self.madt.header.length as usize - size_of::<Madt>();
 		if likely(self.cursor < entries_len) {
 			let entry = unsafe {
-				let ptr = (self as *const _ as *const c_void).add(ENTRIES_OFF + self.cursor)
-					as *const EntryHeader;
-				&*ptr
+				let start = (self.madt as *const Madt).add(1) as *const EntryHeader;
+				&*start.byte_add(self.cursor)
 			};
 			self.cursor += entry.length as usize;
 			Some(entry)
@@ -93,8 +87,7 @@ impl<'m> Iterator for EntriesIterator<'m> {
 }
 
 /// Description of a processor and its local APIC.
-#[repr(C)]
-#[derive(Debug)]
+#[repr(C, packed)]
 pub struct ProcessorLocalApic {
 	/// Entry header
 	pub hdr: EntryHeader,

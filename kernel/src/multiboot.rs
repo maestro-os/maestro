@@ -21,7 +21,7 @@
 //! ELF structure of the kernel.
 
 use crate::{memory::PhysAddr, sync::once::OnceInit};
-use core::{ffi::c_void, slice};
+use core::{ffi::c_void, mem::offset_of, slice};
 
 /// Multiboot2 magic number.
 pub const BOOTLOADER_MAGIC: u32 = 0x36d76289;
@@ -114,19 +114,15 @@ struct TagELFSections {
 }
 
 impl MmapEntry {
-	/// Tells if a Multiboot mmap entry is valid.
-	pub fn is_valid(&self) -> bool {
-		(self.addr + self.len) < (1_u64 << (4 * 8))
-	}
-
 	/// Returns the string describing the memory region according to its type.
 	pub fn get_type_string(&self) -> &'static str {
 		match self.type_ {
 			MEMORY_AVAILABLE => "Available",
+			MEMORY_RESERVED => "Reserved",
 			MEMORY_ACPI_RECLAIMABLE => "ACPI",
 			MEMORY_NVS => "Hibernate",
 			MEMORY_BADRAM => "Bad RAM",
-			_ => "Reserved",
+			_ => "Unknown",
 		}
 	}
 }
@@ -211,7 +207,7 @@ fn handle_tag(boot_info: &mut BootInfo, tag: &Tag) {
 		}
 		TAG_TYPE_MMAP => {
 			let t: &TagMmap = unsafe { reinterpret_tag(tag) };
-			boot_info.memory_maps_size = t.size as usize;
+			boot_info.memory_maps_size = t.size as usize - offset_of!(TagMmap, entries);
 			boot_info.memory_maps_entry_size = t.entry_size as usize;
 			boot_info.memory_maps = t.entries.as_ptr();
 		}
