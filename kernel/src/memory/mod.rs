@@ -128,6 +128,16 @@ impl VirtAddr {
 	pub fn as_ptr<T>(self) -> *mut T {
 		ptr::with_exposed_provenance_mut(self.0)
 	}
+
+	/// Returns a reference from the virtual address.
+	///
+	/// # Safety
+	///
+	/// If the address is not properly aligned, or does not point to a valid value, the function
+	/// has an undefined behavior.
+	pub unsafe fn as_ref<T>(self) -> &'static T {
+		&*self.as_ptr()
+	}
 }
 
 macro_rules! addr_impl {
