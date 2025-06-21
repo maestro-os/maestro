@@ -19,29 +19,41 @@
 //! This module handles ACPI's Root System Description Table (RSDT).
 
 use super::{Table, TableHdr};
-use core::{mem::size_of, ptr, ptr::Pointee, slice};
+use core::{mem::size_of, ptr, ptr::Pointee};
 
-/// The Root System Description Table.
+/// Either the Root System Description Table (RSDT) or the eXtended System Description Pointer
+/// (XSDP).
 #[repr(C)]
 #[derive(Debug)]
-pub struct Rsdt {
-	/// The table's header.
+pub struct Sdt<const EXTENDED: bool> {
+	/// The table's header
 	pub header: TableHdr,
 }
 
-// TODO XSDT
-
-impl Rsdt {
+impl<const EXTENDED: bool> Sdt<EXTENDED> {
 	/// Iterates over every ACPI tables.
 	pub fn tables(&self) -> impl Iterator<Item = &TableHdr> {
-		let entries_len = self.header.length as usize - size_of::<Rsdt>();
-		let entries_count = entries_len / size_of::<u32>();
-		unsafe {
-			let entries_start = (self as *const Self).add(1) as *const u32;
-			slice::from_raw_parts(entries_start, entries_count)
-				.iter()
-				.map(|p| &*ptr::with_exposed_provenance(*p as usize))
-		}
+		let entries_len = self.header.length as usize - size_of::<Self>();
+		let entry_len = if EXTENDED {
+			size_of::<u64>()
+		} else {
+			size_of::<u32>()
+		};
+		let entries_count = entries_len / entry_len;
+		let entries_start = unsafe { (self as *const Self).add(1) };
+		(0..entries_count).map(move |i| {
+			if EXTENDED {
+				unsafe {
+					let entries_start = entries_start as *const u64;
+					&*ptr::with_exposed_provenance(*entries_start.add(i) as usize)
+				}
+			} else {
+				unsafe {
+					let entries_start = entries_start as *const u32;
+					&*ptr::with_exposed_provenance(*entries_start.add(i) as usize)
+				}
+			}
+		})
 	}
 
 	/// Returns a reference to the ACPI table with type `T`.
@@ -74,6 +86,10 @@ impl Rsdt {
 	}
 }
 
-impl Table for Rsdt {
+impl Table for Sdt<false> {
 	const SIGNATURE: &'static [u8; 4] = b"RSDT";
+}
+
+impl Table for Sdt<true> {
+	const SIGNATURE: &'static [u8; 4] = b"XSDT";
 }

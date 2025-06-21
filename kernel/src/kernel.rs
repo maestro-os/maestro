@@ -193,9 +193,8 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 
 	println!("Booting Maestro kernel version {VERSION}");
 
-	// FIXME
-	//println!("Initializing ACPI...");
-	//acpi::init();
+	println!("Initializing ACPI...");
+	acpi::init().unwrap_or_else(|e| panic!("Failed to initialize ACPI! ({e})"));
 
 	println!("Initializing time management...");
 	time::init().unwrap_or_else(|e| panic!("Failed to initialize time management! ({e})"));
