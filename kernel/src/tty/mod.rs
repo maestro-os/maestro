@@ -210,13 +210,26 @@ impl TTYDisplay {
 	}
 
 	/// Clears the TTY's history.
-	pub fn clear(&mut self) {
-		self.cursor_x = 0;
-		self.cursor_y = 0;
-		self.screen_y = 0;
-		for i in 0..self.history.len() {
-			self.history[i] = (vga::DEFAULT_COLOR as vga::Char) << 8;
+	///
+	/// Arguments:
+	/// - `start`: is the start of the history range to clear
+	/// - `end`: is the end of the history range to clear
+	/// - `reset_cursor`: if set to `true`, the cursor will be reset to the top-left corner
+	/// - `all`: if set to `true`, clear all the history
+	pub fn clear(&mut self, start: usize, end: usize, reset_cursor: bool, all: bool) {
+		if reset_cursor {
+			self.cursor_x = 0;
+			self.cursor_y = 0;
 		}
+		let slice = if all {
+			// Clear all of history
+			self.screen_y = 0;
+			&mut self.history
+		} else {
+			// Clear only the given range
+			&mut self.history[start..end]
+		};
+		slice.fill((vga::DEFAULT_COLOR as vga::Char) << 8);
 		self.update();
 	}
 
@@ -308,19 +321,14 @@ impl TTYDisplay {
 
 		match c {
 			0x07 => ring_bell(),
-
 			b'\t' => self.cursor_forward(get_tab_size(self.cursor_x), 0),
 			b'\n' => self.newline(1),
-
 			// Form Feed (^L)
 			0x0c => {
-				// TODO Move printer to a top of page?
-				//self.clear();
+				// TODO Move printer to a top of page
 			}
-
 			b'\r' => self.cursor_x = 0,
 			0x08 | 0x7f => self.cursor_backward(1, 0),
-
 			_ => {
 				let tty_char = (c as vga::Char) | ((self.current_color as vga::Char) << 8);
 				let pos = get_history_offset(self.cursor_x, self.cursor_y);
