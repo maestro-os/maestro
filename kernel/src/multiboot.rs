@@ -43,6 +43,8 @@ pub const TAG_TYPE_ELF_SECTIONS: u32 = 9;
 
 /// Memory region: available
 pub const MEMORY_AVAILABLE: u32 = 1;
+/// Memory region: reserved
+pub const MEMORY_RESERVED: u32 = 2;
 /// Memory region: ACPI reclaimable
 pub const MEMORY_ACPI_RECLAIMABLE: u32 = 3;
 /// Memory region: ACPI NVS

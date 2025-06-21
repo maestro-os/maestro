@@ -23,8 +23,13 @@
 //! This data is meant to be used by the memory allocators.
 
 use super::{PhysAddr, VirtAddr, stats};
-use crate::{elf::kernel::sections, multiboot, multiboot::BootInfo, sync::once::OnceInit};
-use core::{cmp::min, iter};
+use crate::{
+	elf::kernel::sections,
+	multiboot,
+	multiboot::{BootInfo, MmapEntry},
+	sync::once::OnceInit,
+};
+use core::{cmp::min, iter, ptr};
 use utils::limits::PAGE_SIZE;
 
 /// Physical memory map information.
@@ -37,9 +42,6 @@ pub struct PhysMapInfo {
 	/// Pointer to the Multiboot2 memory map
 	pub memory_maps: *const multiboot::MmapEntry,
 
-	/// The size of the physical memory in number of pages.
-	pub memory_size: usize,
-
 	/// Physical address to the beginning of the main block of allocatable memory, page aligned.
 	pub phys_main_begin: PhysAddr,
 	/// The size of the main block of physical allocatable memory, in pages.
@@ -49,22 +51,29 @@ pub struct PhysMapInfo {
 /// Physical memory map information.
 pub static PHYS_MAP: OnceInit<PhysMapInfo> = unsafe { OnceInit::new() };
 
+/// Returns an iterator over the physical memory maps.
+pub fn mmap_iter() -> impl Iterator<Item = MmapEntry> {
+	debug_assert!(!PHYS_MAP.memory_maps.is_null());
+	(0..PHYS_MAP.memory_maps_size)
+		.step_by(PHYS_MAP.memory_maps_entry_size)
+		.map(|off| {
+			// Safe because in range
+			unsafe { ptr::read_unaligned(PHYS_MAP.memory_maps.byte_add(off)) }
+		})
+		.filter(|e| e.is_valid())
+}
+
 /// Prints the physical memory mapping.
 #[cfg(debug_assertions)]
 pub(crate) fn print_entries() {
-	debug_assert!(!PHYS_MAP.memory_maps.is_null());
 	crate::println!("--- Memory mapping ---");
 	crate::println!("<begin> <end> <type>");
-	for off in (0..PHYS_MAP.memory_maps_size).step_by(PHYS_MAP.memory_maps_entry_size) {
-		// Safe because in range
-		let entry = unsafe { &*PHYS_MAP.memory_maps.byte_add(off) };
-		if entry.is_valid() {
-			let begin = entry.addr;
-			let end = begin + entry.len;
-			let type_ = entry.get_type_string();
-			crate::println!("- {begin:08x} {end:08x} {type_}");
-		}
-	}
+	mmap_iter().for_each(|entry| {
+		let begin = entry.addr;
+		let end = begin + entry.len;
+		let type_ = entry.get_type_string();
+		crate::println!("- {begin:08x} {end:08x} {type_}");
+	});
 }
 
 /// Computes and returns the physical address to the end of the kernel's ELF sections' content.
@@ -113,8 +122,6 @@ pub(crate) fn init(boot_info: &BootInfo) {
 		memory_maps_size: boot_info.memory_maps_size,
 		memory_maps_entry_size: boot_info.memory_maps_entry_size,
 		memory_maps: boot_info.memory_maps,
-
-		memory_size,
 
 		phys_main_begin,
 		phys_main_pages,

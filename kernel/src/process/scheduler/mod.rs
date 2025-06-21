@@ -26,7 +26,11 @@ use crate::{
 	event,
 	event::{CallbackHook, CallbackResult},
 	process::{Process, State, mem_space::MemSpace, pid::Pid, scheduler::switch::switch},
-	sync::{atomic::AtomicU64, mutex::IntMutex, once::OnceInit},
+	sync::{
+		atomic::AtomicU64,
+		mutex::{IntMutex, Mutex},
+		once::OnceInit,
+	},
 	time,
 };
 use core::{
@@ -37,10 +41,26 @@ use core::{
 	},
 };
 use utils::{
-	collections::btreemap::{BTreeMap, MapIterator},
+	collections::{
+		btreemap::{BTreeMap, MapIterator},
+		vec::Vec,
+	},
 	errno::AllocResult,
 	ptr::arc::{Arc, RelaxedArcCell},
 };
+
+/// Description of a CPU core.
+pub struct Cpu {
+	/// Processor ID
+	pub id: u8,
+	/// Local APIC ID
+	pub apic_id: u8,
+	/// Local APIC flags
+	pub apic_flags: u32,
+}
+
+/// The list of CPU cores on the system.
+pub static CPU: Mutex<Vec<Cpu>> = Mutex::new(Vec::new());
 
 /// The process scheduler.
 pub static SCHEDULER: OnceInit<IntMutex<Scheduler>> = unsafe { OnceInit::new() };

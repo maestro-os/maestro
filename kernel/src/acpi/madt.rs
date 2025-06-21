@@ -91,3 +91,17 @@ impl<'m> Iterator for EntriesIterator<'m> {
 		}
 	}
 }
+
+/// Description of a processor and its local APIC.
+#[repr(C)]
+#[derive(Debug)]
+pub struct ProcessorLocalApic {
+	/// Entry header
+	pub hdr: EntryHeader,
+	/// Processor ID
+	pub processor_id: u8,
+	/// Local APIC ID
+	pub apic_id: u8,
+	/// Local APIC flags
+	pub apic_flags: u32,
+}

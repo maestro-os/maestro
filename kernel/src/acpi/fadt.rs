@@ -22,6 +22,7 @@ use super::{Table, TableHdr, dsdt::Dsdt};
 use core::{ptr, slice};
 
 /// TODO doc
+#[derive(Debug)]
 pub struct GenericAddr {
 	addr_space: u8,
 	bit_width: u8,
@@ -34,6 +35,7 @@ pub struct GenericAddr {
 ///
 /// The documentation of every field can be found in the ACPI documentation.
 #[repr(C)]
+#[derive(Debug)]
 pub struct Fadt {
 	/// The table's header.
 	pub header: TableHdr,
