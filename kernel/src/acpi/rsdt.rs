@@ -19,12 +19,12 @@
 //! This module handles ACPI's Root System Description Table (RSDT).
 
 use super::{Table, TableHdr};
+use crate::memory::PhysAddr;
 use core::{mem::size_of, ptr, ptr::Pointee};
 
 /// Either the Root System Description Table (RSDT) or the eXtended System Description Pointer
 /// (XSDP).
 #[repr(C)]
-#[derive(Debug)]
 pub struct Sdt<const EXTENDED: bool> {
 	/// The table's header
 	pub header: TableHdr,
@@ -44,13 +44,13 @@ impl<const EXTENDED: bool> Sdt<EXTENDED> {
 		(0..entries_count).map(move |i| {
 			if EXTENDED {
 				unsafe {
-					let entries_start = entries_start as *const u64;
-					&*ptr::with_exposed_provenance(*entries_start.add(i) as usize)
+					let entry_addr = PhysAddr(*(entries_start as *const u64).add(i) as usize);
+					&*entry_addr.kernel_to_virtual().unwrap().as_ptr()
 				}
 			} else {
 				unsafe {
-					let entries_start = entries_start as *const u32;
-					&*ptr::with_exposed_provenance(*entries_start.add(i) as usize)
+					let entry_addr = PhysAddr(*(entries_start as *const u32).add(i) as usize);
+					&*entry_addr.kernel_to_virtual().unwrap().as_ptr()
 				}
 			}
 		})
