@@ -19,8 +19,8 @@
 //! This module handles ACPI's Fixed ACPI Description Table (FADT).
 
 use super::{Table, TableHdr, dsdt::Dsdt};
-use crate::{memory::PhysAddr, println};
-use core::{mem::offset_of, slice};
+use crate::memory::PhysAddr;
+use core::slice;
 
 /// TODO doc
 #[repr(C, packed)]
