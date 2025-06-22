@@ -21,7 +21,7 @@
 
 use crate::{
 	process,
-	process::{Process, pid::Pid, scheduler::Scheduler},
+	process::{Process, pid::Pid, scheduler::schedule},
 	sync::mutex::{IntMutex, Mutex},
 };
 use core::mem;
@@ -55,8 +55,7 @@ impl WaitQueue {
 				self.0.lock().push(proc.get_pid())?;
 				proc.set_state(process::State::Sleeping);
 			}
-			// Yield
-			Scheduler::tick();
+			schedule();
 			// TODO try to remove the process from the queue (since it might get woken up by
 			// something else)
 			{

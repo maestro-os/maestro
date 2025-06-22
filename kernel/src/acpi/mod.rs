@@ -16,19 +16,15 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The ACPI (Advanced Configuration and Power Interface) interface provides informations about the
+//! The ACPI (Advanced Configuration and Power Interface) interface provides information about the
 //! system, allowing to control components such as cooling and power.
-//!
-//! ACPI initialization is done through the following phases:
-//! - Read the `RSDP` table in order to get a pointer to the `RSDT`, referring to every other
-//!   available tables.
-//! - TODO
 
 use crate::{
 	acpi::{madt::ProcessorLocalApic, rsdt::Sdt},
 	memory::{KERNEL_BEGIN, PhysAddr},
 	println,
 	process::scheduler::{CPU, Cpu},
+	sync::once::OnceInit,
 };
 use core::{
 	hint::{likely, unlikely},
@@ -38,7 +34,7 @@ use core::{
 };
 use fadt::Fadt;
 use madt::Madt;
-use utils::errno::AllocResult;
+use utils::{collections::vec::Vec, errno::AllocResult};
 
 mod aml;
 mod dsdt;
@@ -247,6 +243,8 @@ pub(crate) fn init() -> AllocResult<()> {
 		let rsdt = unsafe { rsdp.get_rsdt() };
 		(rsdt.get_table::<Madt>(), rsdt.get_table::<Fadt>())
 	};
+	// CPU list
+	let mut cpu = Vec::new();
 	if let Some(madt) = madt {
 		// Register CPU cores
 		for e in madt.entries() {
@@ -256,15 +254,25 @@ pub(crate) fn init() -> AllocResult<()> {
 				if ent.apic_flags & 0b11 == 0 {
 					continue;
 				}
-				let flags = ent.apic_flags;
-				println!("Register CPU {} {}", ent.processor_id, flags);
-				CPU.lock().push(Cpu {
+				cpu.push(Cpu {
 					id: ent.processor_id,
 					apic_id: ent.apic_id,
 					apic_flags: ent.apic_flags,
 				})?;
 			}
 		}
+	}
+	// If no CPU is found, just add the current
+	if cpu.is_empty() {
+		cpu.push(Cpu {
+			id: 1,
+			apic_id: 0,
+			apic_flags: 0,
+		})?;
+	}
+	println!("{} CPU cores found", cpu.len());
+	unsafe {
+		OnceInit::init(&CPU, cpu);
 	}
 	if let Some(fadt) = fadt {
 		CENTURY_REGISTER.store(fadt.century != 0, atomic::Ordering::Relaxed);

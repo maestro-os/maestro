@@ -29,7 +29,7 @@ use crate::{
 		pid::Pid,
 		rusage::Rusage,
 		scheduler::{
-			SCHEDULER, Scheduler, switch,
+			SCHEDULER, schedule, switch,
 			switch::{fork_asm, stash_segments},
 		},
 		user_desc::UserDesc,
@@ -230,7 +230,7 @@ fn wait_vfork_done(child_pid: Pid) {
 			}
 		}
 		// Let another process run while we wait
-		Scheduler::tick();
+		schedule();
 	}
 }
 
@@ -460,7 +460,7 @@ pub fn prlimit64(
 }
 
 pub fn sched_yield() -> EResult<usize> {
-	Scheduler::tick();
+	schedule();
 	Ok(0)
 }
 
@@ -484,7 +484,7 @@ pub fn do_exit(status: u32, thread_group: bool) -> ! {
 			// process with pid `pid`
 		}
 	}
-	Scheduler::tick();
+	schedule();
 	// Cannot resume since the process is now a zombie
 	unreachable!();
 }
