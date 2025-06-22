@@ -187,5 +187,5 @@ impl<T: ?Sized + fmt::Debug, const INT: bool> fmt::Debug for Mutex<T, INT> {
 
 /// Type alias on [`Mutex`] representing a mutex which masks interrupts.
 pub type IntMutex<T> = Mutex<T, false>;
-/// Type alias on [`MutexGuard`] representing a mutex which masks interrupts.
+/// Type alias on [`MutexGuard`] representing a mutex guard which masks interrupts.
 pub type IntMutexGuard<'m, T> = MutexGuard<'m, T, false>;
