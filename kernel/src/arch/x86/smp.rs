@@ -16,40 +16,23 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! Architecture-specific **Hardware Abstraction Layers** (HAL).
+//! Symmetric MultiProcessing management.
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-#[macro_use]
-pub mod x86;
+use super::apic::lapic_id;
+use crate::process::scheduler::Cpu;
 
-/// The name of the current CPU architecture.
-pub const ARCH: &str = {
-	#[cfg(target_arch = "x86")]
-	{
-		"x86"
-	}
-	#[cfg(target_arch = "x86_64")]
-	{
-		"x86_64"
-	}
-};
-
-/// Architecture-specific initialization.
-pub fn init() {
-	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-	{
-		use x86::*;
-		if !has_sse() {
-			panic!("SSE support is required to run this kernel :(");
+/// Initializes the SMP.
+///
+/// `cpu` is the list of CPU cores on the system.
+pub fn init(cpu: &[Cpu]) {
+	let lapic_id = lapic_id();
+	// TODO copy trampoline code
+	for cpu in cpu {
+		// Do no attempt to boot the current core
+		if cpu.apic_id == lapic_id {
+			continue;
 		}
-		enable_sse();
-		cli();
-		if apic::is_present() {
-			pic::disable();
-			apic::init();
-		} else {
-			pic::enable(0x20, 0x28);
-		}
-		idt::init();
+		// TODO send INIT IPI
+		// TODO send startup IPI
 	}
 }

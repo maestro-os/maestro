@@ -31,7 +31,7 @@ pub struct Madt {
 	/// The table's header.
 	pub header: TableHdr,
 
-	/// The physical address at which each process can access its local
+	/// The physical address at which each CPU can access its local
 	/// interrupt controller.
 	local_apic_addr: u32,
 	/// APIC flags.
