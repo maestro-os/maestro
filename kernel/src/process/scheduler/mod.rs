@@ -28,25 +28,20 @@ use crate::{
 	process::{Process, State, mem_space::MemSpace, pid::Pid, scheduler::switch::switch},
 	sync::{
 		atomic::AtomicU64,
-		mutex::{IntMutex, Mutex},
+		mutex::Mutex,
 		once::OnceInit,
+		rwlock::{IntReadGuard, IntRwLock, RwLock},
 	},
 	time,
 };
-use core::{
-	mem,
-	sync::{
-		atomic,
-		atomic::{AtomicUsize, Ordering::Release},
-	},
+use core::sync::atomic::{
+	AtomicUsize,
+	Ordering::{Relaxed, Release},
 };
 use utils::{
-	collections::{
-		btreemap::{BTreeMap, MapIterator},
-		vec::Vec,
-	},
+	collections::{btreemap::BTreeMap, vec::Vec},
 	errno::AllocResult,
-	ptr::arc::{Arc, RelaxedArcCell},
+	ptr::arc::{Arc, AtomicArc, AtomicOptionalArc},
 };
 
 /// Description of a CPU core.
@@ -63,19 +58,19 @@ pub struct Cpu {
 pub static CPU: Mutex<Vec<Cpu>> = Mutex::new(Vec::new());
 
 /// The process scheduler.
-pub static SCHEDULER: OnceInit<IntMutex<Scheduler>> = unsafe { OnceInit::new() };
+pub static SCHEDULER: OnceInit<Scheduler> = unsafe { OnceInit::new() };
 /// Core-local storage.
 static CORE_LOCAL: CoreLocal = CoreLocal {
 	kernel_stack: AtomicUsize::new(0),
 	user_stack: AtomicUsize::new(0),
 
-	mem_space: RelaxedArcCell::new(),
+	mem_space: AtomicOptionalArc::new(),
 };
 
 /// Initializes schedulers.
 pub fn init() -> AllocResult<()> {
 	unsafe {
-		OnceInit::init(&SCHEDULER, IntMutex::new(Scheduler::new()?));
+		OnceInit::init(&SCHEDULER, Scheduler::new()?);
 	}
 	// Set GS base on the current core
 	#[cfg(target_arch = "x86_64")]
@@ -100,7 +95,7 @@ pub struct CoreLocal {
 	/// Attached memory space.
 	///
 	/// The pointer stored by this field is returned by [`Arc::into_raw`].
-	pub mem_space: RelaxedArcCell<MemSpace>,
+	pub mem_space: AtomicOptionalArc<MemSpace>,
 }
 
 /// Returns the core-local structure for the current core.
@@ -108,6 +103,13 @@ pub struct CoreLocal {
 pub fn core_local() -> &'static CoreLocal {
 	// TODO use `gs`
 	&CORE_LOCAL
+}
+
+/// Returns the current ticking frequency of the scheduler.
+///
+/// `running` is the number of running processes.
+fn get_ticking_frequency(running: usize) -> u32 {
+	(10 * running) as _
 }
 
 /// A process scheduler.
@@ -122,11 +124,11 @@ pub struct Scheduler {
 
 	/// A binary tree containing all processes registered to the current
 	/// scheduler.
-	processes: BTreeMap<Pid, Arc<Process>>,
+	processes: IntRwLock<BTreeMap<Pid, Arc<Process>>>,
 	/// The process currently being executed by the scheduler's core.
-	curr_proc: Arc<Process>,
+	cur_proc: AtomicArc<Process>,
 	/// The current number of processes in running state.
-	running_procs: usize,
+	running_procs: AtomicUsize,
 
 	/// The task used to idle.
 	idle_task: Arc<Process>,
@@ -151,9 +153,9 @@ impl Scheduler {
 			tick_callback_hook,
 			total_ticks: AtomicU64::new(0),
 
-			processes: BTreeMap::new(),
-			curr_proc: idle_task.clone(),
-			running_procs: 0,
+			processes: RwLock::new(BTreeMap::new()),
+			cur_proc: AtomicArc::from(idle_task.clone()),
+			running_procs: AtomicUsize::new(0),
 
 			idle_task,
 		})
@@ -162,25 +164,25 @@ impl Scheduler {
 	/// Returns the total number of ticks since the instantiation of the
 	/// scheduler.
 	pub fn get_total_ticks(&self) -> u64 {
-		self.total_ticks.load(atomic::Ordering::Relaxed)
+		self.total_ticks.load(Relaxed)
 	}
 
 	/// Returns the current number of processes on the scheduler.
 	#[inline]
 	pub fn processes_count(&self) -> usize {
-		self.processes.len()
+		self.processes.read().len()
 	}
 
-	/// Returns an iterator on the scheduler's processes.
-	pub fn iter_process(&self) -> MapIterator<'_, Pid, Arc<Process>> {
-		self.processes.iter()
+	/// Read-locks the list of processes, and returns the guard.
+	pub fn processes(&self) -> IntReadGuard<'_, BTreeMap<Pid, Arc<Process>>> {
+		self.processes.read()
 	}
 
 	/// Returns the process with PID `pid`.
 	///
 	/// If the process doesn't exist, the function returns `None`.
 	pub fn get_by_pid(&self, pid: Pid) -> Option<Arc<Process>> {
-		Some(self.processes.get(&pid)?.clone())
+		self.processes.write().get(&pid).cloned()
 	}
 
 	/// Returns the process with TID `tid`.
@@ -191,32 +193,33 @@ impl Scheduler {
 	}
 
 	/// Returns the current running process.
+	#[inline]
 	pub fn get_current_process(&self) -> Arc<Process> {
-		self.curr_proc.clone()
+		self.cur_proc.get()
 	}
 
 	/// Swaps the current running process for `new`, returning the previous.
-	pub fn swap_current_process(&mut self, new: Arc<Process>) -> Arc<Process> {
+	pub fn swap_current_process(&self, new: Arc<Process>) -> Arc<Process> {
 		core_local()
 			.kernel_stack
 			.store(new.kernel_stack.top().as_ptr() as _, Release);
-		mem::replace(&mut self.curr_proc, new)
+		self.cur_proc.replace(new)
 	}
 
 	/// Adds a process to the scheduler.
-	pub fn add_process(&mut self, proc: Arc<Process>) -> AllocResult<()> {
+	pub fn add_process(&self, proc: Arc<Process>) -> AllocResult<()> {
 		if proc.get_state() == State::Running {
 			self.increment_running();
 		}
-		self.processes.insert(*proc.pid, proc)?;
+		self.processes.write().insert(*proc.pid, proc)?;
 		Ok(())
 	}
 
 	/// Removes the process with the given pid `pid`.
 	///
 	/// If the process is not attached to this scheduler, the function does nothing.
-	pub fn remove_process(&mut self, pid: Pid) {
-		let proc = self.processes.remove(&pid);
+	pub fn remove_process(&self, pid: Pid) {
+		let proc = self.processes.write().remove(&pid);
 		if let Some(proc) = proc {
 			if proc.get_state() == State::Running {
 				self.decrement_running();
@@ -224,48 +227,45 @@ impl Scheduler {
 		}
 	}
 
-	/// Returns the current ticking frequency of the scheduler.
-	pub fn get_ticking_frequency(&self) -> u32 {
-		(10 * self.running_procs) as _
-	}
-
 	/// Increments the number of running processes.
-	pub fn increment_running(&mut self) {
-		self.running_procs += 1;
+	pub fn increment_running(&self) {
+		let running = self.running_procs.fetch_add(1, Release) + 1;
 		let mut clocks = time::hw::CLOCKS.lock();
 		let pit = clocks.get_mut(b"pit".as_slice()).unwrap();
-		if self.running_procs >= 1 {
-			pit.set_frequency(self.get_ticking_frequency());
+		if running >= 1 {
+			pit.set_frequency(get_ticking_frequency(running));
 			pit.set_enabled(true);
 		}
 	}
 
 	/// Decrements the number of running processes.
-	pub fn decrement_running(&mut self) {
-		self.running_procs -= 1;
+	pub fn decrement_running(&self) {
+		let running = self.running_procs.fetch_sub(1, Release) - 1;
 		let mut clocks = time::hw::CLOCKS.lock();
 		let pit = clocks.get_mut(b"pit".as_slice()).unwrap();
-		if self.running_procs == 0 {
+		if running == 0 {
 			pit.set_enabled(false);
 		} else {
-			pit.set_frequency(self.get_ticking_frequency());
+			pit.set_frequency(get_ticking_frequency(running));
 		}
 	}
 
 	/// Returns the next process to run with its PID.
-	fn get_next_process(&self) -> Option<Arc<Process>> {
+	///
+	/// `cur_pid` is the PID of the currently running process
+	fn get_next_process(&self, cur_pid: Pid) -> Option<Arc<Process>> {
 		// Get the current process, or take the first process in the list if no
 		// process is running
-		let curr_pid = self.curr_proc.get_pid();
 		let process_filter =
 			|(_, proc): &(&Pid, &Arc<Process>)| matches!(proc.get_state(), State::Running);
-		self.processes
-			.range((curr_pid + 1)..)
+		let processes = self.processes.read();
+		processes
+			.range((cur_pid + 1)..)
 			.find(process_filter)
 			.or_else(|| {
 				// If no suitable process is found, go back to the beginning to check processes
 				// located before the previous process (looping)
-				self.processes.range(..=curr_pid).find(process_filter)
+				processes.range(..=cur_pid).find(process_filter)
 			})
 			.map(|(_, proc)| proc.clone())
 	}
@@ -279,20 +279,20 @@ impl Scheduler {
 	pub fn tick() {
 		// Disable interrupts so that no interrupt can occur before switching to the next process
 		cli();
+		SCHEDULER.total_ticks.fetch_add(1, Relaxed);
+		let cur_pid = SCHEDULER.cur_proc.get().get_pid();
 		let (prev, next) = {
-			let mut sched = SCHEDULER.lock();
-			sched.total_ticks.fetch_add(1, atomic::Ordering::Relaxed);
 			// Find the next process to run
-			let next = sched
-				.get_next_process()
-				.unwrap_or_else(|| sched.idle_task.clone());
+			let next = SCHEDULER
+				.get_next_process(cur_pid)
+				.unwrap_or_else(|| SCHEDULER.idle_task.clone());
 			// If the process to run is the current, do nothing
-			if next.get_pid() == sched.curr_proc.get_pid() {
+			if next.get_pid() == cur_pid {
 				return;
 			}
 			// Swap current running process. We use pointers to avoid cloning the Arc
 			let next_ptr = Arc::as_ptr(&next);
-			let prev = sched.swap_current_process(next);
+			let prev = SCHEDULER.swap_current_process(next);
 			(Arc::as_ptr(&prev), next_ptr)
 		};
 		// Send end of interrupt, so that the next tick can be received

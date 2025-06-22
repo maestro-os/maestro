@@ -122,7 +122,6 @@ pub struct Sysinfo {
 
 pub fn sysinfo(Args(info): Args<UserPtr<Sysinfo>>) -> EResult<usize> {
 	let mem_info = MEM_INFO.lock().clone();
-	let procs = SCHEDULER.lock().processes_count();
 	info.copy_to_user(&Sysinfo {
 		uptime: current_time_sec(Clock::Boottime) as _,
 		loads: [0; 3], // TODO
@@ -132,7 +131,7 @@ pub fn sysinfo(Args(info): Args<UserPtr<Sysinfo>>) -> EResult<usize> {
 		bufferram: 0, // TODO
 		totalswap: 0, // TODO
 		freeswap: 0,  // TODO
-		procs: procs as _,
+		procs: SCHEDULER.processes_count() as _,
 		pad: 0,
 		totalhigh: 0, // TODO
 		freehigh: 0,  // TODO

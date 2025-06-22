@@ -261,7 +261,7 @@ pub fn compat_clone(
 		let child_tid = child.tid;
 		// Switch
 		switch::finish(&proc, &child);
-		SCHEDULER.lock().swap_current_process(child.clone());
+		SCHEDULER.swap_current_process(child.clone());
 		let mut child_frame = frame.clone();
 		child_frame.rax = 0; // Return value
 		if !stack.is_null() {

@@ -435,19 +435,19 @@ impl Process {
 	///
 	/// If the process doesn't exist, the function returns `None`.
 	pub fn get_by_pid(pid: Pid) -> Option<Arc<Self>> {
-		SCHEDULER.lock().get_by_pid(pid)
+		SCHEDULER.get_by_pid(pid)
 	}
 
 	/// Returns the process with TID `tid`.
 	///
 	/// If the process doesn't exist, the function returns `None`.
 	pub fn get_by_tid(tid: Pid) -> Option<Arc<Self>> {
-		SCHEDULER.lock().get_by_tid(tid)
+		SCHEDULER.get_by_tid(tid)
 	}
 
 	/// Returns the current running process.
 	pub fn current() -> Arc<Self> {
-		SCHEDULER.lock().get_current_process()
+		SCHEDULER.get_current_process()
 	}
 
 	/// Creates a kernel thread.
@@ -497,7 +497,7 @@ impl Process {
 			rusage: Default::default(),
 		})?;
 		if queue {
-			SCHEDULER.lock().add_process(thread.clone())?;
+			SCHEDULER.add_process(thread.clone())?;
 		}
 		Ok(thread)
 	}
@@ -571,7 +571,7 @@ impl Process {
 
 			rusage: Default::default(),
 		})?;
-		SCHEDULER.lock().add_process(proc.clone())?;
+		SCHEDULER.add_process(proc.clone())?;
 		Ok(proc)
 	}
 
@@ -714,9 +714,9 @@ impl Process {
 			);
 			// Update the number of running processes
 			if new_state == State::Running {
-				SCHEDULER.lock().increment_running();
+				SCHEDULER.increment_running();
 			} else if old_state == State::Running {
-				SCHEDULER.lock().decrement_running();
+				SCHEDULER.decrement_running();
 			}
 			if new_state == State::Zombie {
 				if self.is_init() {
@@ -776,7 +776,7 @@ impl Process {
 		);
 		// Update the number of running processes
 		if res.is_ok() {
-			SCHEDULER.lock().increment_running();
+			SCHEDULER.increment_running();
 		}
 	}
 
@@ -904,7 +904,7 @@ impl Process {
 				links.process_group.insert(i, pid_int)?;
 			}
 		}
-		SCHEDULER.lock().add_process(proc.clone())?;
+		SCHEDULER.add_process(proc.clone())?;
 		Ok(proc)
 	}
 
