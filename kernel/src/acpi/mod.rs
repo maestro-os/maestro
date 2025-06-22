@@ -256,7 +256,8 @@ pub(crate) fn init() -> AllocResult<()> {
 				if ent.apic_flags & 0b11 == 0 {
 					continue;
 				}
-				println!("Register CPU {}", ent.processor_id);
+				let flags = ent.apic_flags;
+				println!("Register CPU {} {}", ent.processor_id, flags);
 				CPU.lock().push(Cpu {
 					id: ent.processor_id,
 					apic_id: ent.apic_id,

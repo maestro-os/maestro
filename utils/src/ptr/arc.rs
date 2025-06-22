@@ -269,18 +269,18 @@ impl<T: ?Sized> Drop for Arc<T> {
 	}
 }
 
-/// Relaxed atomic [`Arc`] storage.
+/// Relaxed atomic optional [`Arc`] storage.
 #[derive(Default)]
-pub struct RelaxedArcCell<T>(AtomicPtr<T>);
+pub struct AtomicOptionalArc<T>(AtomicPtr<T>);
 
-impl<T> From<Arc<T>> for RelaxedArcCell<T> {
+impl<T> From<Arc<T>> for AtomicOptionalArc<T> {
 	fn from(val: Arc<T>) -> Self {
 		let ptr = Arc::into_raw(val);
 		Self(AtomicPtr::new(ptr as _))
 	}
 }
 
-impl<T> RelaxedArcCell<T> {
+impl<T> AtomicOptionalArc<T> {
 	/// Creates a new instance.
 	#[inline]
 	pub const fn new() -> Self {
@@ -308,6 +308,34 @@ impl<T> RelaxedArcCell<T> {
 	/// Set the inner [`Arc`].
 	#[inline]
 	pub fn set(&self, val: Option<Arc<T>>) {
+		self.replace(val);
+	}
+}
+/// Relaxed atomic [`Arc`] storage.
+pub struct AtomicArc<T>(AtomicOptionalArc<T>);
+
+impl<T> From<Arc<T>> for AtomicArc<T> {
+	fn from(val: Arc<T>) -> Self {
+		Self(AtomicOptionalArc::from(val))
+	}
+}
+
+impl<T> AtomicArc<T> {
+	/// Get a copy of the inner [`Arc`].
+	#[inline]
+	pub fn get(&self) -> Arc<T> {
+		self.0.get().unwrap()
+	}
+
+	/// Swaps the inner value for `val`, returning the previous.
+	#[inline]
+	pub fn replace(&self, val: Arc<T>) -> Arc<T> {
+		self.0.replace(Some(val)).unwrap()
+	}
+
+	/// Set the inner [`Arc`].
+	#[inline]
+	pub fn set(&self, val: Arc<T>) {
 		self.replace(val);
 	}
 }

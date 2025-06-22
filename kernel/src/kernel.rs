@@ -135,7 +135,7 @@ fn init(init_path: String) -> EResult<IntFrame> {
 		)?;
 		let proc = Process::init()?;
 		exec(&proc, &mut frame, program_image)?;
-		SCHEDULER.lock().swap_current_process(proc);
+		SCHEDULER.swap_current_process(proc);
 	}
 	Ok(frame)
 }

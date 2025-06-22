@@ -107,11 +107,10 @@ fn get_waitable(
 	rusage: UserPtr<Rusage>,
 ) -> EResult<Option<Pid>> {
 	let mut empty = true;
-	let mut sched = SCHEDULER.lock();
 	// Find a waitable process
 	let proc = iter_targets(curr_proc, pid)
 		.inspect(|_| empty = false)
-		.filter_map(|pid| sched.get_by_pid(pid))
+		.filter_map(|pid| SCHEDULER.get_by_pid(pid))
 		// Select a waitable process
 		.find(|proc| {
 			let events = if options & WNOWAIT == 0 {
@@ -139,7 +138,7 @@ fn get_waitable(
 	let pid = proc.get_pid();
 	if options & WNOWAIT == 0 && proc.get_state() == State::Zombie {
 		proc.unlink();
-		sched.remove_process(pid);
+		SCHEDULER.remove_process(pid);
 	}
 	Ok(Some(pid))
 }
