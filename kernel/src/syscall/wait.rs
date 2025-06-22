@@ -24,7 +24,7 @@ use crate::{
 		Process, State,
 		pid::Pid,
 		rusage::Rusage,
-		scheduler::{SCHEDULER, Scheduler},
+		scheduler::{SCHEDULER, schedule},
 	},
 	syscall::Args,
 };
@@ -166,7 +166,7 @@ pub fn do_waitpid(
 			// current process to wake it up
 			proc.set_state(State::Sleeping);
 		}
-		Scheduler::tick();
+		schedule();
 	}
 }
 

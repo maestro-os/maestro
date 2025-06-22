@@ -47,7 +47,7 @@ use crate::{
 		pid::{IDLE_PID, INIT_PID, PidHandle},
 		rusage::Rusage,
 		scheduler::{
-			SCHEDULER, Scheduler, core_local, switch,
+			SCHEDULER, core_local, schedule, switch,
 			switch::{KThreadEntry, idle_task},
 		},
 		signal::{SIGNALS_COUNT, SigSet},
@@ -1033,6 +1033,6 @@ pub fn yield_current(ring: u8, frame: &mut IntFrame) {
 	// Use a separate function to drop everything, since `Scheduler::tick` may never return
 	let cont = yield_current_impl(frame);
 	if !cont {
-		Scheduler::tick();
+		schedule();
 	}
 }
