@@ -34,7 +34,7 @@ use crate::{
 	event::CallbackResult,
 	process::{
 		Process, State,
-		scheduler::Scheduler,
+		scheduler::schedule,
 		signal::{SIGEV_NONE, SigEvent},
 	},
 	time::{
@@ -84,7 +84,7 @@ pub fn sleep_for(clock: Clock, delay: Timestamp, remain: &mut Timestamp) -> ERes
 			}
 			proc.set_state(State::Sleeping);
 		}
-		Scheduler::tick();
+		schedule();
 	}
 	Ok(())
 }
