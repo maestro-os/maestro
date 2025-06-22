@@ -78,7 +78,7 @@ fn is_unlocked(state: u32) -> bool {
 /// Read-write lock, allowing either several concurrent readers or a single writer.
 ///
 /// Underneath, the lock is only using a spinlock. The current process will not be put in
-/// [`Sleeping`] state
+/// `Sleeping` state
 ///
 /// The `INT` generic parameter tells whether interrupts are masked reading or writing. This can be
 /// specified with the flags [`INT_READ`] and [`INT_WRITE`]. By default, none is masked.

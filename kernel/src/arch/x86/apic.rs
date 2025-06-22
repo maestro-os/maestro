@@ -51,7 +51,8 @@ pub fn get_base_addr() -> usize {
 /// Sets the physical base address of local APIC registers.
 #[inline]
 pub fn set_base_addr(addr: usize) {
-	let val = (addr & 0xffffff000) | 0x800;
+	#[allow(overflowing_literals)]
+	let val = (addr & 0xffffff000usize) | 0x800;
 	wrmsr(IA32_APIC_BASE_MSR, val as _);
 }
 
