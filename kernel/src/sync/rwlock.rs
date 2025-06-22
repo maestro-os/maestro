@@ -20,6 +20,10 @@
 
 // This implementation is highly inspired from the Rust standard library
 
+use crate::arch::{
+	x86,
+	x86::{cli, sti},
+};
 use core::{
 	cell::UnsafeCell,
 	hint,
@@ -30,6 +34,11 @@ use core::{
 		Ordering::{Acquire, Relaxed, Release},
 	},
 };
+
+/// Interrupt flag: if set, interrupts are allowed while the lock is read-locked
+pub const INT_READ: u8 = 0b01;
+/// Interrupt flag: if set, interrupts are allowed while the lock is write-locked
+pub const INT_WRITE: u8 = 0b10;
 
 /// Mask of bits representing the number of readers holding the lock.
 const MASK: u32 = (1 << 30) - 1;
@@ -67,8 +76,14 @@ fn is_unlocked(state: u32) -> bool {
 }
 
 /// Read-write lock, allowing either several concurrent readers or a single writer.
+///
+/// Underneath, the lock is only using a spinlock. The current process will not be put in
+/// [`Sleeping`] state
+///
+/// The `INT` generic parameter tells whether interrupts are masked reading or writing. This can be
+/// specified with the flags [`INT_READ`] and [`INT_WRITE`]. By default, none is masked.
 #[derive(Default)]
-pub struct RwLock<T: ?Sized> {
+pub struct RwLock<T: ?Sized, const INT: u8 = { INT_READ | INT_WRITE }> {
 	/// The state of the lock.
 	///
 	/// - Bits 0..30:
@@ -82,9 +97,9 @@ pub struct RwLock<T: ?Sized> {
 	data: UnsafeCell<T>,
 }
 
-impl<T> RwLock<T> {
+impl<T, const INT: u8> RwLock<T, INT> {
 	/// Creates a new lock.
-	pub fn new(value: T) -> Self {
+	pub const fn new(value: T) -> Self {
 		Self {
 			state: AtomicU32::new(0),
 			data: UnsafeCell::new(value),
@@ -92,7 +107,7 @@ impl<T> RwLock<T> {
 	}
 }
 
-impl<T: ?Sized> RwLock<T> {
+impl<T: ?Sized, const INT: u8> RwLock<T, INT> {
 	/// Spins until `f` returns `true`. The argument to `f` is the state of the lock.
 	///
 	/// The function returns the locks' state.
@@ -130,12 +145,22 @@ impl<T: ?Sized> RwLock<T> {
 			if state & MASK == MAX_READERS {
 				panic!("too many readers on RwLock");
 			}
-			// TODO make the current thread sleep
+			hint::spin_loop();
 		}
 	}
 
 	/// Locks for read access, blocking the current thread until it can be acquired.
-	pub fn read(&self) -> ReadGuard<'_, T> {
+	pub fn read(&self) -> ReadGuard<'_, T, INT> {
+		// Disable interrupts if needed
+		let int_state = if INT & INT_READ == 0 {
+			let enabled = x86::is_interrupt_enabled();
+			cli();
+			enabled
+		} else {
+			// In this case, this value does not matter
+			false
+		};
+		// Attempt to lock
 		let state = self.state.load(Relaxed);
 		if !is_read_lockable(state)
 			|| self
@@ -148,14 +173,18 @@ impl<T: ?Sized> RwLock<T> {
 		ReadGuard {
 			lock: self,
 			data: NonNull::new(self.data.get()).unwrap(),
+			int_state,
 		}
 	}
 
 	#[inline]
-	fn read_unlock(&self) {
+	fn read_unlock(&self, int_state: bool) {
 		let state = self.state.fetch_sub(1, Release) - 1;
 		debug_assert!(!has_readers_waiting(state) || has_writers_waiting(state));
-		// TODO if the lock is unlocked and has other threads waiting, wake them
+		// Restore interrupts if needed
+		if INT & INT_READ == 0 && int_state {
+			sti();
+		}
 	}
 
 	#[cold]
@@ -188,12 +217,22 @@ impl<T: ?Sized> RwLock<T> {
 					continue;
 				}
 			}
-			// TODO make the current thread sleep
+			hint::spin_loop();
 		}
 	}
 
 	/// Locks for write access, blocking the current thread until it can be acquired.
-	pub fn write(&self) -> WriteGuard<'_, T> {
+	pub fn write(&self) -> WriteGuard<'_, T, INT> {
+		// Disable interrupts if needed
+		let int_state = if INT & INT_WRITE == 0 {
+			let enabled = x86::is_interrupt_enabled();
+			cli();
+			enabled
+		} else {
+			// In this case, this value does not matter
+			false
+		};
+		// Attempt to lock
 		if self
 			.state
 			.compare_exchange_weak(0, WRITE_LOCKED, Acquire, Relaxed)
@@ -203,30 +242,35 @@ impl<T: ?Sized> RwLock<T> {
 		}
 		WriteGuard {
 			lock: self,
+			int_state,
 		}
 	}
 
 	#[inline]
-	fn write_unlock(&self) {
+	fn write_unlock(&self, int_state: bool) {
 		let state = self.state.fetch_sub(WRITE_LOCKED, Release) - WRITE_LOCKED;
 		debug_assert!(is_unlocked(state));
-		// TODO if the lock has other threads waiting, wake them
+		// Restore interrupts if needed
+		if INT & INT_READ == 0 && int_state {
+			sti();
+		}
 	}
 }
 
-unsafe impl<T: ?Sized> Send for RwLock<T> {}
+unsafe impl<T: ?Sized, const INT: u8> Send for RwLock<T, INT> {}
 
-unsafe impl<T: ?Sized> Sync for RwLock<T> {}
+unsafe impl<T: ?Sized, const INT: u8> Sync for RwLock<T, INT> {}
 
 /// Guard of [`RwLock`] reader.
-pub struct ReadGuard<'a, T: ?Sized> {
-	lock: &'a RwLock<T>,
+pub struct ReadGuard<'a, T: ?Sized, const INT: u8> {
+	lock: &'a RwLock<T, INT>,
 	// Using a pointer instead of a reference to avoid `noalias` violations, since the structure
 	// holds immutability only until it drops (while other locks might still need it).
 	data: NonNull<T>,
+	int_state: bool,
 }
 
-impl<T: ?Sized> Deref for ReadGuard<'_, T> {
+impl<T: ?Sized, const INT: u8> Deref for ReadGuard<'_, T, INT> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
@@ -234,22 +278,23 @@ impl<T: ?Sized> Deref for ReadGuard<'_, T> {
 	}
 }
 
-impl<T: ?Sized> !Send for ReadGuard<'_, T> {}
+impl<T: ?Sized, const INT: u8> !Send for ReadGuard<'_, T, INT> {}
 
-unsafe impl<T: ?Sized + Sync> Sync for ReadGuard<'_, T> {}
+unsafe impl<T: ?Sized + Sync, const INT: u8> Sync for ReadGuard<'_, T, INT> {}
 
-impl<T: ?Sized> Drop for ReadGuard<'_, T> {
+impl<T: ?Sized, const INT: u8> Drop for ReadGuard<'_, T, INT> {
 	fn drop(&mut self) {
-		self.lock.read_unlock();
+		self.lock.read_unlock(self.int_state);
 	}
 }
 
 /// Guard of [`RwLock`] writer.
-pub struct WriteGuard<'a, T: ?Sized> {
-	lock: &'a RwLock<T>,
+pub struct WriteGuard<'a, T: ?Sized, const INT: u8> {
+	lock: &'a RwLock<T, INT>,
+	int_state: bool,
 }
 
-impl<T: ?Sized> Deref for WriteGuard<'_, T> {
+impl<T: ?Sized, const INT: u8> Deref for WriteGuard<'_, T, INT> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
@@ -257,18 +302,26 @@ impl<T: ?Sized> Deref for WriteGuard<'_, T> {
 	}
 }
 
-impl<T: ?Sized> DerefMut for WriteGuard<'_, T> {
+impl<T: ?Sized, const INT: u8> DerefMut for WriteGuard<'_, T, INT> {
 	fn deref_mut(&mut self) -> &mut Self::Target {
 		unsafe { &mut *self.lock.data.get() }
 	}
 }
 
-impl<T: ?Sized> !Send for WriteGuard<'_, T> {}
+impl<T: ?Sized, const INT: u8> !Send for WriteGuard<'_, T, INT> {}
 
-unsafe impl<T: ?Sized + Sync> Sync for WriteGuard<'_, T> {}
+unsafe impl<T: ?Sized + Sync, const INT: u8> Sync for WriteGuard<'_, T, INT> {}
 
-impl<T: ?Sized> Drop for WriteGuard<'_, T> {
+impl<T: ?Sized, const INT: u8> Drop for WriteGuard<'_, T, INT> {
 	fn drop(&mut self) {
-		self.lock.write_unlock();
+		self.lock.write_unlock(self.int_state);
 	}
 }
+
+/// Type alias on [`RwLock`] representing a rwlock which masks interrupts (both while reading and
+/// writing).
+pub type IntRwLock<T> = RwLock<T, 0>;
+/// Type alias on [`IntReadGuard`] representing a read mutex guard which masks interrupts.
+pub type IntReadGuard<'m, T> = ReadGuard<'m, T, 0>;
+/// Type alias on [`IntReadGuard`] representing a write mutex guard which masks interrupts.
+pub type IntWriteGuard<'m, T> = WriteGuard<'m, T, 0>;
