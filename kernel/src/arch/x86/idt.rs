@@ -23,7 +23,7 @@
 use crate::{
 	arch::{
 		x86,
-		x86::{DEFAULT_FLAGS, cli, gdt, pic, sti},
+		x86::{DEFAULT_FLAGS, cli, gdt, sti},
 	},
 	syscall::syscall_int,
 };
@@ -370,8 +370,6 @@ fn enable_syscall_inst() {
 ///
 /// When returning, maskable interrupts are disabled by default.
 pub fn init() {
-	cli();
-	pic::init(0x20, 0x28);
 	// Safe because the current function is called only once at boot
 	unsafe {
 		// Errors
