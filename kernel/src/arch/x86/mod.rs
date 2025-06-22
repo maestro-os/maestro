@@ -18,16 +18,19 @@
 
 //! x86-specific code.
 
+pub mod apic;
 pub mod gdt;
-#[macro_use]
 pub mod idt;
 pub mod io;
 pub mod paging;
 pub mod pic;
+pub mod smp;
 pub mod tss;
 
 use core::arch::asm;
 
+/// MSR: APIC base
+pub const IA32_APIC_BASE_MSR: u32 = 0x1b;
 /// MSR: FS base
 pub const IA32_FS_BASE: u32 = 0xc0000100;
 /// MSR: GS base
@@ -119,23 +122,23 @@ pub fn cpuid(mut eax: u32, mut ebx: u32, mut ecx: u32, mut edx: u32) -> (u32, u3
 	unsafe {
 		#[cfg(target_arch = "x86")]
 		asm!(
-		"cpuid",
-		inout("eax") eax,
-		inout("ebx") ebx,
-		inout("ecx") ecx,
-		inout("edx") edx,
+			"cpuid",
+			inout("eax") eax,
+			inout("ebx") ebx,
+			inout("ecx") ecx,
+			inout("edx") edx,
 		);
 		#[cfg(target_arch = "x86_64")]
 		asm!(
-		"push rbx",
-		"mov ebx, {rbx:e}",
-		"cpuid",
-		"mov {rbx:e}, ebx",
-		"pop rbx",
-		inout("rax") eax,
-		rbx = inout(reg) ebx,
-		inout("rcx") ecx,
-		inout("rdx") edx,
+			"push rbx",
+			"mov ebx, {rbx:e}",
+			"cpuid",
+			"mov {rbx:e}, ebx",
+			"pop rbx",
+			inout("rax") eax,
+			rbx = inout(reg) ebx,
+			inout("rcx") ecx,
+			inout("rdx") edx,
 		);
 	}
 	(eax, ebx, ecx, edx)
