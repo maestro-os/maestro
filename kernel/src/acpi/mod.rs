@@ -28,7 +28,7 @@ use crate::{
 };
 use core::{
 	hint::{likely, unlikely},
-	mem::{align_of, size_of},
+	mem::size_of,
 	slice,
 	sync::{atomic, atomic::AtomicBool},
 };
@@ -112,14 +112,13 @@ impl Rsdp {
 			return false;
 		}
 		// Check RSDT
-		if self.rsdt_address == 0 || self.rsdt_address as usize % align_of::<Sdt<false>>() != 0 {
+		if self.rsdt_address == 0 {
 			return false;
 		}
 		// Check XSDT
 		if self.revision >= 2 {
 			if let Some(v2) = self.as_v2() {
-				if v2.xsdt_address == 0 || v2.xsdt_address as usize % align_of::<Sdt<true>>() != 0
-				{
+				if v2.xsdt_address == 0 {
 					return false;
 				}
 			}
@@ -155,7 +154,7 @@ impl Rsdp {
 }
 
 /// An ACPI table header.
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Debug)]
 pub struct TableHdr {
 	/// The signature of the structure.
@@ -235,7 +234,7 @@ pub(crate) fn init() -> AllocResult<()> {
 		return Ok(());
 	};
 	if unlikely(!rsdp.check()) {
-		panic!("ACPI: invalid RSDP checksum");
+		panic!("ACPI: invalid RSDP");
 	}
 	let (madt, fadt) = if let Some(xsdt) = unsafe { rsdp.get_xsdt() } {
 		(xsdt.get_table::<Madt>(), xsdt.get_table::<Fadt>())
