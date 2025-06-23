@@ -19,6 +19,8 @@
 //! The Advanced Programmable Interrupt Controller (APIC) is the updated Intel standard for the
 //! older PIC. It is necessary for the SMP support.
 
+// TODO implement x2APIC
+
 use super::{IA32_APIC_BASE_MSR, cpuid, rdmsr, wrmsr};
 use crate::memory::PhysAddr;
 
@@ -26,6 +28,9 @@ use crate::memory::PhysAddr;
 const EOI_REGISTER: usize = 0xb0;
 /// APIC register: Spurious Interrupt Vector Register
 const SPURIOUS_INTERRUPT_VECTOR_REGISTER: usize = 0xf0;
+
+/// I/O APIC physical base address
+const IOAPIC_BASE_ADDR: usize = 0xfec00000;
 
 /// Tells whether the APIC is present or not.
 #[inline]
@@ -76,6 +81,36 @@ pub unsafe fn read_reg(base_addr: *mut u32, reg: usize) -> u32 {
 #[inline]
 pub unsafe fn write_reg(base_addr: *mut u32, reg: usize, value: u32) {
 	base_addr.byte_add(reg).write_volatile(value);
+}
+
+/// Reads a register of the I/O APIC.
+///
+/// # Safety
+///
+/// The caller must ensure the APIC is present and `reg` is valid.
+#[inline]
+pub unsafe fn read_ioapic_reg(reg: u8) -> u32 {
+	let base_addr: *mut u32 = PhysAddr(IOAPIC_BASE_ADDR)
+		.kernel_to_virtual()
+		.unwrap()
+		.as_ptr();
+	base_addr.write_volatile(reg as _);
+	base_addr.add(1).read_volatile()
+}
+
+/// Writes a register of the I/O APIC.
+///
+/// # Safety
+///
+/// The caller must ensure the APIC is present and `reg` is valid.
+#[inline]
+pub unsafe fn write_ioapic_reg(reg: u8, value: u32) {
+	let base_addr: *mut u32 = PhysAddr(IOAPIC_BASE_ADDR)
+		.kernel_to_virtual()
+		.unwrap()
+		.as_ptr();
+	base_addr.write_volatile(reg as _);
+	base_addr.add(1).write_volatile(value);
 }
 
 /// Initializes the local APIC.

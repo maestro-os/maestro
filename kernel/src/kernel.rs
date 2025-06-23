@@ -145,8 +145,8 @@ fn init(init_path: String) -> EResult<IntFrame> {
 fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	// Initialize TTY
 	TTY.display.lock().show();
-	// Architecture-specific initialization
-	arch::init();
+	// Architecture-specific initialization, stage 1
+	arch::init1();
 
 	// Read multiboot information
 	if unlikely(magic != multiboot::BOOTLOADER_MAGIC || !multiboot_ptr.is_aligned_to(8)) {
@@ -187,6 +187,8 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 
 	println!("Initializing ACPI...");
 	acpi::init().unwrap_or_else(|e| panic!("Failed to initialize ACPI! ({e})"));
+	// Architecture-specific initialization, stage 2
+	arch::init2();
 
 	println!("Initializing time management...");
 	time::init().unwrap_or_else(|e| panic!("Failed to initialize time management! ({e})"));
