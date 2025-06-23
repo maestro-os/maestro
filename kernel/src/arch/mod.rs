@@ -18,7 +18,10 @@
 
 //! Architecture-specific **Hardware Abstraction Layers** (HAL).
 
+use crate::arch::x86::{apic, pic};
+
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[macro_use]
 pub mod x86;
 
 /// The name of the current CPU architecture.
@@ -32,3 +35,52 @@ pub const ARCH: &str = {
 		"x86_64"
 	}
 };
+
+/// Tells whether the APIC is present or not.
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+static mut APIC: bool = false;
+
+/// Architecture-specific initialization, stage 1.
+pub(crate) fn init1() {
+	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+	{
+		use x86::*;
+		cli();
+		if !has_sse() {
+			panic!("SSE support is required to run this kernel :(");
+		}
+		enable_sse();
+		idt::init();
+	}
+}
+
+/// Architecture-specific initialization, stage 2.
+pub(crate) fn init2() {
+	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+	{
+		let apic = apic::is_present();
+		unsafe {
+			APIC = apic;
+		}
+		if apic::is_present() {
+			pic::disable();
+			apic::init();
+		} else {
+			pic::enable(0x20, 0x28);
+		}
+	}
+}
+
+/// Sends an End-Of-Interrupt message for the given interrupt `irq`.
+pub fn end_of_interrupt(irq: u8) {
+	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+	{
+		use x86::*;
+		let apic = unsafe { APIC };
+		if apic {
+			apic::end_of_interrupt();
+		} else {
+			pic::end_of_interrupt(irq);
+		}
+	}
+}

@@ -256,9 +256,8 @@ impl NodeOps for RootDir {
 		}
 		// Iterate on processes
 		let off = ctx.off as usize - Self::STATIC.entries.len();
-		let sched = SCHEDULER.lock();
-		let proc_iter = sched.iter_process().skip(off);
-		for (pid, _) in proc_iter {
+		let processes = SCHEDULER.processes();
+		for (pid, _) in processes.iter().skip(off) {
 			let name = format!("{pid}")?;
 			let ent = DirEntry {
 				inode: 0,

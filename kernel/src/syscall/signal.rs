@@ -22,10 +22,9 @@ use crate::{
 	arch::x86::idt::IntFrame,
 	file::perm::AccessProfile,
 	memory::user::UserPtr,
-	process,
 	process::{
 		Process, State,
-		pid::Pid,
+		pid::{INIT_PID, Pid},
 		scheduler::SCHEDULER,
 		signal::{CompatSigAction, SigAction, SigSet, Signal, SignalHandler, ucontext},
 	},
@@ -206,9 +205,9 @@ pub fn kill(Args((pid, sig)): Args<(c_int, c_int)>) -> EResult<usize> {
 		0 => try_kill_group(0, sig)?,
 		// Kill all processes for which the current process has the permission
 		-1 => {
-			let sched = SCHEDULER.lock();
-			for (pid, _) in sched.iter_process() {
-				if *pid == process::pid::INIT_PID {
+			let processes = SCHEDULER.processes();
+			for (pid, _) in processes.iter() {
+				if *pid == INIT_PID {
 					continue;
 				}
 				// TODO Check permission
