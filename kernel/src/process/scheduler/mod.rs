@@ -22,7 +22,10 @@
 pub mod switch;
 
 use crate::{
-	arch::x86::{cli, idt::IntFrame, pic},
+	arch::{
+		end_of_interrupt,
+		x86::{cli, idt::IntFrame},
+	},
 	event,
 	event::{CallbackHook, CallbackResult},
 	process::{Process, State, mem_space::MemSpace, pid::Pid, scheduler::switch::switch},
@@ -304,7 +307,7 @@ pub fn schedule() {
 		(Arc::as_ptr(&prev), next_ptr)
 	};
 	// Send end of interrupt, so that the next tick can be received
-	pic::end_of_interrupt(0);
+	end_of_interrupt(0);
 	unsafe {
 		switch(prev, next);
 	}

@@ -34,6 +34,9 @@ pub const ARCH: &str = {
 	}
 };
 
+/// Tells whether the APIC is present or not.
+static mut APIC: bool = false;
+
 /// Architecture-specific initialization.
 pub fn init() {
 	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -44,6 +47,10 @@ pub fn init() {
 		}
 		enable_sse();
 		cli();
+		let apic = apic::is_present();
+		unsafe {
+			APIC = apic;
+		}
 		if apic::is_present() {
 			pic::disable();
 			apic::init();
@@ -51,5 +58,19 @@ pub fn init() {
 			pic::enable(0x20, 0x28);
 		}
 		idt::init();
+	}
+}
+
+/// Sends an End-Of-Interrupt message for the given interrupt `irq`.
+pub fn end_of_interrupt(irq: u8) {
+	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+	{
+		use x86::*;
+		let apic = unsafe { APIC };
+		if apic {
+			apic::end_of_interrupt();
+		} else {
+			pic::end_of_interrupt(irq);
+		}
 	}
 }

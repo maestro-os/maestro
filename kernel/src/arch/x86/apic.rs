@@ -22,6 +22,8 @@
 use super::{IA32_APIC_BASE_MSR, cpuid, rdmsr, wrmsr};
 use crate::memory::PhysAddr;
 
+/// APIC register: Local APIC ID
+const EOI_REGISTER: usize = 0xb0;
 /// APIC register: Spurious Interrupt Vector Register
 const SPURIOUS_INTERRUPT_VECTOR_REGISTER: usize = 0xf0;
 
@@ -63,7 +65,7 @@ pub fn set_base_addr(addr: usize) {
 /// The caller must ensure the APIC is present, `base_addr` is valid, and `reg` is valid.
 #[inline]
 pub unsafe fn read_reg(base_addr: *mut u32, reg: usize) -> u32 {
-	base_addr.add(reg).read_volatile()
+	base_addr.byte_add(reg).read_volatile()
 }
 
 /// Writes a register of the local APIC.
@@ -73,7 +75,7 @@ pub unsafe fn read_reg(base_addr: *mut u32, reg: usize) -> u32 {
 /// The caller must ensure the APIC is present, `base_addr` is valid, and `reg` is valid.
 #[inline]
 pub unsafe fn write_reg(base_addr: *mut u32, reg: usize, value: u32) {
-	base_addr.add(reg).write_volatile(value);
+	base_addr.byte_add(reg).write_volatile(value);
 }
 
 /// Initializes the local APIC.
@@ -87,5 +89,15 @@ pub fn init() {
 	unsafe {
 		let val = read_reg(base_addr, SPURIOUS_INTERRUPT_VECTOR_REGISTER);
 		write_reg(base_addr, SPURIOUS_INTERRUPT_VECTOR_REGISTER, val | 0x1ff);
+	}
+}
+
+/// Sends an end of interrupt message to the APIC.
+pub fn end_of_interrupt() {
+	// TODO cache
+	let base_addr = get_base_addr();
+	let base_addr = PhysAddr(base_addr).kernel_to_virtual().unwrap().as_ptr();
+	unsafe {
+		write_reg(base_addr, EOI_REGISTER, 0);
 	}
 }

@@ -43,18 +43,12 @@ impl<const EXTENDED: bool> Sdt<EXTENDED> {
 		let entries_start = unsafe { (self as *const Self).add(1) };
 		(0..entries_count).map(move |i| {
 			let entry_addr = if EXTENDED {
-				unsafe {
-					ptr::read_unaligned((entries_start as *const u64).add(i)) as usize
-				}
+				unsafe { ptr::read_unaligned((entries_start as *const u64).add(i)) as usize }
 			} else {
-				unsafe {
-					ptr::read_unaligned((entries_start as *const u32).add(i)) as usize
-				}
+				unsafe { ptr::read_unaligned((entries_start as *const u32).add(i)) as usize }
 			};
 			let entry_addr = PhysAddr(entry_addr);
-			unsafe {
-				&*entry_addr.kernel_to_virtual().unwrap().as_ptr()
-			}
+			unsafe { &*entry_addr.kernel_to_virtual().unwrap().as_ptr() }
 		})
 	}
 
