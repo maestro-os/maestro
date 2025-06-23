@@ -24,7 +24,7 @@ use core::{mem::size_of, ptr, ptr::Pointee};
 
 /// Either the Root System Description Table (RSDT) or the eXtended System Description Pointer
 /// (XSDP).
-#[repr(C)]
+#[repr(C, packed)]
 pub struct Sdt<const EXTENDED: bool> {
 	/// The table's header
 	pub header: TableHdr,
@@ -42,16 +42,18 @@ impl<const EXTENDED: bool> Sdt<EXTENDED> {
 		let entries_count = entries_len / entry_len;
 		let entries_start = unsafe { (self as *const Self).add(1) };
 		(0..entries_count).map(move |i| {
-			if EXTENDED {
+			let entry_addr = if EXTENDED {
 				unsafe {
-					let entry_addr = PhysAddr(*(entries_start as *const u64).add(i) as usize);
-					&*entry_addr.kernel_to_virtual().unwrap().as_ptr()
+					ptr::read_unaligned((entries_start as *const u64).add(i)) as usize
 				}
 			} else {
 				unsafe {
-					let entry_addr = PhysAddr(*(entries_start as *const u32).add(i) as usize);
-					&*entry_addr.kernel_to_virtual().unwrap().as_ptr()
+					ptr::read_unaligned((entries_start as *const u32).add(i)) as usize
 				}
+			};
+			let entry_addr = PhysAddr(entry_addr);
+			unsafe {
+				&*entry_addr.kernel_to_virtual().unwrap().as_ptr()
 			}
 		})
 	}
