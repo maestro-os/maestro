@@ -19,7 +19,10 @@
 //! Interrupt callback register interface.
 
 use crate::{
-	arch::x86::{idt, idt::IntFrame, pic},
+	arch::{
+		end_of_interrupt,
+		x86::{idt, idt::IntFrame}
+	},
 	memory::user::UserSlice,
 	process, rand,
 	sync::mutex::IntMutex,
@@ -181,7 +184,7 @@ extern "C" fn interrupt_handler(frame: &mut IntFrame) {
 	}
 	// If not a hardware exception, send EOI
 	if let Some(irq) = id.checked_sub(ERROR_MESSAGES.len() as u32) {
-		pic::end_of_interrupt(irq as _);
+		end_of_interrupt(irq as _);
 	}
 	process::yield_current(ring, frame);
 }
