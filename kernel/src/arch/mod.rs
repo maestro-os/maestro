@@ -18,6 +18,8 @@
 
 //! Architecture-specific **Hardware Abstraction Layers** (HAL).
 
+use crate::arch::x86::{apic, pic};
+
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[macro_use]
 pub mod x86;
@@ -35,18 +37,27 @@ pub const ARCH: &str = {
 };
 
 /// Tells whether the APIC is present or not.
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 static mut APIC: bool = false;
 
-/// Architecture-specific initialization.
-pub fn init() {
+/// Architecture-specific initialization, stage 1.
+pub(crate) fn init1() {
 	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	{
 		use x86::*;
+		cli();
 		if !has_sse() {
 			panic!("SSE support is required to run this kernel :(");
 		}
 		enable_sse();
-		cli();
+		idt::init();
+	}
+}
+
+/// Architecture-specific initialization, stage 2.
+pub(crate) fn init2() {
+	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+	{
 		let apic = apic::is_present();
 		unsafe {
 			APIC = apic;
@@ -57,7 +68,6 @@ pub fn init() {
 		} else {
 			pic::enable(0x20, 0x28);
 		}
-		idt::init();
 	}
 }
 
