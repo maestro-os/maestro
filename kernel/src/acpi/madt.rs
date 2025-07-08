@@ -72,11 +72,7 @@ impl EntryHeader {
 	/// `T` must be a valid entry body.
 	#[inline]
 	pub unsafe fn body<T: AnyRepr>(&self) -> &T {
-		(self as *const Self)
-			.byte_add(size_of::<Self>())
-			.cast::<T>()
-			.as_ref()
-			.unwrap()
+		(self as *const Self).add(1).cast::<T>().as_ref().unwrap()
 	}
 }
 
@@ -108,8 +104,6 @@ impl<'m> Iterator for EntriesIterator<'m> {
 #[derive(AnyRepr)]
 #[repr(C, packed)]
 pub struct ProcessorLocalApic {
-	/// Entry header
-	pub hdr: EntryHeader,
 	/// Processor ID
 	pub processor_id: u8,
 	/// Local APIC ID
