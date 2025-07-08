@@ -20,6 +20,8 @@
 
 use super::{Table, TableHdr};
 use core::hint::likely;
+use macros::AnyRepr;
+use utils::bytes::AnyRepr;
 
 /// Indicates that the system also has a PC-AT-compatible dual-8259 setup (which
 /// must be disabled when enabling ACPI APIC).
@@ -62,6 +64,22 @@ pub struct EntryHeader {
 	pub length: u8,
 }
 
+impl EntryHeader {
+	/// Returns the body of the entry.
+	///
+	/// # Safety
+	///
+	/// `T` must be a valid entry body.
+	#[inline]
+	pub unsafe fn body<T: AnyRepr>(&self) -> &T {
+		(self as *const Self)
+			.byte_add(size_of::<Self>())
+			.cast::<T>()
+			.as_ref()
+			.unwrap()
+	}
+}
+
 /// Iterator over MADT entries.
 pub struct EntriesIterator<'m> {
 	madt: &'m Madt,
@@ -87,6 +105,7 @@ impl<'m> Iterator for EntriesIterator<'m> {
 }
 
 /// Description of a processor and its local APIC.
+#[derive(AnyRepr)]
 #[repr(C, packed)]
 pub struct ProcessorLocalApic {
 	/// Entry header
@@ -97,4 +116,31 @@ pub struct ProcessorLocalApic {
 	pub apic_id: u8,
 	/// Local APIC flags
 	pub apic_flags: u32,
+}
+
+/// Represents an I/O APIC.
+#[derive(AnyRepr, Debug)]
+#[repr(C, packed)]
+pub struct IOAPIC {
+	/// I/O APIC ID
+	pub ioapic_id: u8,
+	reserved: u8,
+	/// I/O APIC registers address
+	pub ioapic_address: u32,
+	/// Global System Interrupt
+	pub global_system_interrupt: u32,
+}
+
+/// Describes how IRQ sources are mapped to global system interrupts.
+#[derive(AnyRepr, Debug)]
+#[repr(C, packed)]
+pub struct InterruptSourceOverride {
+	/// Bus Source
+	pub bus_souce: u8,
+	/// IRQ Source
+	pub irq_source: u8,
+	/// Global System Interrupt
+	pub global_system_interrupt: u32,
+	/// Flags
+	pub flags: u16,
 }

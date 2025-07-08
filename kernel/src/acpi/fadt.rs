@@ -35,6 +35,7 @@ pub struct GenericAddr {
 /// The Fixed ACPI Description Table.
 ///
 /// The documentation of every field can be found in the ACPI documentation.
+#[allow(missing_docs)]
 #[repr(C, packed)]
 pub struct Fadt {
 	/// The table's header.
