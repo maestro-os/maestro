@@ -20,27 +20,27 @@
 //! system, allowing to control components such as cooling and power.
 
 use crate::{
-	acpi::{madt::ProcessorLocalApic, rsdt::Sdt},
+	acpi::rsdt::Sdt,
 	memory::{KERNEL_BEGIN, PhysAddr},
-	println,
-	process::scheduler::{CPU, Cpu},
-	sync::once::OnceInit,
 };
 use core::{
 	hint::{likely, unlikely},
 	mem::size_of,
 	slice,
-	sync::{atomic, atomic::AtomicBool},
+	sync::{
+		atomic,
+		atomic::{AtomicBool, Ordering::Relaxed},
+	},
 };
 use fadt::Fadt;
 use madt::Madt;
-use utils::{collections::vec::Vec, errno::AllocResult};
+use utils::errno::AllocResult;
 
 mod aml;
-mod dsdt;
-mod fadt;
-mod madt;
-mod rsdt;
+pub mod dsdt;
+pub mod fadt;
+pub mod madt;
+pub mod rsdt;
 
 /// The beginning physical address of scan for the RSDP
 pub const RSDP_SCAN_BEGIN: usize = 0xe0000;
@@ -225,6 +225,20 @@ pub fn is_century_register_present() -> bool {
 	CENTURY_REGISTER.load(atomic::Ordering::Relaxed)
 }
 
+/// Returns a reference to the MADT.
+///
+/// If no MADT is present, the function returns `None`.
+pub fn get_madt() -> Option<&'static Madt> {
+	let rsdp = unsafe { find_rsdp()? };
+	// No need to check the RSDP is valid since this is done at boot
+	if let Some(xsdt) = unsafe { rsdp.get_xsdt() } {
+		xsdt.get_table::<Madt>()
+	} else {
+		let rsdt = unsafe { rsdp.get_rsdt() };
+		rsdt.get_table::<Madt>()
+	}
+}
+
 /// Initializes ACPI.
 ///
 /// This function must be called only once, at boot.
@@ -236,51 +250,21 @@ pub(crate) fn init() -> AllocResult<()> {
 	if unlikely(!rsdp.check()) {
 		panic!("ACPI: invalid RSDP");
 	}
-	let (madt, fadt) = if let Some(xsdt) = unsafe { rsdp.get_xsdt() } {
-		(xsdt.get_table::<Madt>(), xsdt.get_table::<Fadt>())
+	let fadt = if let Some(xsdt) = unsafe { rsdp.get_xsdt() } {
+		xsdt.get_table::<Fadt>()
 	} else {
 		let rsdt = unsafe { rsdp.get_rsdt() };
-		(rsdt.get_table::<Madt>(), rsdt.get_table::<Fadt>())
+		rsdt.get_table::<Fadt>()
 	};
-	// CPU list
-	let mut cpu = Vec::new();
-	if let Some(madt) = madt {
-		// Register CPU cores
-		for e in madt.entries() {
-			if e.entry_type == 0 {
-				// TODO rationalize to avoid unsafe here
-				let ent = unsafe { &*(e as *const _ as *const ProcessorLocalApic) };
-				if ent.apic_flags & 0b11 == 0 {
-					continue;
-				}
-				cpu.push(Cpu {
-					id: ent.processor_id,
-					apic_id: ent.apic_id,
-					apic_flags: ent.apic_flags,
-				})?;
-			}
-		}
-	}
-	// If no CPU is found, just add the current
-	if cpu.is_empty() {
-		cpu.push(Cpu {
-			id: 1,
-			apic_id: 0,
-			apic_flags: 0,
-		})?;
-	}
-	println!("{} CPU cores found", cpu.len());
-	unsafe {
-		OnceInit::init(&CPU, cpu);
-	}
-	if let Some(fadt) = fadt {
-		CENTURY_REGISTER.store(fadt.century != 0, atomic::Ordering::Relaxed);
-		// FIXME: pointer issue (bad alignment?)
-		/*if let Some(dsdt) = fadt.get_dsdt() {
-			// Parse AML code
-			let _aml = dsdt.get_aml();
-			// TODO let _ast = aml::parse(aml);
-		}*/
-	}
+	let Some(fadt) = fadt else {
+		return Ok(());
+	};
+	CENTURY_REGISTER.store(fadt.century != 0, Relaxed);
+	// FIXME: pointer issue (bad alignment?)
+	/*if let Some(dsdt) = fadt.get_dsdt() {
+		// Parse AML code
+		let _aml = dsdt.get_aml();
+		// TODO let _ast = aml::parse(aml);
+	}*/
 	Ok(())
 }
