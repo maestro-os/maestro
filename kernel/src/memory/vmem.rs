@@ -240,8 +240,6 @@ pub(crate) fn init() {
 	x86::paging::prepare();
 	// Kernel context init
 	let mut kernel_vmem = unsafe { VMem::new() };
-	// TODO If Meltdown mitigation is enabled, only allow read access to a stub of
-	// the kernel for interrupts
 	// Map kernel
 	for entry in mmap_iter() {
 		if !matches!(

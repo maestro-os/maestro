@@ -22,7 +22,11 @@
 // TODO implement x2APIC
 
 use super::{IA32_APIC_BASE_MSR, cpuid, rdmsr, wrmsr};
-use crate::memory::PhysAddr;
+use crate::{
+	arch::x86::paging::{FLAG_CACHE_DISABLE, FLAG_GLOBAL, FLAG_WRITE, FLAG_WRITE_THROUGH},
+	memory::{PhysAddr, vmem::KERNEL_VMEM},
+};
+use utils::limits::PAGE_SIZE;
 
 /// APIC register: Local APIC ID
 const EOI_REGISTER: usize = 0xb0;
@@ -119,6 +123,13 @@ pub fn init() {
 	let base_addr = get_base_addr();
 	// Enable APIC
 	set_base_addr(base_addr);
+	// Map registers
+	let phys_addr = PhysAddr(base_addr).down_align_to(PAGE_SIZE);
+	KERNEL_VMEM.lock().map(
+		phys_addr,
+		phys_addr.kernel_to_virtual().unwrap(),
+		FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH | FLAG_WRITE | FLAG_GLOBAL,
+	);
 	// Setup spurious interrupt
 	let base_addr = PhysAddr(base_addr).kernel_to_virtual().unwrap().as_ptr();
 	unsafe {
