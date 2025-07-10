@@ -111,7 +111,7 @@ pub(crate) fn init2() {
 						KERNEL_VMEM.lock().map(
 							base_addr,
 							base_addr.kernel_to_virtual().unwrap(),
-							FLAG_CACHE_DISABLE | FLAG_WRITE | FLAG_GLOBAL,
+							FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH | FLAG_WRITE | FLAG_GLOBAL,
 						);
 					});
 				// Remap legacy interrupts
@@ -172,13 +172,38 @@ pub(crate) fn init2() {
 	}
 }
 
+/// Enables interruptions on the given IRQ.
+pub fn enable_irq(irq: u8) {
+	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+	{
+		use x86::*;
+		if unsafe { APIC } {
+			// TODO
+		} else {
+			pic::enable_irq(irq);
+		}
+	}
+}
+
+/// Disable interruptions on the given IRQ.
+pub fn disable_irq(irq: u8) {
+	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+	{
+		use x86::*;
+		if unsafe { APIC } {
+			// TODO
+		} else {
+			pic::disable_irq(irq);
+		}
+	}
+}
+
 /// Sends an End-Of-Interrupt message for the given interrupt `irq`.
 pub fn end_of_interrupt(irq: u8) {
 	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	{
 		use x86::*;
-		let apic = unsafe { APIC };
-		if apic {
+		if unsafe { APIC } {
 			apic::end_of_interrupt();
 		} else {
 			pic::end_of_interrupt(irq);
