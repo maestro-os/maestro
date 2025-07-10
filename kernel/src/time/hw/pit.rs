@@ -20,7 +20,10 @@
 //! trigger interruptions at a fixed interval.
 
 use super::HwClock;
-use crate::arch::x86::{idt, io::outb, pic};
+use crate::{
+	arch,
+	arch::x86::{idt, io::outb},
+};
 
 /// PIT channel number 0.
 const CHANNEL_0: u16 = 0x40;
@@ -73,9 +76,9 @@ impl PIT {
 impl HwClock for PIT {
 	fn set_enabled(&mut self, enable: bool) {
 		if enable {
-			pic::enable_irq(0x0);
+			arch::enable_irq(0x0);
 		} else {
-			pic::disable_irq(0x0);
+			arch::disable_irq(0x0);
 		}
 	}
 
