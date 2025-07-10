@@ -63,7 +63,7 @@ pub fn get_base_addr() -> usize {
 #[inline]
 pub fn set_base_addr(addr: usize) {
 	#[allow(overflowing_literals)]
-	let val = (addr & 0xffffff000usize) | 0x800;
+	let val = (addr & 0xfffff0000usize) | 0x800;
 	wrmsr(IA32_APIC_BASE_MSR, val as _);
 }
 
@@ -97,7 +97,7 @@ pub unsafe fn write_reg(base_addr: *mut u32, reg: usize, value: u32) {
 pub unsafe fn ioapic_read(base_addr: PhysAddr, reg: u8) -> u32 {
 	let base_addr: *mut u32 = base_addr.kernel_to_virtual().unwrap().as_ptr();
 	base_addr.write_volatile(reg as _);
-	base_addr.add(1).read_volatile()
+	base_addr.add(4).read_volatile()
 }
 
 /// Writes a register of the I/O APIC.
@@ -110,7 +110,7 @@ pub unsafe fn ioapic_read(base_addr: PhysAddr, reg: u8) -> u32 {
 pub unsafe fn ioapic_write(base_addr: PhysAddr, reg: u8, value: u32) {
 	let base_addr: *mut u32 = base_addr.kernel_to_virtual().unwrap().as_ptr();
 	base_addr.write_volatile(reg as _);
-	base_addr.add(1).write_volatile(value);
+	base_addr.add(4).write_volatile(value);
 }
 
 /// Returns the number of redirection entries of an I/O APIC.

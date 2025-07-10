@@ -87,56 +87,59 @@ pub(crate) fn init2() {
 		let mut cpu = Vec::new();
 		if let Some(madt) = acpi::get_madt() {
 			// Register CPU cores
-			for e in madt.entries() {
-				println!("ent type {}", e.entry_type);
-				// FIXME: this relies on entries being sorted by ascending type ID
-				match e.entry_type {
-					// Register a new CPU
-					0 => {
-						let ent = unsafe { e.body::<ProcessorLocalApic>() };
-						if ent.apic_flags & 0b11 == 0 {
-							continue;
-						}
-						cpu.push(Cpu {
-							id: ent.processor_id,
-							apic_id: ent.apic_id,
-							apic_flags: ent.apic_flags,
-						})
-						.expect("could not insert CPU");
+			madt.entries()
+				.filter(|e| e.entry_type == 0)
+				.map(|e| unsafe { e.body::<ProcessorLocalApic>() })
+				.for_each(|e| {
+					if e.apic_flags & 0b11 == 0 {
+						return;
 					}
-					// Map an I/O APIC's registers
-					1 if apic => {
-						let ent = unsafe { e.body::<IOAPIC>() };
-						let base_addr = PhysAddr(ent.ioapic_address as _).down_align_to(PAGE_SIZE);
+					cpu.push(Cpu {
+						id: e.processor_id,
+						apic_id: e.apic_id,
+						apic_flags: e.apic_flags,
+					})
+					.expect("could not insert CPU");
+				});
+			if apic {
+				// Map I/O APIC registers
+				madt.entries()
+					.filter(|e| e.entry_type == 1)
+					.map(|e| unsafe { e.body::<IOAPIC>() })
+					.for_each(|e| {
+						let base_addr = PhysAddr(e.ioapic_address as _).down_align_to(PAGE_SIZE);
 						KERNEL_VMEM.lock().map(
 							base_addr,
 							base_addr.kernel_to_virtual().unwrap(),
-							FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH | FLAG_WRITE | FLAG_GLOBAL,
+							FLAG_CACHE_DISABLE | FLAG_WRITE | FLAG_GLOBAL,
 						);
-					}
-					// Redirect a legacy interrupt
-					2 if apic => {
-						let ent = unsafe { e.body::<InterruptSourceOverride>() };
-						println!("ent {:?}", ent);
+					});
+				// Remap legacy interrupts
+				madt.entries()
+					.filter(|e| e.entry_type == 2)
+					.map(|e| unsafe { e.body::<InterruptSourceOverride>() })
+					.for_each(|e| {
+						println!("ent {:?}", e);
 						// Find the associated I/O APIC
 						let ioapic = madt
 							.entries()
 							.filter(|e| e.entry_type == 1)
 							.map(|e| unsafe { e.body::<IOAPIC>() })
 							.find(|ioapic| {
-								let gsi = ent.gsi;
+								let gsi = e.gsi;
 								let base_addr = PhysAddr(ioapic.ioapic_address as _);
 								let max_entries =
 									unsafe { ioapic_redirect_count(base_addr) } as u32;
+								println!("gsi {gsi} {max_entries}");
 								(ioapic.gsi..ioapic.gsi + max_entries).contains(&gsi)
 							});
 						println!("ioapic {:?}", ioapic);
 						// Remap the interrupt
 						if let Some(ioapic) = ioapic {
 							let base_addr = PhysAddr(ioapic.ioapic_address as _);
-							let i = (ent.gsi - ioapic.gsi) as u8;
+							let i = (e.gsi - ioapic.gsi) as u8;
 							// TODO flags?
-							let val = 0x20 + ent.irq_source as u64;
+							let val = 0x20 + e.irq_source as u64;
 							unsafe {
 								ioapic_write(
 									base_addr,
@@ -150,9 +153,7 @@ pub(crate) fn init2() {
 								);
 							}
 						}
-					}
-					_ => {}
-				}
+					});
 			}
 		}
 		// If no CPU is found, just add the current

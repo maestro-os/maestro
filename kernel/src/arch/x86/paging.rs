@@ -60,7 +60,12 @@ pub const FLAG_WRITE: usize = 0b000000010;
 pub const FLAG_PRESENT: usize = 0b000000001;
 
 /// Flags mask in a page directory entry.
+#[cfg(target_arch = "x86")]
+pub const FLAGS_MASK: usize = 0xfff;
+/// Flags mask in a page directory entry.
+#[cfg(target_arch = "x86_64")]
 pub const FLAGS_MASK: usize = ((1u64 << 63) | 0xfff) as usize;
+
 /// Address mask in a page directory entry. The address doesn't need every byte
 /// since it must be page-aligned.
 pub const ADDR_MASK: usize = !FLAGS_MASK;
@@ -309,8 +314,6 @@ pub unsafe fn map(mut table: &mut Table, physaddr: PhysAddr, virtaddr: VirtAddr,
 			table[index].store(to_entry(physaddr, flags), Relaxed);
 			break;
 		}
-		#[cfg(target_arch = "x86_64")]
-		let flags = flags & !FLAG_XD;
 		// Allocate a table if necessary
 		if previous & FLAG_PRESENT == 0 {
 			// No table is present, allocate one
