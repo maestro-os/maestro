@@ -33,8 +33,8 @@ const EOI_REGISTER: usize = 0xb0;
 /// APIC register: Spurious Interrupt Vector Register
 const SPURIOUS_INTERRUPT_VECTOR_REGISTER: usize = 0xf0;
 
-/// I/O APIC physical base address
-const IOAPIC_BASE_ADDR: usize = 0xfec00000;
+/// I/O APIC: redirection entries registers offset
+pub const IO_APIC_REDIRECTIONS_OFF: u8 = 0x10;
 
 /// Tells whether the APIC is present or not.
 #[inline]
@@ -91,13 +91,11 @@ pub unsafe fn write_reg(base_addr: *mut u32, reg: usize, value: u32) {
 ///
 /// # Safety
 ///
-/// The caller must ensure the APIC is present and `reg` is valid.
+/// The caller must ensure `base_addr` points to the registers of a valid I/O APIC and `reg` is
+/// valid.
 #[inline]
-pub unsafe fn read_ioapic_reg(reg: u8) -> u32 {
-	let base_addr: *mut u32 = PhysAddr(IOAPIC_BASE_ADDR)
-		.kernel_to_virtual()
-		.unwrap()
-		.as_ptr();
+pub unsafe fn ioapic_read(base_addr: PhysAddr, reg: u8) -> u32 {
+	let base_addr: *mut u32 = base_addr.kernel_to_virtual().unwrap().as_ptr();
 	base_addr.write_volatile(reg as _);
 	base_addr.add(1).read_volatile()
 }
@@ -106,15 +104,25 @@ pub unsafe fn read_ioapic_reg(reg: u8) -> u32 {
 ///
 /// # Safety
 ///
-/// The caller must ensure the APIC is present and `reg` is valid.
+/// The caller must ensure `base_addr` points to the registers of a valid I/O APIC and `reg` is
+/// valid.
 #[inline]
-pub unsafe fn write_ioapic_reg(reg: u8, value: u32) {
-	let base_addr: *mut u32 = PhysAddr(IOAPIC_BASE_ADDR)
-		.kernel_to_virtual()
-		.unwrap()
-		.as_ptr();
+pub unsafe fn ioapic_write(base_addr: PhysAddr, reg: u8, value: u32) {
+	let base_addr: *mut u32 = base_addr.kernel_to_virtual().unwrap().as_ptr();
 	base_addr.write_volatile(reg as _);
 	base_addr.add(1).write_volatile(value);
+}
+
+/// Returns the number of redirection entries of an I/O APIC.
+///
+/// # Safety
+///
+/// The caller must ensure `base_addr` points to the registers of a valid I/O APIC.
+#[inline]
+pub unsafe fn ioapic_redirect_count(base_addr: PhysAddr) -> u8 {
+	let val = ioapic_read(base_addr, 0x1);
+	let count = (val >> 16) as u8;
+	count.min(24)
 }
 
 /// Initializes the local APIC.

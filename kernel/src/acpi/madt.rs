@@ -122,7 +122,7 @@ pub struct IOAPIC {
 	/// I/O APIC registers address
 	pub ioapic_address: u32,
 	/// Global System Interrupt
-	pub global_system_interrupt: u32,
+	pub gsi: u32,
 }
 
 /// Describes how IRQ sources are mapped to global system interrupts.
@@ -134,7 +134,7 @@ pub struct InterruptSourceOverride {
 	/// IRQ Source
 	pub irq_source: u8,
 	/// Global System Interrupt
-	pub global_system_interrupt: u32,
+	pub gsi: u32,
 	/// Flags
 	pub flags: u16,
 }
