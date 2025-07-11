@@ -24,7 +24,7 @@ pub mod switch;
 use crate::{
 	arch::{
 		end_of_interrupt,
-		x86::{cli, idt::IntFrame},
+		x86::{cli, idt::IntFrame, smp},
 	},
 	event,
 	event::{CallbackHook, CallbackResult},
@@ -102,8 +102,8 @@ pub fn init() -> AllocResult<()> {
 		})
 		.collect::<CollectResult<Vec<CoreLocal>>>()
 		.0?;
-	// TODO if there are APICs, initialize them and disable the PIC
-	// TODO boot other cores
+	// Boot other cores
+	smp::init(&CPU)?;
 	// Register tick callback
 	let mut clocks = time::hw::CLOCKS.lock();
 	let pit = clocks.get_mut(b"pit".as_slice()).unwrap();

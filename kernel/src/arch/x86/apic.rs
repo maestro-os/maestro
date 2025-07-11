@@ -26,6 +26,7 @@ use crate::{
 	arch::x86::paging::{FLAG_CACHE_DISABLE, FLAG_GLOBAL, FLAG_WRITE, FLAG_WRITE_THROUGH},
 	memory::{PhysAddr, vmem::KERNEL_VMEM},
 };
+use core::{hint, hint::likely};
 use utils::limits::PAGE_SIZE;
 
 /// APIC register: Local APIC ID
@@ -85,6 +86,17 @@ pub unsafe fn read_reg(base_addr: *mut u32, reg: usize) -> u32 {
 #[inline]
 pub unsafe fn write_reg(base_addr: *mut u32, reg: usize, value: u32) {
 	base_addr.byte_add(reg).write_volatile(value);
+}
+
+/// Waits for the delivery of an Inter-Processor Interrupt.
+///
+/// # Safety
+///
+/// The caller must ensure the APIC is present, `base_addr` is valid.
+pub unsafe fn wait_delivery(base_addr: *mut u32) {
+	while likely(read_reg(base_addr, 0x300) & (1 << 12) != 0) {
+		hint::spin_loop();
+	}
 }
 
 /// Reads a register of the I/O APIC.
