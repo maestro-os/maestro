@@ -30,9 +30,15 @@ use core::{hint, hint::likely};
 use utils::limits::PAGE_SIZE;
 
 /// APIC register: Local APIC ID
-const EOI_REGISTER: usize = 0xb0;
+pub const REG_EOI: usize = 0xb0;
 /// APIC register: Spurious Interrupt Vector Register
-const SPURIOUS_INTERRUPT_VECTOR_REGISTER: usize = 0xf0;
+pub const REG_SPURIOUS_INTERRUPT_VECTOR: usize = 0xf0;
+/// APIC register: Error status
+pub const REG_ERROR_STATUS: usize = 0x280;
+/// APIC register: Interrupt Command Register (low)
+pub const REG_ICR_LO: usize = 0x300;
+/// APIC register: Interrupt Command Register (high)
+pub const REG_ICR_HI: usize = 0x310;
 
 /// I/O APIC: redirection entries registers offset
 pub const IO_APIC_REDIRECTIONS_OFF: u8 = 0x10;
@@ -153,8 +159,8 @@ pub fn init() {
 	// Setup spurious interrupt
 	let base_addr = PhysAddr(base_addr).kernel_to_virtual().unwrap().as_ptr();
 	unsafe {
-		let val = read_reg(base_addr, SPURIOUS_INTERRUPT_VECTOR_REGISTER);
-		write_reg(base_addr, SPURIOUS_INTERRUPT_VECTOR_REGISTER, val | 0x1ff);
+		let val = read_reg(base_addr, REG_SPURIOUS_INTERRUPT_VECTOR);
+		write_reg(base_addr, REG_SPURIOUS_INTERRUPT_VECTOR, val | 0x1ff);
 	}
 }
 
@@ -164,6 +170,6 @@ pub fn end_of_interrupt() {
 	let base_addr = get_base_addr();
 	let base_addr = PhysAddr(base_addr).kernel_to_virtual().unwrap().as_ptr();
 	unsafe {
-		write_reg(base_addr, EOI_REGISTER, 0);
+		write_reg(base_addr, REG_EOI, 0);
 	}
 }

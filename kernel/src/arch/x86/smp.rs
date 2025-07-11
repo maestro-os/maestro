@@ -18,7 +18,9 @@
 
 //! Symmetric MultiProcessing management.
 
-use super::apic::lapic_id;
+use super::apic::{
+	REG_ERROR_STATUS, REG_ICR_HI, REG_ICR_LO, lapic_id, read_reg, wait_delivery, write_reg,
+};
 use crate::{
 	arch::x86::apic,
 	boot::BOOT_STACK_SIZE,
@@ -99,7 +101,7 @@ static mut SMP_STACK_TOP: *const *mut c_void = null_mut();
 /// `cpu` is the list of CPU cores on the system.
 pub fn init(cpu: &[Cpu]) -> AllocResult<()> {
 	let lapic_id = lapic_id();
-	let lapic_base_addr = PhysAddr(apic::get_base_addr())
+	let base_addr = PhysAddr(apic::get_base_addr())
 		.kernel_to_virtual()
 		.unwrap()
 		.as_ptr();
@@ -136,57 +138,54 @@ pub fn init(cpu: &[Cpu]) -> AllocResult<()> {
 		// Send INIT IPI
 		unsafe {
 			// Clear APIC error
-			apic::write_reg(lapic_base_addr, 0x280, 0);
+			write_reg(base_addr, REG_ERROR_STATUS, 0);
 			// Select AP
-			apic::write_reg(
-				lapic_base_addr,
-				0x310,
-				(apic::read_reg(lapic_base_addr, 0x310) & 0x00ffffff)
-					| ((cpu.apic_id as u32) << 24),
+			write_reg(
+				base_addr,
+				REG_ICR_HI,
+				(read_reg(base_addr, REG_ICR_HI) & 0x00ffffff) | ((cpu.apic_id as u32) << 24),
 			);
 			// Trigger INIT IPI
-			apic::write_reg(
-				lapic_base_addr,
-				0x300,
-				(apic::read_reg(lapic_base_addr, 0x300) & 0xfff00000) | 0xc500,
+			write_reg(
+				base_addr,
+				REG_ICR_LO,
+				(read_reg(base_addr, REG_ICR_LO) & 0xfff00000) | 0xc500,
 			);
-			apic::wait_delivery(lapic_base_addr);
+			wait_delivery(base_addr);
 			// Select AP
-			apic::write_reg(
-				lapic_base_addr,
-				0x310,
-				(apic::read_reg(lapic_base_addr, 0x310) & 0x00ffffff)
-					| ((cpu.apic_id as u32) << 24),
+			write_reg(
+				base_addr,
+				REG_ICR_HI,
+				(read_reg(base_addr, REG_ICR_HI) & 0x00ffffff) | ((cpu.apic_id as u32) << 24),
 			);
 			// INIT de-assert
-			apic::write_reg(
-				lapic_base_addr,
-				0x300,
-				(apic::read_reg(lapic_base_addr, 0x300) & 0xfff00000) | 0x8500,
+			write_reg(
+				base_addr,
+				REG_ICR_LO,
+				(read_reg(base_addr, REG_ICR_LO) & 0xfff00000) | 0x8500,
 			);
-			apic::wait_delivery(lapic_base_addr);
+			wait_delivery(base_addr);
 		}
 		// TODO 10 msec delay
 		// Send startup IPI twice
 		for _ in 0..2 {
 			unsafe {
 				// Clear APIC error
-				apic::write_reg(lapic_base_addr, 0x280, 0);
+				write_reg(base_addr, REG_ERROR_STATUS, 0);
 				// Select AP
-				apic::write_reg(
-					lapic_base_addr,
-					0x310,
-					(apic::read_reg(lapic_base_addr, 0x310) & 0x00ffffff)
-						| ((cpu.apic_id as u32) << 24),
+				write_reg(
+					base_addr,
+					REG_ICR_HI,
+					(read_reg(base_addr, REG_ICR_HI) & 0x00ffffff) | ((cpu.apic_id as u32) << 24),
 				);
 				// Trigger STARTUP IPI
-				apic::write_reg(
-					lapic_base_addr,
-					0x300,
-					(apic::read_reg(lapic_base_addr, 0x300) & 0xfff0f800) | 0x608,
+				write_reg(
+					base_addr,
+					REG_ICR_LO,
+					(read_reg(base_addr, REG_ICR_LO) & 0xfff0f800) | 0x608,
 				);
 				// TODO wait for 200 usec
-				apic::wait_delivery(lapic_base_addr);
+				wait_delivery(base_addr);
 			}
 		}
 	}
