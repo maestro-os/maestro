@@ -24,10 +24,10 @@ use core::{arch::global_asm, sync::atomic::AtomicUsize};
 
 /// Boot stack size
 #[cfg(debug_assertions)]
-const BOOT_STACK_SIZE: usize = 262144; // rustc in debug mode is greedy
+pub const BOOT_STACK_SIZE: usize = 262144; // rustc in debug mode is greedy
 /// Boot stack size
 #[cfg(not(debug_assertions))]
-const BOOT_STACK_SIZE: usize = 32768;
+pub const BOOT_STACK_SIZE: usize = 32768;
 
 #[cfg(target_arch = "x86")]
 pub const GDT_VIRT_ADDR: VirtAddr = VirtAddr(0xc0000800);
