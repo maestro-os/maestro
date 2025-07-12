@@ -45,10 +45,15 @@ smp_trampoline:
 
 	# GDT
 .align 16
-.long 0
-	# TODO
+_gdt_table:
+	.long 0, 0
+	.long 0x0000ffff, 0x00cf9a00 # code
+	.long 0x0000ffff, 0x008f9200 # data
+	.long 0x00000068, 0x00cf8900 # tss
 _gdt:
-	// TODO
+	.word _gdt - _gdt_table - 1
+	.long 0x8010
+	.long 0, 0
 .align 64
 
 	# Setup GDT
