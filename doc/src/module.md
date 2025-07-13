@@ -4,12 +4,12 @@ Kernel modules add features to the kernel at runtime. They are especially useful
 
 A kernel module has the same privileges as the kernel itself and runs in the same memory space. As such, one must be careful when trusting a kernel module.
 
-From the point of view of the kernel, the module is shared library (`.so`) that is loaded pretty much like a regular shared library.
+From the point of view of the kernel, the module is a shared library (`.so`) that is loaded pretty much like a regular one.
 The kernel relocates the module against itself at load time.
 
 At build time, a kernel module is tricked into thinking the kernel is also a shared library. This is necessary to prevent linking the whole kernel inside each module.
 
-Of course, at runtime the kernel is a normal executable ELF (GRUB does not support relocating the kernel's ELF anyway).
+Of course, at runtime the kernel is a normal ELF executable (GRUB does not support relocating the kernel's ELF anyway).
 
 ## Kernel module template
 
