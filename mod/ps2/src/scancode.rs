@@ -312,16 +312,12 @@ impl ScancodeSet {
 		keyboard_send(self.try_into()?)
 	}
 
-	/// Tells whether the sc
-	pub fn is_supported(self) -> bool {
-		!matches!(self, Self::Set3)
-	}
-
 	/// Fallbacks to the next set if necessary.
 	///
 	/// If no supported set can be used, the function returns an error.
+	#[allow(unused)]
 	pub fn fallback(self) -> Result<Self, ()> {
-		if self.is_supported() {
+		if self != Self::Set3 {
 			return Ok(self);
 		}
 		let mut set = Self::Set2;
