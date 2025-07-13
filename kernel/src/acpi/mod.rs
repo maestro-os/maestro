@@ -16,32 +16,36 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The ACPI (Advanced Configuration and Power Interface) interface provides informations about the
+//! The ACPI (Advanced Configuration and Power Interface) interface provides information about the
 //! system, allowing to control components such as cooling and power.
-//!
-//! ACPI initialization is done through the following phases:
-//! - Read the `RSDP` table in order to get a pointer to the `RSDT`, referring to every other
-//!   available tables.
-//! - TODO
 
-use crate::{acpi::rsdt::Rsdt, memory};
+use crate::{
+	acpi::rsdt::Sdt,
+	memory::{KERNEL_BEGIN, PhysAddr},
+};
 use core::{
 	hint::{likely, unlikely},
-	mem::{align_of, size_of},
-	ptr, slice,
-	sync::{atomic, atomic::AtomicBool},
+	mem::size_of,
+	slice,
+	sync::{
+		atomic,
+		atomic::{AtomicBool, Ordering::Relaxed},
+	},
 };
-use dsdt::Dsdt;
 use fadt::Fadt;
 use madt::Madt;
+use utils::errno::AllocResult;
 
 mod aml;
-mod dsdt;
-mod fadt;
-mod madt;
-mod rsdt;
+pub mod dsdt;
+pub mod fadt;
+pub mod madt;
+pub mod rsdt;
 
-// TODO use xsdt
+/// The beginning physical address of scan for the RSDP
+pub const RSDP_SCAN_BEGIN: usize = 0xe0000;
+/// The end physical address of scan for the RSDP
+pub const RSDP_SCAN_END: usize = 0xfffff;
 
 /// The signature of the RSDP.
 const RSDP_SIGNATURE: &[u8] = b"RSD PTR ";
@@ -72,34 +76,6 @@ struct Rsdp {
 	rsdt_address: u32,
 }
 
-impl Rsdp {
-	/// Checks that the table is valid.
-	#[inline]
-	pub fn check(&self) -> bool {
-		if self.signature != RSDP_SIGNATURE {
-			return false;
-		}
-		let checksum_valid = unsafe { check_checksum(self, size_of::<Self>()) };
-		if !checksum_valid {
-			return false;
-		}
-		// Check RSDT pointer
-		if self.rsdt_address == 0 || self.rsdt_address as usize % align_of::<Rsdt>() != 0 {
-			return false;
-		}
-		true
-	}
-
-	/// Returns the [`Rsdt`].
-	///
-	/// # Safety
-	///
-	/// This function is safe only if [`check`] returns `true`.
-	pub unsafe fn get_rsdt(&self) -> &Rsdt {
-		&*ptr::with_exposed_provenance(self.rsdt_address as _)
-	}
-}
-
 /// RSDP version 2.0.
 ///
 /// Contains the fields from [`Rsdp`], plus some extra fields.
@@ -119,8 +95,66 @@ struct Rsdp2 {
 	reserved: [u8; 3],
 }
 
+impl Rsdp {
+	#[inline]
+	fn as_v2(&self) -> Option<&Rsdp2> {
+		(self.revision >= 2).then(|| unsafe { &*(self as *const _ as *const Rsdp2) })
+	}
+
+	/// Checks that the table is valid.
+	#[inline]
+	pub fn check(&self) -> bool {
+		if self.signature != RSDP_SIGNATURE {
+			return false;
+		}
+		let checksum_valid = unsafe { check_checksum(self, size_of::<Self>()) };
+		if !checksum_valid {
+			return false;
+		}
+		// Check RSDT
+		if self.rsdt_address == 0 {
+			return false;
+		}
+		// Check XSDT
+		if self.revision >= 2 {
+			if let Some(v2) = self.as_v2() {
+				if v2.xsdt_address == 0 {
+					return false;
+				}
+			}
+		}
+		true
+	}
+
+	/// Returns the RSDT.
+	///
+	/// # Safety
+	///
+	/// This function is safe only if [`check`] returns `true`.
+	pub unsafe fn get_rsdt(&self) -> &Sdt<false> {
+		PhysAddr(self.rsdt_address as _)
+			.kernel_to_virtual()
+			.unwrap()
+			.as_ref()
+	}
+
+	/// Returns the XSDT, if present.
+	///
+	/// # Safety
+	///
+	/// This function is safe only if [`check`] returns `true`.
+	pub unsafe fn get_xsdt(&self) -> Option<&Sdt<true>> {
+		self.as_v2().map(|v2| {
+			PhysAddr(v2.xsdt_address as _)
+				.kernel_to_virtual()
+				.unwrap()
+				.as_ref()
+		})
+	}
+}
+
 /// An ACPI table header.
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Debug)]
 pub struct TableHdr {
 	/// The signature of the structure.
@@ -136,7 +170,7 @@ pub struct TableHdr {
 	/// The manufacturer model ID.
 	oem_table_id: [u8; 8],
 	/// OEM revision for supplied OEM table ID.
-	oemrevision: u32,
+	oem_revision: u32,
 	/// Vendor ID of utility that created the table.
 	creator_id: u32,
 	/// Revision of utility that created the table.
@@ -170,8 +204,8 @@ pub trait Table {
 
 /// Finds the [`Rsdp`] and returns a reference to it.
 unsafe fn find_rsdp() -> Option<&'static Rsdp> {
-	let begin = (memory::PROCESS_END + 0xe0000).as_ptr();
-	let end = (memory::PROCESS_END + 0xfffff).as_ptr();
+	let begin = (KERNEL_BEGIN + RSDP_SCAN_BEGIN).as_ptr();
+	let end = (KERNEL_BEGIN + RSDP_SCAN_END).as_ptr();
 	let mut ptr = begin;
 	while ptr < end {
 		let signature_slice = slice::from_raw_parts::<u8>(ptr, RSDP_SIGNATURE.len());
@@ -191,41 +225,46 @@ pub fn is_century_register_present() -> bool {
 	CENTURY_REGISTER.load(atomic::Ordering::Relaxed)
 }
 
+/// Returns a reference to the MADT.
+///
+/// If no MADT is present, the function returns `None`.
+pub fn get_madt() -> Option<&'static Madt> {
+	let rsdp = unsafe { find_rsdp()? };
+	// No need to check the RSDP is valid since this is done at boot
+	if let Some(xsdt) = unsafe { rsdp.get_xsdt() } {
+		xsdt.get_table::<Madt>()
+	} else {
+		let rsdt = unsafe { rsdp.get_rsdt() };
+		rsdt.get_table::<Madt>()
+	}
+}
+
 /// Initializes ACPI.
 ///
 /// This function must be called only once, at boot.
-pub(crate) fn init() {
+pub(crate) fn init() -> AllocResult<()> {
 	let rsdp = unsafe { find_rsdp() };
 	let Some(rsdp) = rsdp else {
-		return;
+		return Ok(());
 	};
 	if unlikely(!rsdp.check()) {
-		panic!("ACPI: invalid RSDP checksum");
+		panic!("ACPI: invalid RSDP");
 	}
-	// Safe because `check` returned `true`
-	let rsdt = unsafe { rsdp.get_rsdt() };
-	// Read MADT
-	if let Some(madt) = rsdt.get_table::<Madt>() {
-		// Register CPU cores
-		for e in madt.entries() {
-			if e.entry_type == 0 {
-				// TODO Register a new CPU
-			}
-		}
-	}
-	// Read FADT
-	let fadt = rsdt.get_table::<Fadt>();
-	if let Some(fadt) = fadt {
-		CENTURY_REGISTER.store(fadt.century != 0, atomic::Ordering::Relaxed);
-	}
-	// Get the DSDT
-	let dsdt = rsdt
-		.get_table_unsized::<Dsdt>()
-		.or_else(|| fadt.and_then(Fadt::get_dsdt));
-	if let Some(dsdt) = dsdt {
+	let fadt = if let Some(xsdt) = unsafe { rsdp.get_xsdt() } {
+		xsdt.get_table::<Fadt>()
+	} else {
+		let rsdt = unsafe { rsdp.get_rsdt() };
+		rsdt.get_table::<Fadt>()
+	};
+	let Some(fadt) = fadt else {
+		return Ok(());
+	};
+	CENTURY_REGISTER.store(fadt.century != 0, Relaxed);
+	// FIXME: pointer issue (bad alignment?)
+	/*if let Some(dsdt) = fadt.get_dsdt() {
 		// Parse AML code
-		let aml = dsdt.get_aml();
-		let _ast = aml::parse(aml);
-		// TODO
-	}
+		let _aml = dsdt.get_aml();
+		// TODO let _ast = aml::parse(aml);
+	}*/
+	Ok(())
 }

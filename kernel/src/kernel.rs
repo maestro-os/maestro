@@ -79,7 +79,7 @@ pub mod time;
 pub mod tty;
 
 use crate::{
-	arch::x86::{enable_sse, has_sse, idt, idt::IntFrame},
+	arch::x86::idt::IntFrame,
 	file::{fs::initramfs, vfs, vfs::ResolutionSettings},
 	logger::LOGGER,
 	memory::{cache, vmem},
@@ -135,7 +135,7 @@ fn init(init_path: String) -> EResult<IntFrame> {
 		)?;
 		let proc = Process::init()?;
 		exec(&proc, &mut frame, program_image)?;
-		SCHEDULER.lock().swap_current_process(proc);
+		SCHEDULER.swap_current_process(proc);
 	}
 	Ok(frame)
 }
@@ -144,16 +144,8 @@ fn init(init_path: String) -> EResult<IntFrame> {
 fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	// Initialize TTY
 	TTY.display.lock().show();
-	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-	{
-		// Ensure the CPU has SSE
-		if !has_sse() {
-			panic!("SSE support is required to run this kernel :(");
-		}
-		enable_sse();
-		// Initialize IDT
-		idt::init();
-	}
+	// Architecture-specific initialization, stage 1
+	arch::init1();
 
 	// Read multiboot information
 	if unlikely(magic != multiboot::BOOTLOADER_MAGIC || !multiboot_ptr.is_aligned_to(8)) {
@@ -192,9 +184,10 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 
 	println!("Booting Maestro kernel version {VERSION}");
 
-	// FIXME
-	//println!("Initializing ACPI...");
-	//acpi::init();
+	println!("Initializing ACPI...");
+	acpi::init().unwrap_or_else(|e| panic!("Failed to initialize ACPI! ({e})"));
+	// Architecture-specific initialization, stage 2
+	arch::init2();
 
 	println!("Initializing time management...");
 	time::init().unwrap_or_else(|e| panic!("Failed to initialize time management! ({e})"));

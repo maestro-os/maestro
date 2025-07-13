@@ -19,23 +19,21 @@
 //! ACPI's Multiple APIC Description Table (MADT) handling.
 
 use super::{Table, TableHdr};
-use core::{ffi::c_void, hint::likely};
-
-/// The offset of the entries in the MADT.
-const ENTRIES_OFF: usize = 0x2c;
+use core::hint::likely;
+use macros::AnyRepr;
+use utils::bytes::AnyRepr;
 
 /// Indicates that the system also has a PC-AT-compatible dual-8259 setup (which
 /// must be disabled when enabling ACPI APIC).
 const PCAT_COMPAT: u32 = 0b1;
 
 /// The Multiple APIC Description Table.
-#[repr(C)]
-#[derive(Debug)]
+#[repr(C, packed)]
 pub struct Madt {
 	/// The table's header.
 	pub header: TableHdr,
 
-	/// The physical address at which each process can access its local
+	/// The physical address at which each CPU can access its local
 	/// interrupt controller.
 	local_apic_addr: u32,
 	/// APIC flags.
@@ -57,7 +55,7 @@ impl Table for Madt {
 }
 
 /// Represents an MADT entry header.
-#[repr(C)]
+#[repr(C, packed)]
 #[derive(Debug)]
 pub struct EntryHeader {
 	/// The entry type.
@@ -66,10 +64,21 @@ pub struct EntryHeader {
 	pub length: u8,
 }
 
+impl EntryHeader {
+	/// Returns the body of the entry.
+	///
+	/// # Safety
+	///
+	/// `T` must be a valid entry body.
+	#[inline]
+	pub unsafe fn body<T: AnyRepr>(&self) -> &T {
+		(self as *const Self).add(1).cast::<T>().as_ref().unwrap()
+	}
+}
+
 /// Iterator over MADT entries.
 pub struct EntriesIterator<'m> {
 	madt: &'m Madt,
-	/// Cursor.
 	cursor: usize,
 }
 
@@ -77,12 +86,11 @@ impl<'m> Iterator for EntriesIterator<'m> {
 	type Item = &'m EntryHeader;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		let entries_len = self.madt.header.length as usize - ENTRIES_OFF;
+		let entries_len = self.madt.header.length as usize - size_of::<Madt>();
 		if likely(self.cursor < entries_len) {
 			let entry = unsafe {
-				let ptr = (self as *const _ as *const c_void).add(ENTRIES_OFF + self.cursor)
-					as *const EntryHeader;
-				&*ptr
+				let start = (self.madt as *const Madt).add(1) as *const EntryHeader;
+				&*start.byte_add(self.cursor)
 			};
 			self.cursor += entry.length as usize;
 			Some(entry)
@@ -90,4 +98,43 @@ impl<'m> Iterator for EntriesIterator<'m> {
 			None
 		}
 	}
+}
+
+/// Description of a processor and its local APIC.
+#[derive(AnyRepr)]
+#[repr(C, packed)]
+pub struct ProcessorLocalApic {
+	/// Processor ID
+	pub processor_id: u8,
+	/// Local APIC ID
+	pub apic_id: u8,
+	/// Local APIC flags
+	pub apic_flags: u32,
+}
+
+/// Represents an I/O APIC.
+#[derive(AnyRepr, Debug)]
+#[repr(C, packed)]
+pub struct IOAPIC {
+	/// I/O APIC ID
+	pub ioapic_id: u8,
+	reserved: u8,
+	/// I/O APIC registers address
+	pub ioapic_address: u32,
+	/// Global System Interrupt
+	pub gsi: u32,
+}
+
+/// Describes how IRQ sources are mapped to global system interrupts.
+#[derive(AnyRepr, Debug)]
+#[repr(C, packed)]
+pub struct InterruptSourceOverride {
+	/// Bus Source
+	pub bus_souce: u8,
+	/// IRQ Source
+	pub irq_source: u8,
+	/// Global System Interrupt
+	pub gsi: u32,
+	/// Flags
+	pub flags: u16,
 }

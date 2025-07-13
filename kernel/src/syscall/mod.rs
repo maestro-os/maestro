@@ -1018,7 +1018,7 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		// TODO 0x0e9 => syscall!(epoll_ctl, frame),
 		// TODO 0x0ea => syscall!(tgkill, frame),
 		// TODO 0x0eb => syscall!(utimes, frame),
-		// TODO 0x0ec => syscall!(vserve, frame),
+		// TODO 0x0ec => syscall!(vserver, frame),
 		// TODO 0x0ed => syscall!(mbind, frame),
 		// TODO 0x0ee => syscall!(set_mempolicy, frame),
 		// TODO 0x0ef => syscall!(get_mempolicy, frame),

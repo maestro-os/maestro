@@ -19,21 +19,24 @@
 //! This module handles ACPI's Fixed ACPI Description Table (FADT).
 
 use super::{Table, TableHdr, dsdt::Dsdt};
-use core::{ptr, slice};
+use crate::memory::PhysAddr;
+use core::slice;
 
 /// TODO doc
+#[repr(C, packed)]
 pub struct GenericAddr {
 	addr_space: u8,
 	bit_width: u8,
 	bit_offset: u8,
 	access_size: u8,
-	address: u8,
+	address: u64,
 }
 
 /// The Fixed ACPI Description Table.
 ///
 /// The documentation of every field can be found in the ACPI documentation.
-#[repr(C)]
+#[allow(missing_docs)]
+#[repr(C, packed)]
 pub struct Fadt {
 	/// The table's header.
 	pub header: TableHdr,
@@ -54,7 +57,7 @@ pub struct Fadt {
 	pub pm1b_event_block: u32,
 	pub pm1a_control_block: u32,
 	pub pm1b_control_block: u32,
-	pub pm2c_ontrolb_lock: u32,
+	pub pm2_control_block: u32,
 	pub pm_timer_block: u32,
 	pub gpe0_block: u32,
 	pub gpe1_block: u32,
@@ -107,7 +110,7 @@ impl Fadt {
 		} else {
 			self.dsdt as _
 		};
-		let dsdt: *const TableHdr = ptr::with_exposed_provenance(dsdt as _);
+		let dsdt: *const TableHdr = PhysAddr(dsdt as _).kernel_to_virtual().unwrap().as_ptr();
 		if !dsdt.is_null() {
 			let dsdt = unsafe {
 				let len = (*dsdt).length as usize;

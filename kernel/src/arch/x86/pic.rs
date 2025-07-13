@@ -45,8 +45,8 @@ const ICW4_8086: u8 = 0x01;
 /// The end-of-interrupt command.
 const COMMAND_EOI: u8 = 0x20;
 
-/// Initializes the PIC.
-pub fn init(offset1: u8, offset2: u8) {
+/// Enables the PIC.
+pub fn enable(offset1: u8, offset2: u8) {
 	unsafe {
 		let mask1 = inb(MASTER_DATA);
 		let mask2 = inb(SLAVE_DATA);
@@ -68,6 +68,14 @@ pub fn init(offset1: u8, offset2: u8) {
 	}
 }
 
+/// Disables the PIC.
+pub fn disable() {
+	unsafe {
+		outb(MASTER_DATA, 0xff);
+		outb(SLAVE_DATA, 0xff);
+	}
+}
+
 /// Enable interruptions on the given IRQ.
 pub fn enable_irq(mut n: u8) {
 	let port = if n < 8 {
@@ -76,7 +84,6 @@ pub fn enable_irq(mut n: u8) {
 		n -= 8;
 		SLAVE_DATA
 	};
-
 	unsafe {
 		let value = inb(port) & !(1 << n);
 		outb(port, value);
@@ -91,7 +98,6 @@ pub fn disable_irq(mut n: u8) {
 		n -= 8;
 		SLAVE_DATA
 	};
-
 	unsafe {
 		let value = inb(port) | (1 << n);
 		outb(port, value);

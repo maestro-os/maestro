@@ -26,8 +26,7 @@ use super::{Table, TableHdr};
 use core::mem::size_of;
 
 /// The Differentiated System Description Table.
-#[repr(C)]
-#[derive(Debug)]
+#[repr(C, packed)]
 pub struct Dsdt {
 	/// The table's header.
 	pub header: TableHdr,

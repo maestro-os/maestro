@@ -22,7 +22,7 @@
 use crate::{
 	file::fd::FileDescriptorTable,
 	memory::user::{UserPtr, UserSlice},
-	process::scheduler::Scheduler,
+	process::scheduler::schedule,
 	sync::mutex::Mutex,
 	syscall::Args,
 	time::{
@@ -172,7 +172,7 @@ pub fn do_select<T: TimeUnit>(
 			break 0;
 		}
 		// TODO Make the process sleep?
-		Scheduler::tick();
+		schedule();
 	};
 	// Write back
 	if let Some(val) = readfds_set {
@@ -326,6 +326,6 @@ pub(super) fn poll(
 		}
 		// TODO Make process sleep until an event occurs on a file descriptor in
 		// `fds`
-		Scheduler::tick();
+		schedule();
 	}
 }
