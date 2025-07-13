@@ -152,13 +152,18 @@ jobs:
       matrix:
         mod: ["e1000", "ps2"]
         arch: ["x86", "x86_64"]
-        cmd: ["clippy", "build"]
         profile: ["debug", "release"]
     steps:
-      - name: ${{ matrix.cmd }}
+      - name: Clippy
         working-directory: mod/${{ matrix.mod }}
         env:
           ARCH: ${{ matrix.arch }}
-          CMD: ${{ matrix.cmd }}
+          CMD: clippy
           PROFILE: ${{ matrix.profile }}
         run: ../build -- -D warnings
+      - name: Build
+        working-directory: mod/${{ matrix.mod }}
+        env:
+          ARCH: ${{ matrix.arch }}
+          PROFILE: ${{ matrix.profile }}
+        run: ../build
