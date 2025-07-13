@@ -19,7 +19,7 @@
 //! The Transmission Control Protocol (TCP) is a protocol transmitting sequenced, reliable,
 //! two-way, connection-based byte streams.
 
-use super::{buff::BuffList, osi::Layer};
+use super::{buf::BufList, osi::Layer};
 use crate::file::socket::Socket;
 use utils::errno::EResult;
 
@@ -57,17 +57,15 @@ pub struct TCPHdr {
 pub struct TCPLayer {}
 
 impl Layer for TCPLayer {
-	fn transmit<'c, F>(&self, _buff: BuffList<'c>, _next: F) -> EResult<()>
+	fn transmit<'c, F>(&self, _buff: BufList<'c>, _next: F) -> EResult<()>
 	where
-		F: Fn(BuffList<'c>) -> EResult<()>,
+		F: Fn(BufList<'c>) -> EResult<()>,
 	{
-		// TODO
-		todo!();
+		todo!()
 	}
 }
 
 /// Initiates a TCP connection on the given socket `sock`.
 pub fn init_connection(_sock: &mut Socket) -> EResult<()> {
-	// TODO
-	todo!();
+	todo!()
 }

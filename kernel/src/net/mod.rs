@@ -18,7 +18,7 @@
 
 //! Network stack implementation.
 
-pub mod buff;
+pub mod buf;
 pub mod icmp;
 pub mod ip;
 pub mod lo;
@@ -31,7 +31,7 @@ use crate::{
 	net::sockaddr::{SockAddrIn, SockAddrIn6},
 	sync::mutex::Mutex,
 };
-use buff::BuffList;
+use buf::BufList;
 use core::{cmp::Ordering, mem::size_of};
 use utils::{
 	collections::{hashmap::HashMap, string::String, vec::Vec},
@@ -112,7 +112,7 @@ pub trait Interface {
 	/// Reads data from `buff` and writes it into the network interface.
 	///
 	/// The function returns the number of bytes written.
-	fn write(&mut self, buff: &BuffList<'_>) -> EResult<u64>;
+	fn write(&mut self, buff: &BufList<'_>) -> EResult<u64>;
 }
 
 /// An entry in the routing table.

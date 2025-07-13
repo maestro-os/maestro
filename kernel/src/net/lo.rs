@@ -18,7 +18,7 @@
 
 //! This module implements the local loopback.
 
-use super::{Address, BindAddress, Interface, MAC, buff::BuffList};
+use super::{Address, BindAddress, Interface, MAC, buf::BufList};
 use utils::errno::EResult;
 
 /// Local loopback interfaces allows the system to write data to itself.
@@ -58,7 +58,7 @@ impl Interface for LocalLoopback {
 		todo!();
 	}
 
-	fn write(&mut self, _buff: &BuffList<'_>) -> EResult<u64> {
+	fn write(&mut self, _buff: &BufList<'_>) -> EResult<u64> {
 		// TODO Read from ring buffer
 		todo!();
 	}
