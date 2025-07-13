@@ -1,13 +1,6 @@
 #!/bin/sh
 
-# This script builds kernel modules. It is meant to be run from the module's directory (containing `Cargo.toml`)
-#
-# Environment variables:
-# - `ARCH` is the architecture to build for (default: `x86_64`)
-# - `CMD` is the cargo command to use (default: `build`)
-# - `PROFILE` is the profile to build for. This is usually either `debug` or `release` (default: `debug`)
-#
-# Arguments to the script are added at the end of the cargo command.
+# This script builds kernel modules
 
 if [ -z "$ARCH" ]; then
 	ARCH="x86_64"

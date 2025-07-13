@@ -1,22 +1,26 @@
 # Module
 
-A kernel module allows to add a feature to the kernel at runtime.
+Kernel modules add features to the kernel at runtime. They are especially useful for implementing drivers.
 
-This chapter describes how to write a kernel module.
+A kernel module has the same privileges as the kernel itself and runs in the same memory space. As such, one must be careful when trusting a kernel module.
 
-## Template
+From the point of view of the kernel, the module is shared library (`.so`) that is loaded pretty much like a regular shared library.
+The kernel relocates the module against itself at load time.
 
-A basic kernel module contains the following files:
+At build time, a kernel module is tricked into thinking the kernel is also a shared library. This is necessary to prevent linking the whole kernel inside each module.
+
+Of course, at runtime the kernel is a normal executable ELF (GRUB does not support relocating the kernel's ELF anyway).
+
+## Kernel module template
+
+A kernel module template is available in `mod/template/`. It has the following files:
 
 ```
 |- Cargo.toml
 |- Cargo.lock
-|- rust-toolchain.toml
 |- src/
  |- mod.rs
 ```
-
-These files are located in the `mod/template/` directory of the kernel's sources.
 
 `Cargo.toml`:
 
@@ -42,6 +46,14 @@ The following properties have to be taken into account when writing a module:
 
 On success, `init` returns `true`. On failure, it returns `false`.
 
+## In-tree modules
+
+It is recommended (although not mandatory) to keep kernel modules inside the kernel's repository. As such, they can be maintained with the rest of the kernel.
+
+In-tree modules are located in the `mod/` directory.
+
+> **NOTE**: if a module is maintained out of tree, it is important to ensure it has an up-to-date `rust-toolchain.toml`, such as the version of the Rust toolchain is the same as the kernel (see `rust-toolchain.toml` at the root of the kernel's repository).
+
 ## Versioning
 
 Kernel module versioning is a small subset of the [SemVer](https://semver.org/) specification.
@@ -66,18 +78,19 @@ The references to the kernel's internals and module interfaces can be found [her
 ## Building
 
 The procedure to build a kernel module is the following:
-- Build the kernel in debug or release mode (`--release`), depending on which profile you want
-- `cd` into the root of the module's source directory
-- Set environment variables:
-    - `PROFILE`: profile to build for (either `debug` or `release`). Default value: `debug`
-    - `ARCH`: architecture to build for (example: `x86`). Default value: `x86`
+- Build the kernel
+- `cd` into the root of the module's root directory (containing the module's `Cargo.toml`)
+- Set (optional) environment variables:
+    - `ARCH`: architecture to build for (default: `x86_64`)
+    - `CMD`: the cargo command to use (default: `build`)
+    - `PROFILE`: the profile to build for. This is usually `debug` or `release` (default: `debug`)
 - Build the module
 
 Example:
 ```sh
-PROFILE="debug" ARCH="x86" ../maestro/mod/build
+ARCH="x86" PROFILE="debug" ../build
 ```
 
 Then, the built module can be found at `target/<arch>/<profile>/lib<name>.so`
 
-> **NOTE**: It is important that the specified profile and architecture match the compilation of the kernel, otherwise compilation will not work
+> **NOTE**: It is important that the specified profile and architecture match the compiled kernel's, otherwise compilation will not work
