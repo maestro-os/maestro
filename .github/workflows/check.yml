@@ -144,3 +144,21 @@ jobs:
           CARGOFLAGS: --target arch/${{ matrix.arch.kernel }}/${{ matrix.arch.kernel }}.json
         run: ci/test.sh int
         timeout-minutes: 10
+  module:
+    runs-on: [self-hosted, linux]
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        mod: ["e1000", "ps2"]
+        arch: ["x86", "x86_64"]
+        cmd: ["clippy", "build"]
+        profile: ["debug", "release"]
+    steps:
+      - name: ${{ matrix.cmd }}
+        working-directory: mod/${{ matrix.mod }}
+        env:
+          ARCH: ${{ matrix.arch }}
+          CMD: ${{ matrix.cmd }}
+          PROFILE: ${{ matrix.profile }}
+        run: ../build -- -D warnings

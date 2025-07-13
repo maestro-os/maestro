@@ -1,11 +1,22 @@
 #!/bin/sh
 
-# This script builds kernel modules.
+# This script builds kernel modules. It is meant to be run from the module's directory (containing `Cargo.toml`)
+#
+# Environment variables:
+# - `ARCH` is the architecture to build for (default: `x86_64`)
+# - `CMD` is the cargo command to use (default: `build`)
+# - `PROFILE` is the profile to build for. This is usually either `debug` or `release` (default: `debug`)
+#
+# Arguments to the script are added at the end of the cargo command.
 
-KERN_SRC=$(realpath $(dirname $0)/..)
 if [ -z "$ARCH" ]; then
 	ARCH="x86_64"
 fi
+if [ -z "$CMD" ]; then
+	CMD=build
+fi
+
+KERN_SRC=$(realpath $(dirname $0)/..)
 export CARGOFLAGS="--target $KERN_SRC/kernel/arch/$ARCH/$ARCH.json $CARGOFLAGS"
 
 if [ ! -z "$PROFILE" ] && [ "$PROFILE" != "debug" ]; then
@@ -15,4 +26,4 @@ else
 fi
 export RUSTFLAGS="--extern kernel=$KERN_SRC/kernel/target/$ARCH/$PROFILE/libkernel.rlib -L $KERN_SRC/kernel/target/$ARCH/$PROFILE/deps -L $KERN_SRC/kernel/target/$PROFILE/deps $RUSTFLAGS"
 
-cargo build $CARGOFLAGS $@
+cargo "$CMD" $CARGOFLAGS $@
