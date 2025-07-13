@@ -161,6 +161,9 @@ jobs:
           CMD: clippy
           PROFILE: ${{ matrix.profile }}
         run: ../build -- -D warnings
+      - name: Format
+        working-directory: mod/${{ matrix.mod }}
+        run: cargo fmt --check
       - name: Build
         working-directory: mod/${{ matrix.mod }}
         env:
