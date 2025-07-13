@@ -1,26 +1,30 @@
 //! This kernel module implements a driver for the Intel e1000 ethernet controllers.
 
-#![feature(trait_upcasting)]
 #![no_std]
+#![no_main]
+#![feature(likely_unlikely)]
+#![allow(unused)] // TODO remove
 
+#[no_link]
 extern crate kernel;
 
-mod driver;
+// FIXME
+//mod driver;
 mod nic;
 
-use driver::E1000Driver;
-use kernel::module::version::Version;
-
-kernel::module!("e1000", Version::new(1, 0, 0), &[]);
+kernel::module!([]);
 
 /// Called on module load
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn init() -> bool {
-    kernel::device::driver::register(E1000Driver::new()).is_ok()
+	// FIXME
+	//kernel::device::driver::register(E1000Driver::new()).is_ok()
+	todo!()
 }
 
 /// Called on module unload
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn fini() {
-    kernel::device::driver::unregister("e1000");
+	// FIXME
+	//kernel::device::driver::unregister("e1000");
 }

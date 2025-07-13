@@ -18,7 +18,7 @@
 
 //! The Open Systems Interconnection (OSI) model defines the architecure of a network stack.
 
-use super::{SocketDesc, SocketDomain, SocketType, buff::BuffList, ip};
+use super::{SocketDesc, SocketDomain, SocketType, buf::BufList, ip};
 use crate::sync::mutex::Mutex;
 use core::fmt::Debug;
 use utils::{boxed::Box, collections::hashmap::HashMap, errno, errno::EResult};
@@ -34,10 +34,10 @@ pub trait Layer: Debug {
 	/// Arguments:
 	/// - `buff` is the list of buffer which composes the packet being built.
 	/// - `next` is the function called to pass the buffers list to the next layer.
-	fn transmit<'c, F>(&self, buff: BuffList<'c>, next: F) -> EResult<()>
+	fn transmit<'c, F>(&self, buff: BufList<'c>, next: F) -> EResult<()>
 	where
 		Self: Sized,
-		F: Fn(BuffList<'c>) -> EResult<()>;
+		F: Fn(BufList<'c>) -> EResult<()>;
 }
 
 /// Function used to build a layer from a given sockaddr structure.

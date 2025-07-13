@@ -16,27 +16,25 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! TODO doc
+//! Buffer list, to avoid allocations in network code.
 
 use core::ptr::NonNull;
 
 /// A linked-list of buffers representing a packet being built.
-///
-/// This structure works without any memory allocations and relies entirely on lifetimes.
-pub struct BuffList<'b> {
+pub struct BufList<'b> {
 	/// The buffer.
-	b: &'b [u8],
+	pub data: &'b [u8],
 
 	/// The next buffer in the list.
-	next: Option<NonNull<BuffList<'b>>>,
+	next: Option<NonNull<BufList<'b>>>,
 	/// The length of following buffers combined.
 	next_len: usize,
 }
 
-impl<'b> From<&'b [u8]> for BuffList<'b> {
+impl<'b> From<&'b [u8]> for BufList<'b> {
 	fn from(b: &'b [u8]) -> Self {
 		Self {
-			b,
+			data: b,
 
 			next: None,
 			next_len: 0,
@@ -44,23 +42,27 @@ impl<'b> From<&'b [u8]> for BuffList<'b> {
 	}
 }
 
-impl<'b> BuffList<'b> {
+impl<'b> BufList<'b> {
 	/// Returns the length of the buffer, plus following buffers.
 	#[allow(clippy::len_without_is_empty)]
 	pub fn len(&self) -> usize {
-		self.b.len() + self.next_len
+		self.data.len() + self.next_len
 	}
 
 	/// Pushes another buffer at the front of the current list.
 	///
 	/// The function returns the new head of the list (which is the given `front`).
-	pub fn push_front<'o>(&mut self, mut front: BuffList<'o>) -> BuffList<'o>
+	pub fn push_front<'o>(&mut self, mut front: BufList<'o>) -> BufList<'o>
 	where
 		'b: 'o,
 	{
 		front.next = NonNull::new(self);
-		front.next_len = self.b.len() + self.next_len;
-
+		front.next_len = self.data.len() + self.next_len;
 		front
+	}
+
+	/// Returns the next buffer.
+	pub fn next(&self) -> Option<&BufList<'b>> {
+		unsafe { self.next.map(|n| n.as_ref()) }
 	}
 }

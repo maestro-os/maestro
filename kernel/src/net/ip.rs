@@ -18,7 +18,7 @@
 
 //! This module implements the IP protocol.
 
-use super::{buff::BuffList, osi::Layer};
+use super::{buf::BufList, osi::Layer};
 use crate::crypto::checksum;
 use core::mem::size_of;
 use macros::AnyRepr;
@@ -113,9 +113,9 @@ pub struct IPv4Layer {
 }
 
 impl Layer for IPv4Layer {
-	fn transmit<'c, F>(&self, mut buff: BuffList<'c>, next: F) -> EResult<()>
+	fn transmit<'c, F>(&self, mut buff: BufList<'c>, next: F) -> EResult<()>
 	where
-		F: Fn(BuffList<'c>) -> EResult<()>,
+		F: Fn(BufList<'c>) -> EResult<()>,
 	{
 		let hdr_len = size_of::<IPv4Header>() as u16; // TODO add options support?
 
