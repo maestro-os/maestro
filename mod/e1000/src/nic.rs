@@ -175,7 +175,7 @@ const TX_STA_TU: u8 = 1 << 3;
 
 /// The receive descriptor.
 #[derive(Default)]
-#[repr(packed)]
+#[repr(C, packed)]
 struct RXDesc {
 	/// The physical address of the data.
 	addr: u64,
@@ -194,7 +194,7 @@ struct RXDesc {
 // TODO: This is the legacy structure. Add support for the new version
 /// The transmit descriptor.
 #[derive(Default)]
-#[repr(packed)]
+#[repr(C, packed)]
 struct TXDesc {
 	/// The physical address of the data.
 	addr: u64,
@@ -213,7 +213,7 @@ struct TXDesc {
 }
 
 /// Network Interface Card
-pub struct NIC {
+pub struct Nic {
 	/// TODO doc
 	status_reg: u16,
 	/// TODO doc
@@ -241,7 +241,7 @@ pub struct NIC {
 	tx_cur: usize,
 }
 
-impl NIC {
+impl Nic {
 	/// Creates a new instance using the given device.
 	pub fn new(dev: &dyn PhysicalDevice) -> Result<Self, &str> {
 		let status_reg = dev
@@ -417,7 +417,7 @@ impl NIC {
 	}
 }
 
-impl net::Interface for NIC {
+impl net::Interface for Nic {
 	fn get_name(&self) -> &[u8] {
 		b"eth"
 	}
@@ -485,7 +485,7 @@ impl net::Interface for NIC {
 		let descriptors = unsafe { slice::from_raw_parts_mut(self.tx_descs, TX_DESC_COUNT) };
 
 		// get the next descriptor and wait if necessary
-		fn next_desc(s: &mut NIC, descriptors: &[TXDesc]) {
+		fn next_desc(s: &mut Nic, descriptors: &[TXDesc]) {
 			s.tx_cur = (s.tx_cur + 1) % TX_DESC_COUNT;
 			let desc = &descriptors[s.tx_cur];
 
@@ -507,7 +507,7 @@ impl net::Interface for NIC {
 		}
 		let mut buf = Some(buf);
 
-		while let Some(ref b) = buf {
+		while let Some(b) = buf {
 			let desc = &mut descriptors[self.tx_cur];
 			let desc_len = desc.length as usize;
 			// if the descriptor is full, go to next
@@ -543,7 +543,7 @@ impl net::Interface for NIC {
 	}
 }
 
-impl Drop for NIC {
+impl Drop for Nic {
 	fn drop(&mut self) {
 		unsafe {
 			let rx_buffs_order =
