@@ -23,11 +23,12 @@ pub mod switch;
 
 use crate::{
 	arch::{
-		end_of_interrupt,
-		x86::{cli, idt::IntFrame, smp},
+		end_of_interrupt, x86,
+		x86::{apic::lapic_id, cli, gdt, gdt::Gdt, idt::IntFrame, smp, tss},
 	},
 	event,
 	event::{CallbackHook, CallbackResult},
+	memory::VirtAddr,
 	process::{Process, State, mem_space::MemSpace, pid::Pid, scheduler::switch::switch},
 	sync::{
 		atomic::AtomicU64,
@@ -65,9 +66,11 @@ pub struct CoreLocal {
 	/// The stashed user stack
 	pub user_stack: AtomicUsize,
 
-	/// The CPU structure
+	/// CPU information
 	pub cpu: &'static Cpu,
-	/// Attached memory space.
+	/// The CPU's GDT
+	pub gdt: Gdt,
+	/// Attached memory space
 	///
 	/// The pointer stored by this field is returned by [`Arc::into_raw`].
 	pub mem_space: AtomicOptionalArc<MemSpace>,
@@ -76,8 +79,26 @@ pub struct CoreLocal {
 /// Returns the core-local structure for the current core.
 #[inline]
 pub fn core_local() -> &'static CoreLocal {
-	// TODO use `gs`
-	&CORE_LOCAL[0]
+	let base = x86::rdmsr(x86::IA32_GS_BASE);
+	unsafe {
+		let ptr = VirtAddr(base as _).as_ptr::<CoreLocal>();
+		&*ptr
+	}
+}
+
+/// Sets, on the current CPU core, the register to make the associated [`CoreLocal`] structure
+/// available.
+pub(crate) fn init_core_local() {
+	let id = lapic_id();
+	let local = &CORE_LOCAL[id as usize];
+	// Set GS base on the current core
+	#[cfg(target_arch = "x86_64")]
+	{
+		use crate::arch::x86;
+		// Set to `IA32_GS_BASE` instead of `IA32_KERNEL_GS_BASE` since it will get swapped
+		// when switching to userspace
+		x86::wrmsr(x86::IA32_GS_BASE, local as *const _ as u64);
+	}
 }
 
 /// The list of CPU cores on the system.
@@ -98,13 +119,19 @@ pub fn init() -> AllocResult<()> {
 			user_stack: AtomicUsize::new(0),
 
 			cpu,
+			gdt: Gdt::default(),
+
 			mem_space: AtomicOptionalArc::new(),
 		})
 		.collect::<CollectResult<Vec<CoreLocal>>>()
 		.0?;
-	// Boot other cores
-	smp::init(&CPU)?;
-	// Register tick callback
+	unsafe {
+		OnceInit::init(&CORE_LOCAL, core_locals);
+	}
+	// Init the current core's scheduler
+	init_core_local();
+	gdt::flush();
+	tss::init();
 	let mut clocks = time::hw::CLOCKS.lock();
 	let pit = clocks.get_mut(b"pit".as_slice()).unwrap();
 	let tick_callback_hook = event::register_callback(
@@ -126,20 +153,11 @@ pub fn init() -> AllocResult<()> {
 
 		idle_task,
 	};
-	// Set statics
 	unsafe {
-		OnceInit::init(&CORE_LOCAL, core_locals);
 		OnceInit::init(&SCHEDULER, scheduler);
 	}
-	// Set GS base on the current core
-	#[cfg(target_arch = "x86_64")]
-	{
-		use crate::arch::x86;
-		use core::ptr::addr_of;
-		// Set to `IA32_GS_BASE` instead of `IA32_KERNEL_GS_BASE` since it will get swapped
-		// when switching to userspace
-		x86::wrmsr(x86::IA32_GS_BASE, addr_of!(CORE_LOCAL) as u64); // TODO set for each core
-	}
+	// Boot other cores
+	smp::init(&CPU)?;
 	Ok(())
 }
 

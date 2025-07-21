@@ -31,7 +31,7 @@ use crate::{
 	arch::x86::{idt::IntFrame, tss},
 	file::vfs::ResolutionSettings,
 	memory::VirtAddr,
-	process::{Process, mem_space::MemSpace},
+	process::{Process, mem_space::MemSpace, scheduler::init_core_local},
 	sync::mutex::Mutex,
 };
 use utils::{
@@ -117,8 +117,8 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 		}
 		// Reset MSR
 		x86::wrmsr(x86::IA32_FS_BASE, 0);
-		x86::wrmsr(x86::IA32_GS_BASE, gs_base);
-		x86::wrmsr(x86::IA32_KERNEL_GS_BASE, 0);
+		x86::wrmsr(x86::IA32_KERNEL_GS_BASE, gs_base);
+		init_core_local();
 		// Update user stack
 		core_local()
 			.user_stack

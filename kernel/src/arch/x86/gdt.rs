@@ -22,14 +22,8 @@
 //! It is a deprecated structure that still must be used in order to switch to protected mode,
 //! handle protection rings and load the Task State Segment (TSS).
 
-use crate::{
-	boot::{GDT_VIRT_ADDR, InitGdt},
-	memory::{PhysAddr, VirtAddr},
-};
-use core::{arch::asm, fmt, ptr};
-
-/// The address in physical memory to the beginning of the GDT.
-const PHYS_PTR: PhysAddr = PhysAddr(0x800);
+use crate::{memory::VirtAddr, process::scheduler::core_local};
+use core::{arch::asm, cell::UnsafeCell, fmt};
 
 /// The offset of the kernel code segment.
 pub const KERNEL_CS: usize = 8;
@@ -154,8 +148,13 @@ impl Entry {
 	/// An invalid offset, either not a multiple of `8` or out of bounds of the GDT, shall result
 	/// in an undefined behaviour.
 	pub unsafe fn update_gdt(self, off: usize) {
-		let ptr = get_segment_ptr(off);
-		ptr::write_volatile(ptr, self);
+		core_local()
+			.gdt
+			.0
+			.get()
+			.byte_add(off)
+			.cast::<Entry>()
+			.write_volatile(self);
 	}
 }
 
@@ -171,36 +170,56 @@ impl fmt::Debug for Entry {
 	}
 }
 
-/// Returns the pointer to the segment at offset `offset`.
-///
-/// # Safety
-///
-/// The caller must ensure the given `offset` is in bounds of the GDT.
-pub unsafe fn get_segment_ptr(offset: usize) -> *mut Entry {
-	PHYS_PTR
-		.kernel_to_virtual()
-		.unwrap()
-		.as_ptr::<Entry>()
-		.byte_add(offset)
+/// Per-core GDT entries list.
+pub struct Gdt(UnsafeCell<[Entry; 11]>);
+
+impl Default for Gdt {
+	fn default() -> Self {
+		let gdt = [
+			// First entry, empty
+			Entry(0),
+			// Kernel code segment
+			#[cfg(target_arch = "x86")]
+			Entry::new(0, !0, 0b10011010, 0b1100),
+			#[cfg(target_arch = "x86_64")]
+			Entry::new(0, !0, 0b10011010, 0b1010),
+			// Kernel data segment
+			Entry::new(0, !0, 0b10010010, 0b1100),
+			// User code segment (32 bits)
+			Entry::new(0, !0, 0b11111010, 0b1100),
+			// User data segment (32 bits)
+			Entry::new(0, !0, 0b11110010, 0b1100),
+			// User code segment (64 bits), unused by 32 bit kernel
+			Entry::new(0, !0, 0b11111010, 0b1010),
+			// TSS
+			Entry(0),
+			Entry(0),
+			// TLS entries
+			Entry(0),
+			Entry(0),
+			Entry(0),
+		];
+		Gdt(UnsafeCell::new(gdt))
+	}
 }
 
 /// A GDT descriptor.
 #[repr(C, packed)]
-struct Gdt {
+struct GdtDesc {
 	/// The size of the GDT in bytes, minus `1`.
 	size: u16,
 	/// The address to the GDT.
 	addr: VirtAddr,
 }
 
-/// Refreshes the GDT's cache.
+/// Flushes the current CPU's GDT.
 #[inline(always)]
 pub fn flush() {
-	let gdt = Gdt {
-		size: (size_of::<InitGdt>() - 1) as _,
-		addr: GDT_VIRT_ADDR,
+	let hdr = GdtDesc {
+		size: (size_of::<Gdt>() - 1) as _,
+		addr: VirtAddr::from(core_local().gdt.0.get()),
 	};
 	unsafe {
-		asm!("lgdt [{}]", in(reg) &gdt);
+		asm!("lgdt [{}]", in(reg) &hdr);
 	}
 }

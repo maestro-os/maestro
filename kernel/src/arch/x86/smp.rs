@@ -22,41 +22,49 @@ use super::apic::{
 	REG_ERROR_STATUS, REG_ICR_HI, REG_ICR_LO, lapic_id, read_reg, wait_delivery, write_reg,
 };
 use crate::{
-	arch::x86::apic,
+	arch::x86::{apic, tss},
 	boot::BOOT_STACK_SIZE,
-	memory::{PhysAddr, malloc::__alloc},
-	process::scheduler::Cpu,
+	memory::{
+		PhysAddr,
+		malloc::__alloc,
+		vmem::{KERNEL_VMEM, write_ro},
+	},
+	println,
+	process::scheduler::{Cpu, init_core_local, switch::idle_task},
 };
-use core::{alloc::Layout, arch::global_asm, ffi::c_void, ptr::null_mut};
-use utils::{errno::AllocResult, vec};
+use core::{alloc::Layout, arch::global_asm, ptr, ptr::null_mut};
+use utils::{collections::vec::Vec, errno::AllocResult, vec};
 
 /// The SMP trampoline's physical address in memory.
-const TRAMPOLINE_PHYS_ADDR: PhysAddr = PhysAddr(0x8000);
+pub const TRAMPOLINE_PHYS_ADDR: PhysAddr = PhysAddr(0x8000);
 
+#[cfg(target_arch = "x86")]
 global_asm!(
 	r"
 .section .text
 .code16
+
+.global smp_trampoline
+.global smp_trampoline_end
+
+.set SMP_VAR_ADDR, 0x8000 + (smp_trampoline_end - smp_trampoline)
 
 smp_trampoline:
 	cli
 	cld
 	ljmp 0, 0x8040
 
-	# GDT
 .align 16
 _gdt_table:
 	.long 0, 0
 	.long 0x0000ffff, 0x00cf9a00 # code
 	.long 0x0000ffff, 0x008f9200 # data
-	.long 0x00000068, 0x00cf8900 # tss
 _gdt:
 	.word _gdt - _gdt_table - 1
 	.long 0x8010
 	.long 0, 0
 .align 64
 
-	# Setup GDT
 	xor ax, ax
 	mov ds, ax
 	lgdt [0x8030]
@@ -67,7 +75,6 @@ _gdt:
 
 .align 32
 .code32
-
 	mov ax, 16
 	mov ds, ax
 	mov ss, ax
@@ -76,30 +83,125 @@ _gdt:
 	mov eax, 1
 	cpuid
 	shr ebx, 24
-	mov edi, ebx
+
+    # Set page directory
+    mov eax, [SMP_VAR_ADDR]
+	mov cr3, eax
+
+    # Enable PSE
+	mov eax, cr4
+	or eax, 0x10
+	mov cr4, eax
+
+	# Enable paging and write protect
+	or eax, 0x80010000
+	mov cr0, eax
 
 	# Setup local stack
-	shl ebx, 15
-	mov esp, 0 # TODO {SMP_STACK_TOP}
-	sub ebx, esp
-	push edi
+	mov esp, [SMP_VAR_ADDR + 8]
+	shl ebx, 3
+	add esp, ebx
+	mov esp, [esp]
 
-	# TODO if 64 bit, setup long mode
-	# TODO relocate to higher memory
-	# TODO switch to per-core GDT (because of thread locals)
-	# TODO jump to Rust code
+	push 0
+	popfd
+
+	call smp_main
+
+.align 8
 smp_trampoline_end:
-",
-	SMP_STACK_TOP = sym SMP_STACK_TOP
+"
+);
+
+#[cfg(target_arch = "x86_64")]
+global_asm!(
+	r"
+.section .text
+.code16
+
+.global smp_trampoline
+.global smp_trampoline_end
+
+.set SMP_VAR_ADDR, 0x8000 + (smp_trampoline_end - smp_trampoline)
+
+smp_trampoline:
+	cli
+	cld
+	ljmp 0, 0x8040
+
+.align 16
+_gdt_table:
+	.long 0, 0
+	.long 0x0000ffff, 0x00af9a00 # code 64
+	.long 0x0000ffff, 0x008f9200 # data
+	.long 0x0000ffff, 0x00cf9a00 # code 32
+_gdt:
+	.word _gdt - _gdt_table - 1
+	.long 0x8010
+	.long 0, 0
+.align 64
+
+	xor ax, ax
+	mov ds, ax
+	lgdt [0x8030]
+	mov eax, cr0
+	or eax, 1
+	mov cr0, eax
+	ljmp 24, 0x8060
+
+.align 32
+.code32
+	mov ax, 16
+	mov ds, ax
+	mov ss, ax
+
+	# Get Local APIC ID
+	mov eax, 1
+	cpuid
+	shr ebx, 24
+
+    # Set PDPT
+    mov eax, [SMP_VAR_ADDR]
+	mov cr3, eax
+
+	# Enable PSE and PAE
+	mov eax, cr4
+	or eax, 0x30
+	mov cr4, eax
+
+	# Enable LME
+	mov ecx, 0xc0000080 # EFER
+	rdmsr
+	or eax, 0x901
+	wrmsr
+
+	# Enable paging and write protect
+	or eax, 0x80010000
+	mov cr0, eax
+
+	ljmp 8, 0x80a2
+
+.code64
+	# Setup local stack
+	mov rsp, [SMP_VAR_ADDR + 8]
+	shl rbx, 3
+	add rsp, rbx
+	mov rsp, [rsp]
+
+	push 0
+	popfq
+
+	call smp_main
+
+.align 8
+smp_trampoline_end:
+"
 );
 
 unsafe extern "C" {
 	fn smp_trampoline();
 	fn smp_trampoline_end();
 }
-
-/// An array of pointers to the top of stacks for each core to boot.
-static mut SMP_STACK_TOP: *const *mut c_void = null_mut();
 
 /// Initializes the SMP.
 ///
@@ -110,23 +212,25 @@ pub fn init(cpu: &[Cpu]) -> AllocResult<()> {
 		.kernel_to_virtual()
 		.unwrap()
 		.as_ptr();
-	// Copy trampoline code
-	unsafe {
-		let trampoline_ptr: *mut u8 = TRAMPOLINE_PHYS_ADDR.kernel_to_virtual().unwrap().as_ptr();
-		trampoline_ptr.copy_from(
-			smp_trampoline as *const _,
-			smp_trampoline_end as *const () as usize - smp_trampoline as *const () as usize,
-		);
-	}
 	// Allocate stacks list
 	let max_apic_id = cpu
 		.iter()
 		.map(|c| c.apic_id as usize + 1)
 		.max()
 		.unwrap_or(0);
-	let mut stacks = vec![null_mut(); max_apic_id]?;
+	let mut stacks: Vec<*mut u8> = vec![null_mut(); max_apic_id]?;
+	// Copy trampoline code
+	let trampoline_ptr: *mut u8 = TRAMPOLINE_PHYS_ADDR.kernel_to_virtual().unwrap().as_ptr();
+	let trampoline_len =
+		smp_trampoline_end as *const () as usize - smp_trampoline as *const () as usize;
 	unsafe {
-		SMP_STACK_TOP = stacks.as_ptr();
+		write_ro(|| {
+			trampoline_ptr.copy_from(smp_trampoline as *const _, trampoline_len);
+			// Pass pointers to the trampoline
+			let ptrs = trampoline_ptr.add(trampoline_len).cast();
+			ptr::write_volatile(ptrs, KERNEL_VMEM.lock().inner() as *const _ as u64);
+			ptr::write_volatile(ptrs.add(1), stacks.as_ptr() as u64);
+		});
 	}
 	let stack_layout = Layout::array::<u8>(BOOT_STACK_SIZE).unwrap();
 	// Boot cores
@@ -195,4 +299,17 @@ pub fn init(cpu: &[Cpu]) -> AllocResult<()> {
 		}
 	}
 	Ok(())
+}
+
+/// First function called after the SMP trampoline
+#[unsafe(no_mangle)]
+unsafe extern "C" fn smp_main() {
+	init_core_local();
+	tss::init();
+	println!("started core {}!", lapic_id());
+	// TODO init the core's scheduler
+	// Wait for work
+	unsafe {
+		idle_task();
+	}
 }

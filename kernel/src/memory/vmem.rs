@@ -23,8 +23,9 @@ use crate::{
 	acpi::{RSDP_SCAN_BEGIN, RSDP_SCAN_END},
 	arch::{
 		x86,
-		x86::paging::{
-			FLAG_CACHE_DISABLE, FLAG_GLOBAL, FLAG_USER, FLAG_WRITE, FLAG_WRITE_THROUGH,
+		x86::{
+			paging::{FLAG_CACHE_DISABLE, FLAG_GLOBAL, FLAG_USER, FLAG_WRITE, FLAG_WRITE_THROUGH},
+			smp,
 		},
 	},
 	elf,
@@ -285,21 +286,34 @@ pub(crate) fn init() {
 		let pages = section.sh_size.div_ceil(PAGE_SIZE as _) as usize;
 		kernel_vmem.map_range(phys_addr, virt_addr, pages, flags);
 	}
-	// Map VGA buffer
 	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-	kernel_vmem.map_range(
-		vga::BUFFER_PHYS as _,
-		vga::get_buffer_virt().into(),
-		1,
-		FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH | FLAG_WRITE | FLAG_GLOBAL,
-	);
-	// Ensure ACPI RSDP is mapped
-	kernel_vmem.map_range(
-		PhysAddr(RSDP_SCAN_BEGIN),
-		KERNEL_BEGIN + RSDP_SCAN_BEGIN,
-		(RSDP_SCAN_END + 1 - RSDP_SCAN_BEGIN) / PAGE_SIZE,
-		FLAG_GLOBAL,
-	);
+	{
+		// Map SMP trampoline
+		kernel_vmem.map(
+			smp::TRAMPOLINE_PHYS_ADDR,
+			VirtAddr(smp::TRAMPOLINE_PHYS_ADDR.0),
+			0,
+		);
+		kernel_vmem.map(
+			smp::TRAMPOLINE_PHYS_ADDR,
+			smp::TRAMPOLINE_PHYS_ADDR.kernel_to_virtual().unwrap(),
+			0,
+		);
+		// Map VGA buffer
+		kernel_vmem.map_range(
+			vga::BUFFER_PHYS as _,
+			vga::get_buffer_virt().into(),
+			1,
+			FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH | FLAG_WRITE | FLAG_GLOBAL,
+		);
+		// Ensure ACPI RSDP is mapped
+		kernel_vmem.map_range(
+			PhysAddr(RSDP_SCAN_BEGIN),
+			KERNEL_BEGIN + RSDP_SCAN_BEGIN,
+			(RSDP_SCAN_END + 1 - RSDP_SCAN_BEGIN) / PAGE_SIZE,
+			FLAG_GLOBAL,
+		);
+	}
 	kernel_vmem.bind();
 	unsafe {
 		OnceInit::init(&KERNEL_VMEM, Mutex::new(kernel_vmem));
