@@ -31,7 +31,7 @@ pub mod signal;
 pub mod user_desc;
 
 use crate::{
-	arch::x86::{FxState, cli, gdt, idt, idt::IntFrame, tss},
+	arch::x86::{FxState, cli, gdt, idt, idt::IntFrame},
 	event,
 	event::CallbackResult,
 	file,
@@ -350,10 +350,10 @@ pub struct Process {
 	pub rusage: Mutex<Rusage>,
 }
 
-/// Initializes processes system. This function must be called only once, at
-/// kernel initialization.
+/// Initializes processes management.
+///
+/// This function must be called only once, at kernel initialization.
 pub(crate) fn init() -> EResult<()> {
-	tss::init();
 	scheduler::init()?;
 	// Register interruption callbacks
 	let callback = |id: u32, _code: u32, frame: &mut IntFrame, ring: u8| {

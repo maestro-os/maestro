@@ -16,10 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{
-	arch::x86::{gdt, paging::Table},
-	memory::VirtAddr,
-};
+use crate::arch::x86::paging::Table;
 use core::{arch::global_asm, sync::atomic::AtomicUsize};
 
 /// Boot stack size
@@ -28,41 +25,6 @@ pub const BOOT_STACK_SIZE: usize = 262144; // rustc in debug mode is greedy
 /// Boot stack size
 #[cfg(not(debug_assertions))]
 pub const BOOT_STACK_SIZE: usize = 32768;
-
-#[cfg(target_arch = "x86")]
-pub const GDT_VIRT_ADDR: VirtAddr = VirtAddr(0xc0000800);
-#[cfg(target_arch = "x86_64")]
-pub const GDT_VIRT_ADDR: VirtAddr = VirtAddr(0xffff800000000800);
-
-pub type InitGdt = [gdt::Entry; 11];
-
-/// The initial Global Descriptor Table.
-#[unsafe(no_mangle)]
-#[unsafe(link_section = ".boot.data")]
-static INIT_GDT: InitGdt = [
-	// First entry, empty
-	gdt::Entry(0),
-	// Kernel code segment
-	#[cfg(target_arch = "x86")]
-	gdt::Entry::new(0, !0, 0b10011010, 0b1100),
-	#[cfg(target_arch = "x86_64")]
-	gdt::Entry::new(0, !0, 0b10011010, 0b1010),
-	// Kernel data segment
-	gdt::Entry::new(0, !0, 0b10010010, 0b1100),
-	// User code segment (32 bits)
-	gdt::Entry::new(0, !0, 0b11111010, 0b1100),
-	// User data segment (32 bits)
-	gdt::Entry::new(0, !0, 0b11110010, 0b1100),
-	// User code segment (64 bits), unused by 32 bit kernel
-	gdt::Entry::new(0, !0, 0b11111010, 0b1010),
-	// TSS
-	gdt::Entry(0),
-	gdt::Entry(0),
-	// TLS entries
-	gdt::Entry(0),
-	gdt::Entry(0),
-	gdt::Entry(0),
-];
 
 /// The paging object used to remap the kernel to higher memory.
 ///
@@ -194,12 +156,6 @@ multiboot_entry:
 	or eax, 0x80010000
 	mov cr0, eax
 
-    # Copy GDT to its physical address
-	mov esi, offset INIT_GDT
-	mov edi, {GDT_VIRT_ADDR}
-	mov ecx, {GDT_SIZE}
-	rep movsb
-
 	# Load GDT
 	lgdt [gdt]
 	push 8 # kernel code segment
@@ -225,12 +181,15 @@ complete_flush:
 
 .section .boot.data
 
+.align 8
+gdt_entries:
+	.long 0, 0
+	.long 0x0000ffff, 0x00cf9a00 # code
+	.long 0x0000ffff, 0x008f9200 # data
 gdt:
-	.word {GDT_SIZE} - 1
-	.long {GDT_VIRT_ADDR}
+	.word gdt - gdt_entries - 1
+	.long 0xc0000000 + gdt_entries
 "#,
-	GDT_VIRT_ADDR = const(GDT_VIRT_ADDR.0),
-	GDT_SIZE = const(size_of::<InitGdt>()),
 	REMAP = sym REMAP
 );
 
@@ -281,12 +240,6 @@ multiboot_entry:
 	or eax, 0x80010000
 	mov cr0, eax
 
-    # Copy GDT to its address
-	mov esi, offset INIT_GDT
-	mov edi, {GDT_VIRT_ADDR}
-	mov ecx, {GDT_SIZE}
-	rep movsb
-
 	# Load GDT
 	lgdt [gdt]
 	push 8 # kernel code segment
@@ -304,10 +257,9 @@ complete_flush:
 	mov fs, ax
 	mov gs, ax
 
-	# Update stack and GDT
+	# Update stack
 	mov rax, 0xffff800000000000
     add rsp, rax
-	lgdt [gdt]
 
 	# Call kernel_main
 	xor rdi, rdi
@@ -322,12 +274,15 @@ complete_flush:
 
 .section .boot.data
 
+.align 8
+gdt_entries:
+	.long 0, 0
+	.long 0x0000ffff, 0x00af9a00 # code
+	.long 0x0000ffff, 0x008f9200 # data
 gdt:
-	.word {GDT_SIZE} - 1
-	.quad {GDT_VIRT_ADDR}
+	.word gdt - gdt_entries - 1
+	.quad 0xffff800000000000 + gdt_entries
 "#,
-	GDT_VIRT_ADDR = const(GDT_VIRT_ADDR.0),
-	GDT_SIZE = const(size_of::<InitGdt>()),
 	REMAP = sym REMAP,
 	REMAP_DIR = sym REMAP_DIR
 );
