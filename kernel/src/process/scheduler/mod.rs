@@ -23,8 +23,8 @@ pub mod switch;
 
 use crate::{
 	arch::{
-		end_of_interrupt, x86,
-		x86::{apic::lapic_id, cli, gdt, gdt::Gdt, idt::IntFrame, smp, tss},
+		end_of_interrupt,
+		x86::{cli, gdt, gdt::Gdt, idt::IntFrame, smp, tss},
 	},
 	event,
 	event::{CallbackHook, CallbackResult},
@@ -79,22 +79,29 @@ pub struct CoreLocal {
 /// Returns the core-local structure for the current core.
 #[inline]
 pub fn core_local() -> &'static CoreLocal {
-	let base = x86::rdmsr(x86::IA32_GS_BASE);
-	unsafe {
-		let ptr = VirtAddr(base as _).as_ptr::<CoreLocal>();
-		&*ptr
+	#[cfg(target_arch = "x86")]
+	{
+		use crate::arch::x86::apic::lapic_id;
+		&CORE_LOCAL[lapic_id() as usize]
+	}
+	#[cfg(target_arch = "x86_64")]
+	{
+		use crate::arch::x86;
+		let base = x86::rdmsr(x86::IA32_GS_BASE);
+		unsafe {
+			let ptr = VirtAddr(base as _).as_ptr::<CoreLocal>();
+			&*ptr
+		}
 	}
 }
 
 /// Sets, on the current CPU core, the register to make the associated [`CoreLocal`] structure
 /// available.
 pub(crate) fn init_core_local() {
-	let id = lapic_id();
-	let local = &CORE_LOCAL[id as usize];
-	// Set GS base on the current core
 	#[cfg(target_arch = "x86_64")]
 	{
-		use crate::arch::x86;
+		use crate::arch::{x86, x86::apic::lapic_id};
+		let local = &CORE_LOCAL[lapic_id() as usize];
 		// Set to `IA32_GS_BASE` instead of `IA32_KERNEL_GS_BASE` since it will get swapped
 		// when switching to userspace
 		x86::wrmsr(x86::IA32_GS_BASE, local as *const _ as u64);

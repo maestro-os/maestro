@@ -384,7 +384,8 @@ pub fn arch_prctl(Args((code, addr)): Args<(c_int, usize)>) -> EResult<usize> {
 		}
 		#[cfg(target_arch = "x86_64")]
 		ARCH_GET_GS => {
-			let val = x86::rdmsr(x86::IA32_GS_BASE) as usize;
+			// Use `IA32_KERNEL_GS_BASE` since swapgs is used when entering kernelspace
+			let val = x86::rdmsr(x86::IA32_KERNEL_GS_BASE) as usize;
 			let ptr = UserPtr::<usize>::from_ptr(addr);
 			ptr.copy_to_user(&val)?;
 		}
