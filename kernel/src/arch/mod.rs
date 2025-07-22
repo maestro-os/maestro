@@ -65,6 +65,19 @@ pub(crate) fn init1() {
 		}
 		enable_sse();
 		idt::init();
+		// Enable GLOBAL flag
+		let mut cr4 = register_get!("cr4") | (1 << 7);
+		// Enable SMEP and SMAP if supported
+		let (smep, smap) = supports_supervisor_prot();
+		if smep {
+			cr4 |= 1 << 20;
+		}
+		if smap {
+			cr4 |= 1 << 21;
+		}
+		unsafe {
+			register_set!("cr4", cr4);
+		}
 	}
 }
 

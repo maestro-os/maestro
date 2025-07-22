@@ -19,9 +19,8 @@
 //! x86 virtual memory support.
 
 use crate::{
-	arch::x86::supports_supervisor_prot,
 	memory::{PhysAddr, VirtAddr, buddy, buddy::BUDDY_RETRY},
-	register_get, register_set,
+	register_get,
 };
 use core::{
 	arch::asm,
@@ -445,21 +444,4 @@ unsafe fn free_impl(mut page_dir: NonNull<Table>, depth: usize) {
 /// Subsequent uses of `page_dir` are undefined.
 pub unsafe fn free(page_dir: NonNull<Table>) {
 	free_impl(page_dir, 0);
-}
-
-/// Prepares for virtual memory management on the current CPU.
-pub(crate) fn prepare() {
-	// Set cr4 flags
-	// Enable GLOBAL flag
-	let mut cr4 = register_get!("cr4") | (1 << 7);
-	let (smep, smap) = supports_supervisor_prot();
-	if smep {
-		cr4 |= 1 << 20;
-	}
-	if smap {
-		cr4 |= 1 << 21;
-	}
-	unsafe {
-		register_set!("cr4", cr4);
-	}
 }
