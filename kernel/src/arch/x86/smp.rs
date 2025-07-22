@@ -22,7 +22,7 @@ use super::apic::{
 	REG_ERROR_STATUS, REG_ICR_HI, REG_ICR_LO, lapic_id, read_reg, wait_delivery, write_reg,
 };
 use crate::{
-	arch::x86::{apic, tss},
+	arch::x86::{apic, gdt, tss},
 	boot::BOOT_STACK_SIZE,
 	memory::{
 		PhysAddr, VirtAddr,
@@ -106,7 +106,7 @@ _gdt:
 	push 0
 	popfd
 
-	call smp_main
+	jmp smp_main
 
 .align 8
 smp_trampoline_end:
@@ -191,7 +191,8 @@ _gdt:
 	push 0
 	popfq
 
-	call smp_main
+	movabs rax, offset smp_main
+	jmp rax
 
 .align 8
 smp_trampoline_end:
@@ -306,8 +307,9 @@ pub fn init(cpu: &[Cpu]) -> AllocResult<()> {
 
 /// First function called after the SMP trampoline
 #[unsafe(no_mangle)]
-unsafe extern "C" fn smp_main() {
+unsafe extern "C" fn smp_main() -> ! {
 	init_core_local();
+	gdt::flush();
 	tss::init();
 	println!("started core {}!", lapic_id());
 	// TODO init the core's scheduler
