@@ -145,7 +145,7 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	// Initialize TTY
 	TTY.display.lock().show();
 	// Architecture-specific initialization, stage 1
-	arch::init1();
+	arch::init1(true);
 
 	// Read multiboot information
 	if unlikely(magic != multiboot::BOOTLOADER_MAGIC || !multiboot_ptr.is_aligned_to(8)) {

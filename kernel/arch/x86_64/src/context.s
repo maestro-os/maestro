@@ -139,6 +139,7 @@ IRQ 15
     add rsp, 16
 .endm
 
+.global idt_ignore
 .global init_ctx
 .global syscall_int
 .global syscall
@@ -169,6 +170,9 @@ LOAD_REGS
 
 	add rsp, 16
 	iretq
+
+idt_ignore:
+    iretq
 
 init_ctx:
 	# Set user data segment
