@@ -19,9 +19,9 @@
 //! Context switching utilities.
 
 use crate::{
-	arch::x86::{fxrstor, fxsave, gdt, idt::IntFrame, tss},
+	arch::x86::{fxrstor, fxsave, gdt, idt::IntFrame},
 	memory::vmem::KERNEL_VMEM,
-	process::{Process, mem_space::MemSpace},
+	process::{Process, mem_space::MemSpace, scheduler::core_local},
 };
 use core::{arch::global_asm, mem::offset_of, ptr::NonNull};
 
@@ -212,7 +212,9 @@ pub extern "C" fn finish(prev: &Process, next: &Process) {
 	}
 	// Update the TSS for the process
 	unsafe {
-		tss::set_kernel_stack(next.kernel_stack.top().as_ptr());
+		core_local()
+			.tss()
+			.set_kernel_stack(next.kernel_stack.top().as_ptr());
 	}
 	// Update TLS entries in the GDT
 	{

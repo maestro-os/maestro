@@ -28,13 +28,14 @@ pub mod elf;
 pub mod vdso;
 
 use crate::{
-	arch::x86::{
-		idt::{IntFrame, wrap_disable_interrupts},
-		tss,
-	},
+	arch::x86::idt::{IntFrame, wrap_disable_interrupts},
 	file::vfs::ResolutionSettings,
 	memory::VirtAddr,
-	process::{Process, mem_space::MemSpace, scheduler::init_core_local},
+	process::{
+		Process,
+		mem_space::MemSpace,
+		scheduler::{core_local, init_core_local},
+	},
 	sync::mutex::Mutex,
 };
 use utils::{
@@ -99,7 +100,9 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 	*proc.tls.lock() = Default::default();
 	// Set TSS here for the first process to be executed
 	unsafe {
-		tss::set_kernel_stack(proc.kernel_stack.top().as_ptr());
+		core_local()
+			.tss()
+			.set_kernel_stack(proc.kernel_stack.top().as_ptr());
 	}
 	// Set the process's registers
 	IntFrame::exec(frame, image.entry_point.0, image.user_stack.0, image.compat);
