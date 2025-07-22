@@ -25,15 +25,19 @@ use crate::{
 	arch::x86::{apic, gdt, tss},
 	boot::BOOT_STACK_SIZE,
 	memory::{
-		PhysAddr, VirtAddr,
-		malloc::__alloc,
+		PhysAddr, VirtAddr, buddy,
 		vmem::{KERNEL_VMEM, write_ro},
 	},
 	println,
 	process::scheduler::{Cpu, init_core_local, switch::idle_task},
 };
-use core::{alloc::Layout, arch::global_asm, ptr, ptr::null_mut};
-use utils::{collections::vec::Vec, errno::AllocResult, vec};
+use core::{
+	arch::global_asm,
+	hint, ptr,
+	ptr::null_mut,
+	sync::atomic::{AtomicUsize, Ordering::Acquire},
+};
+use utils::{collections::vec::Vec, errno::AllocResult, limits::PAGE_SIZE, vec};
 
 /// The SMP trampoline's physical address in memory.
 pub const TRAMPOLINE_PHYS_ADDR: PhysAddr = PhysAddr(0x8000);
@@ -204,6 +208,9 @@ unsafe extern "C" {
 	fn smp_trampoline_end();
 }
 
+/// The number of running CPU cores.
+static BOOTED_CORES: AtomicUsize = AtomicUsize::new(1);
+
 /// Initializes the SMP.
 ///
 /// `cpu` is the list of CPU cores on the system.
@@ -236,7 +243,6 @@ pub fn init(cpu: &[Cpu]) -> AllocResult<()> {
 			ptr::write_volatile(ptrs.add(1), stacks.as_ptr() as u64);
 		});
 	}
-	let stack_layout = Layout::array::<u8>(BOOT_STACK_SIZE).unwrap();
 	// Boot cores
 	for cpu in cpu {
 		// Do no attempt to boot the current core
@@ -245,7 +251,8 @@ pub fn init(cpu: &[Cpu]) -> AllocResult<()> {
 		}
 		// Allocate stack
 		unsafe {
-			let stack = __alloc(stack_layout)?.cast();
+			let order = buddy::get_order(BOOT_STACK_SIZE / PAGE_SIZE);
+			let stack = buddy::alloc_kernel(order, 0)?.cast();
 			stacks[cpu.apic_id as usize] = stack.add(BOOT_STACK_SIZE).as_ptr();
 		}
 		// Send INIT IPI
@@ -302,6 +309,10 @@ pub fn init(cpu: &[Cpu]) -> AllocResult<()> {
 			}
 		}
 	}
+	// Wait for all cores to be up before returning
+	while BOOTED_CORES.load(Acquire) < cpu.len() {
+		hint::spin_loop();
+	}
 	Ok(())
 }
 
@@ -313,6 +324,7 @@ unsafe extern "C" fn smp_main() -> ! {
 	tss::init();
 	println!("started core {}!", lapic_id());
 	// TODO init the core's scheduler
+	BOOTED_CORES.fetch_add(1, Acquire);
 	// Wait for work
 	unsafe {
 		idle_task();
