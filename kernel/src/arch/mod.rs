@@ -119,7 +119,6 @@ pub(crate) fn init2() {
 					.filter(|e| e.entry_type == 2)
 					.map(|e| unsafe { e.body::<InterruptSourceOverride>() })
 					.for_each(|e| {
-						println!("ent {:?}", e);
 						// Find the associated I/O APIC
 						let ioapic = madt
 							.entries()
@@ -130,10 +129,8 @@ pub(crate) fn init2() {
 								let base_addr = PhysAddr(ioapic.ioapic_address as _);
 								let max_entries =
 									unsafe { ioapic_redirect_count(base_addr) } as u32;
-								println!("gsi {gsi} {max_entries}");
 								(ioapic.gsi..ioapic.gsi + max_entries).contains(&gsi)
 							});
-						println!("ioapic {:?}", ioapic);
 						// Remap the interrupt
 						if let Some(ioapic) = ioapic {
 							let base_addr = PhysAddr(ioapic.ioapic_address as _);
