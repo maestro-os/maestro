@@ -60,7 +60,7 @@ pub struct Tss {
 	pub gs: u32,
 	pub ldt: u32,
 	pub trap: u16,
-	pub iomap_base: u16,
+	pub iopb: u16,
 }
 
 /// Task State Segment.
@@ -125,4 +125,5 @@ pub unsafe fn set_kernel_stack(kernel_stack: *mut u8) {
 	{
 		TSS.rsp0 = kernel_stack as _;
 	}
+	TSS.iopb = size_of::<Tss>() as _;
 }

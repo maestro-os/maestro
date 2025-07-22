@@ -22,6 +22,7 @@ use super::apic::{
 	REG_ERROR_STATUS, REG_ICR_HI, REG_ICR_LO, lapic_id, read_reg, wait_delivery, write_reg,
 };
 use crate::{
+	arch,
 	arch::x86::{apic, gdt, tss},
 	boot::BOOT_STACK_SIZE,
 	memory::{
@@ -319,6 +320,7 @@ pub fn init(cpu: &[Cpu]) -> AllocResult<()> {
 /// First function called after the SMP trampoline
 #[unsafe(no_mangle)]
 unsafe extern "C" fn smp_main() -> ! {
+	arch::init1();
 	init_core_local();
 	gdt::flush();
 	tss::init();

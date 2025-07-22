@@ -236,9 +236,6 @@ pub static KERNEL_VMEM: OnceInit<Mutex<VMem>> = unsafe { OnceInit::new() };
 
 /// Initializes virtual memory management.
 pub(crate) fn init() {
-	// Architecture-specific init
-	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-	x86::paging::prepare();
 	// Kernel context init
 	let mut kernel_vmem = unsafe { VMem::new() };
 	// Map kernel
