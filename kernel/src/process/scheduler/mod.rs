@@ -24,7 +24,7 @@ pub mod switch;
 use crate::{
 	arch::{
 		end_of_interrupt,
-		x86::{cli, gdt, gdt::Gdt, idt::IntFrame, smp, tss},
+		x86::{cli, gdt, gdt::Gdt, idt::IntFrame, smp, tss, tss::Tss},
 	},
 	event,
 	event::{CallbackHook, CallbackResult},
@@ -37,9 +37,12 @@ use crate::{
 	},
 	time,
 };
-use core::sync::atomic::{
-	AtomicUsize,
-	Ordering::{Relaxed, Release},
+use core::{
+	cell::UnsafeCell,
+	sync::atomic::{
+		AtomicUsize,
+		Ordering::{Relaxed, Release},
+	},
 };
 use utils::{
 	collections::{btreemap::BTreeMap, vec::Vec},
@@ -70,10 +73,26 @@ pub struct CoreLocal {
 	pub cpu: &'static Cpu,
 	/// The CPU's GDT
 	pub gdt: Gdt,
+	/// The CPU's TSS
+	tss: UnsafeCell<Tss>,
+
 	/// Attached memory space
 	///
 	/// The pointer stored by this field is returned by [`Arc::into_raw`].
 	pub mem_space: AtomicOptionalArc<MemSpace>,
+}
+
+impl CoreLocal {
+	/// Returns a mutable reference to the TSS.
+	///
+	/// # Safety
+	///
+	/// Concurrent accesses are undefined.
+	#[inline]
+	#[allow(clippy::mut_from_ref)]
+	pub unsafe fn tss(&self) -> &mut Tss {
+		&mut *self.tss.get()
+	}
 }
 
 /// Returns the core-local structure for the current core.
@@ -126,7 +145,8 @@ pub fn init() -> AllocResult<()> {
 			user_stack: AtomicUsize::new(0),
 
 			cpu,
-			gdt: Gdt::default(),
+			gdt: Default::default(),
+			tss: Default::default(),
 
 			mem_space: AtomicOptionalArc::new(),
 		})

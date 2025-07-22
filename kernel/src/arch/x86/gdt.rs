@@ -147,6 +147,8 @@ impl Entry {
 	///
 	/// An invalid offset, either not a multiple of `8` or out of bounds of the GDT, shall result
 	/// in an undefined behaviour.
+	///
+	/// Concurrent calls are undefined.
 	pub unsafe fn update_gdt(self, off: usize) {
 		core_local()
 			.gdt

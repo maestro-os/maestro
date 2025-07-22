@@ -26,8 +26,8 @@
 //! The structure has to be registered into the GDT into the TSS segment, and must be loaded using
 //! instruction `ltr`.
 
-use crate::arch::x86::gdt;
-use core::{arch::asm, mem, ptr::addr_of};
+use crate::{arch::x86::gdt, process::scheduler::core_local};
+use core::{arch::asm, mem};
 
 /// Task State Segment.
 #[repr(C)]
@@ -85,19 +85,42 @@ pub struct Tss {
 	pub iopb: u16,
 }
 
-/// The Task State Segment.
-#[unsafe(no_mangle)]
-static mut TSS: Tss = unsafe { mem::zeroed() };
+impl Default for Tss {
+	fn default() -> Self {
+		unsafe { mem::zeroed() }
+	}
+}
+
+impl Tss {
+	/// Sets the kernel stack pointer on the TSS.
+	///
+	/// # Safety
+	///
+	/// This function is **not** reentrant.
+	pub unsafe fn set_kernel_stack(&mut self, kernel_stack: *mut u8) {
+		#[cfg(target_arch = "x86")]
+		{
+			self.esp0 = kernel_stack as _;
+			self.ss0 = gdt::KERNEL_DS as _;
+			self.ss = gdt::USER_DS as _;
+		}
+		#[cfg(target_arch = "x86_64")]
+		{
+			self.rsp0 = kernel_stack as _;
+		}
+		self.iopb = size_of::<Tss>() as _;
+	}
+}
 
 /// Initializes the TSS.
 pub(crate) fn init() {
-	let [gdt_entry_low, gdt_entry_high] = gdt::Entry::new64(
-		addr_of!(TSS) as u64,
-		size_of::<Tss>() as u32 - 1,
-		0b10001001,
-		0,
-	);
 	unsafe {
+		let [gdt_entry_low, gdt_entry_high] = gdt::Entry::new64(
+			core_local().tss() as *const _ as u64,
+			size_of::<Tss>() as u32 - 1,
+			0b10001001,
+			0,
+		);
 		gdt_entry_low.update_gdt(gdt::TSS_OFFSET);
 		gdt_entry_high.update_gdt(gdt::TSS_OFFSET + size_of::<gdt::Entry>());
 		// Sets TSS offset
@@ -107,23 +130,4 @@ pub(crate) fn init() {
 			off = const gdt::TSS_OFFSET
 		);
 	}
-}
-
-/// Sets the kernel stack pointer on the TSS.
-///
-/// # Safety
-///
-/// This function is **not** reentrant.
-pub unsafe fn set_kernel_stack(kernel_stack: *mut u8) {
-	#[cfg(target_arch = "x86")]
-	{
-		TSS.esp0 = kernel_stack as _;
-		TSS.ss0 = gdt::KERNEL_DS as _;
-		TSS.ss = gdt::USER_DS as _;
-	}
-	#[cfg(target_arch = "x86_64")]
-	{
-		TSS.rsp0 = kernel_stack as _;
-	}
-	TSS.iopb = size_of::<Tss>() as _;
 }
