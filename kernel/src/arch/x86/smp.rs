@@ -25,7 +25,7 @@ use crate::{
 	arch::x86::{apic, tss},
 	boot::BOOT_STACK_SIZE,
 	memory::{
-		PhysAddr,
+		PhysAddr, VirtAddr,
 		malloc::__alloc,
 		vmem::{KERNEL_VMEM, write_ro},
 	},
@@ -228,7 +228,10 @@ pub fn init(cpu: &[Cpu]) -> AllocResult<()> {
 			trampoline_ptr.copy_from(smp_trampoline as *const _, trampoline_len);
 			// Pass pointers to the trampoline
 			let ptrs = trampoline_ptr.add(trampoline_len).cast();
-			ptr::write_volatile(ptrs, KERNEL_VMEM.lock().inner() as *const _ as u64);
+			let vmem_phys = VirtAddr::from(KERNEL_VMEM.lock().inner().as_ptr())
+				.kernel_to_physical()
+				.unwrap();
+			ptr::write_volatile(ptrs, vmem_phys.0 as u64);
 			ptr::write_volatile(ptrs.add(1), stacks.as_ptr() as u64);
 		});
 	}
