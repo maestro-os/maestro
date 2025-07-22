@@ -149,11 +149,24 @@ IRQ 15
 .type idle_task, @function
 
 int_common:
+    # Handle swapgs nesting
+    cmp qword ptr [rsp + 24], 8
+    je 1f
+    swapgs
+1:
+
 STORE_REGS
 	cld
 	mov rdi, rsp
 	call interrupt_handler
 LOAD_REGS
+
+# Handle swapgs nesting
+    cmp qword ptr [rsp + 24], 8
+    je 1f
+    swapgs
+1:
+
 	add rsp, 16
 	iretq
 
