@@ -55,7 +55,9 @@ pub const ARCH: &str = {
 static mut APIC: bool = false;
 
 /// Architecture-specific initialization, stage 1.
-pub(crate) fn init1() {
+///
+/// `first` tells whether we are on the first CPU to boot.
+pub(crate) fn init1(first: bool) {
 	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	{
 		use x86::*;
@@ -64,7 +66,10 @@ pub(crate) fn init1() {
 			panic!("SSE support is required to run this kernel :(");
 		}
 		enable_sse();
-		idt::init();
+		if first {
+			idt::init_table();
+		}
+		idt::bind();
 		// Enable GLOBAL flag
 		let mut cr4 = register_get!("cr4") | (1 << 7);
 		// Enable SMEP and SMAP if supported

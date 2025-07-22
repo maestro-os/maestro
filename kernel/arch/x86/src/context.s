@@ -122,6 +122,7 @@ IRQ 15
     pop fs
 .endm
 
+.global idt_ignore
 .global init_ctx
 .global syscall_int
 .global idle_task
@@ -148,6 +149,9 @@ init_ctx:
 	LOAD_REGS
 	add esp, 8
 	iretd
+
+idt_ignore:
+    iretd
 
 syscall_int:
 	cld
