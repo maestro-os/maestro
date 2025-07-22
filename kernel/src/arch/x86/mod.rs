@@ -211,18 +211,22 @@ pub fn supports_supervisor_prot() -> (bool, bool) {
 
 /// Sets whether the kernel can write to read-only pages.
 ///
+/// The function returns the previous state of the flag.
+///
 /// # Safety
 ///
 /// Disabling this feature which makes read-only data writable in kernelspace.
 #[inline]
-pub unsafe fn set_write_protected(lock: bool) {
+pub unsafe fn set_write_protected(lock: bool) -> bool {
 	let mut val = register_get!("cr0");
+	let prev = val & (1 << 16) != 0;
 	if lock {
 		val |= 1 << 16;
 	} else {
 		val &= !(1 << 16);
 	}
 	register_set!("cr0", val);
+	prev
 }
 
 /// Sets or clears the AC flag to disable or enable SMAP.

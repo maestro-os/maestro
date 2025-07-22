@@ -205,12 +205,12 @@ pub fn flush_current() {
 /// This function disables memory protection on the kernel side, which makes
 /// read-only data writable.
 ///
-/// Writing on read-only regions of memory has an undefined behavior.
+/// Writing on some read-only regions (code for example) is dangerous.
 #[inline]
 pub unsafe fn write_ro<F: FnOnce() -> T, T>(f: F) -> T {
-	x86::set_write_protected(false);
+	let prev = x86::set_write_protected(false);
 	let res = f();
-	x86::set_write_protected(true);
+	x86::set_write_protected(prev);
 	res
 }
 

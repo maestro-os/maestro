@@ -108,6 +108,18 @@ impl<T> From<NonNull<T>> for VirtAddr {
 	}
 }
 
+impl<T> From<&T> for VirtAddr {
+	fn from(ptr: &T) -> Self {
+		Self::from(ptr as *const T)
+	}
+}
+
+impl<T> From<&mut T> for VirtAddr {
+	fn from(ptr: &mut T) -> Self {
+		Self::from(ptr as *mut T)
+	}
+}
+
 impl FromSyscallArg for VirtAddr {
 	fn from_syscall_arg(ptr: usize, _compat: bool) -> Self {
 		Self(ptr)
