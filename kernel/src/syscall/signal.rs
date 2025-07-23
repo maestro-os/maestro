@@ -23,9 +23,8 @@ use crate::{
 	file::perm::AccessProfile,
 	memory::user::UserPtr,
 	process::{
-		Process, State,
+		PROCESSES, Process, State,
 		pid::{INIT_PID, Pid},
-		scheduler::SCHEDULER,
 		signal::{CompatSigAction, SigAction, SigSet, Signal, SignalHandler, ucontext},
 	},
 	syscall::{Args, FromSyscallArg},
@@ -205,7 +204,7 @@ pub fn kill(Args((pid, sig)): Args<(c_int, c_int)>) -> EResult<usize> {
 		0 => try_kill_group(0, sig)?,
 		// Kill all processes for which the current process has the permission
 		-1 => {
-			let processes = SCHEDULER.processes();
+			let processes = PROCESSES.read();
 			for (pid, _) in processes.iter() {
 				if *pid == INIT_PID {
 					continue;

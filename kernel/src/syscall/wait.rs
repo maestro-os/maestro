@@ -20,12 +20,7 @@
 
 use crate::{
 	memory::user::UserPtr,
-	process::{
-		Process, State,
-		pid::Pid,
-		rusage::Rusage,
-		scheduler::{SCHEDULER, schedule},
-	},
+	process::{Process, State, pid::Pid, rusage::Rusage, scheduler::schedule},
 	syscall::Args,
 };
 use core::{
@@ -110,7 +105,7 @@ fn get_waitable(
 	// Find a waitable process
 	let proc = iter_targets(curr_proc, pid)
 		.inspect(|_| empty = false)
-		.filter_map(|pid| SCHEDULER.get_by_pid(pid))
+		.filter_map(Process::get_by_pid)
 		// Select a waitable process
 		.find(|proc| {
 			let events = if options & WNOWAIT == 0 {
@@ -137,8 +132,7 @@ fn get_waitable(
 	// Remove zombie process if requested
 	let pid = proc.get_pid();
 	if options & WNOWAIT == 0 && proc.get_state() == State::Zombie {
-		proc.unlink();
-		SCHEDULER.remove_process(pid);
+		Process::remove(proc);
 	}
 	Ok(Some(pid))
 }

@@ -29,7 +29,7 @@ use crate::{
 		pid::Pid,
 		rusage::Rusage,
 		scheduler::{
-			SCHEDULER, schedule, switch,
+			core_local, schedule, switch,
 			switch::{fork_asm, stash_segments},
 		},
 		user_desc::UserDesc,
@@ -261,7 +261,7 @@ pub fn compat_clone(
 		let child_tid = child.tid;
 		// Switch
 		switch::finish(&proc, &child);
-		SCHEDULER.swap_current_process(child.clone());
+		core_local().scheduler.swap_current_process(child.clone());
 		let mut child_frame = frame.clone();
 		child_frame.rax = 0; // Return value
 		if !stack.is_null() {

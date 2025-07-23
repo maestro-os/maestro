@@ -27,7 +27,7 @@ use crate::{
 		user::{UserPtr, UserSlice},
 	},
 	power,
-	process::scheduler::SCHEDULER,
+	process::PROCESSES,
 	syscall::Args,
 	time::clock::{Clock, current_time_sec},
 };
@@ -131,7 +131,7 @@ pub fn sysinfo(Args(info): Args<UserPtr<Sysinfo>>) -> EResult<usize> {
 		bufferram: 0, // TODO
 		totalswap: 0, // TODO
 		freeswap: 0,  // TODO
-		procs: SCHEDULER.processes_count() as _,
+		procs: PROCESSES.read().len() as _,
 		pad: 0,
 		totalhigh: 0, // TODO
 		freehigh: 0,  // TODO
