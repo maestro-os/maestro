@@ -28,7 +28,6 @@ use crate::{
 	},
 	event,
 	event::{CallbackHook, CallbackResult},
-	memory::VirtAddr,
 	process::{Process, State, mem_space::MemSpace, pid::Pid, scheduler::switch::switch},
 	sync::{
 		atomic::AtomicU64,
@@ -101,11 +100,13 @@ pub fn core_local() -> &'static CoreLocal {
 	#[cfg(target_arch = "x86")]
 	{
 		use crate::arch::x86::apic::lapic_id;
+
 		&CORE_LOCAL[lapic_id() as usize]
 	}
 	#[cfg(target_arch = "x86_64")]
 	{
-		use crate::arch::x86;
+		use crate::{arch::x86, memory::VirtAddr};
+
 		let base = x86::rdmsr(x86::IA32_GS_BASE);
 		unsafe {
 			let ptr = VirtAddr(base as _).as_ptr::<CoreLocal>();

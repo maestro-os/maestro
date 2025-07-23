@@ -28,14 +28,10 @@ pub mod elf;
 pub mod vdso;
 
 use crate::{
-	arch::x86::idt::{IntFrame, wrap_disable_interrupts},
+	arch::x86::idt::IntFrame,
 	file::vfs::ResolutionSettings,
 	memory::VirtAddr,
-	process::{
-		Process,
-		mem_space::MemSpace,
-		scheduler::{core_local, init_core_local},
-	},
+	process::{Process, mem_space::MemSpace, scheduler::core_local},
 	sync::mutex::Mutex,
 };
 use utils::{
@@ -107,27 +103,33 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 	// Set the process's registers
 	IntFrame::exec(frame, image.entry_point.0, image.user_stack.0, image.compat);
 	#[cfg(target_arch = "x86_64")]
-	// Disable interrupts to prevent data races on `gs`
-	wrap_disable_interrupts(|| {
-		use crate::{arch::x86, process::scheduler::core_local};
+	{
+		use crate::{
+			arch::{x86, x86::idt::wrap_disable_interrupts},
+			process::scheduler::{core_local, init_core_local},
+		};
 		use core::{arch::asm, sync::atomic::Ordering::Relaxed};
-		// Reset segment selector
-		unsafe {
-			asm!(
-			"xor {tmp}, {tmp}",
-			"mov fs, {tmp}",
-			"mov gs, {tmp}",
-			tmp = out(reg) _
-			);
-		}
-		// Reset MSR
-		x86::wrmsr(x86::IA32_FS_BASE, 0);
-		x86::wrmsr(x86::IA32_KERNEL_GS_BASE, 0);
-		init_core_local();
-		// Update user stack
-		core_local()
-			.user_stack
-			.store(image.user_stack.0 as _, Relaxed);
-	});
+
+		// Disable interrupts to prevent data races on `gs`
+		wrap_disable_interrupts(|| {
+			// Reset segment selector
+			unsafe {
+				asm!(
+				"xor {tmp}, {tmp}",
+				"mov fs, {tmp}",
+				"mov gs, {tmp}",
+				tmp = out(reg) _
+				);
+			}
+			// Reset MSR
+			x86::wrmsr(x86::IA32_FS_BASE, 0);
+			x86::wrmsr(x86::IA32_KERNEL_GS_BASE, 0);
+			init_core_local();
+			// Update user stack
+			core_local()
+				.user_stack
+				.store(image.user_stack.0 as _, Relaxed);
+		});
+	}
 	Ok(())
 }
