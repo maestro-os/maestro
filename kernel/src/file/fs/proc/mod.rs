@@ -42,7 +42,7 @@ use crate::{
 		vfs,
 		vfs::node::Node,
 	},
-	process::{Process, pid::Pid, scheduler::SCHEDULER},
+	process::{PROCESSES, Process, pid::Pid},
 };
 use mem_info::MemInfo;
 use proc_dir::{
@@ -256,7 +256,7 @@ impl NodeOps for RootDir {
 		}
 		// Iterate on processes
 		let off = ctx.off as usize - Self::STATIC.entries.len();
-		let processes = SCHEDULER.processes();
+		let processes = PROCESSES.read();
 		for (pid, _) in processes.iter().skip(off) {
 			let name = format!("{pid}")?;
 			let ent = DirEntry {

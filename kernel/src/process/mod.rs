@@ -31,7 +31,7 @@ pub mod signal;
 pub mod user_desc;
 
 use crate::{
-	arch::x86::{FxState, cli, gdt, idt, idt::IntFrame},
+	arch::x86::{FxState, gdt, idt, idt::IntFrame},
 	event,
 	event::CallbackResult,
 	file,
@@ -47,13 +47,13 @@ use crate::{
 		pid::{IDLE_PID, INIT_PID, PidHandle},
 		rusage::Rusage,
 		scheduler::{
-			SCHEDULER, core_local, schedule, switch,
+			Scheduler, core_local, enqueue, switch,
 			switch::{KThreadEntry, idle_task},
 		},
 		signal::{SIGNALS_COUNT, SigSet},
 	},
 	register_get,
-	sync::mutex::Mutex,
+	sync::{mutex::Mutex, rwlock::IntRwLock},
 	syscall::FromSyscallArg,
 	time::timer::TimerManager,
 };
@@ -75,6 +75,7 @@ use pid::Pid;
 use signal::{Signal, SignalHandler};
 use utils::{
 	collections::{
+		btreemap::BTreeMap,
 		path::{Path, PathBuf},
 		vec::Vec,
 	},
@@ -324,6 +325,9 @@ pub struct Process {
 	/// The links to other processes.
 	pub links: Mutex<ProcessLinks>,
 
+	/// The scheduler the process is enqueued on.
+	scheduler: Option<&'static Scheduler>,
+
 	/// A pointer to the kernelspace stack.
 	kernel_stack: KernelStack,
 	/// Kernel stack pointer of saved context.
@@ -349,6 +353,9 @@ pub struct Process {
 	/// The process's resources usage.
 	pub rusage: Mutex<Rusage>,
 }
+
+/// The list of all processes on the system.
+pub static PROCESSES: IntRwLock<BTreeMap<Pid, Arc<Process>>> = IntRwLock::new(BTreeMap::new());
 
 /// Initializes processes management.
 ///
@@ -435,19 +442,20 @@ impl Process {
 	///
 	/// If the process doesn't exist, the function returns `None`.
 	pub fn get_by_pid(pid: Pid) -> Option<Arc<Self>> {
-		SCHEDULER.get_by_pid(pid)
+		PROCESSES.read().get(&pid).cloned()
 	}
 
 	/// Returns the process with TID `tid`.
 	///
 	/// If the process doesn't exist, the function returns `None`.
-	pub fn get_by_tid(tid: Pid) -> Option<Arc<Self>> {
-		SCHEDULER.get_by_tid(tid)
+	pub fn get_by_tid(_tid: Pid) -> Option<Arc<Self>> {
+		todo!()
 	}
 
-	/// Returns the current running process.
+	/// Returns the running process on the current core.
+	#[inline]
 	pub fn current() -> Arc<Self> {
-		SCHEDULER.get_current_process()
+		core_local().scheduler.get_current_process()
 	}
 
 	/// Creates a kernel thread.
@@ -476,6 +484,8 @@ impl Process {
 			vfork_done: AtomicBool::new(false),
 			links: Default::default(),
 
+			scheduler: None,
+
 			kernel_stack,
 			kernel_sp: AtomicPtr::new(kernel_sp),
 			fpu: Mutex::new(FxState([0; 512])),
@@ -497,7 +507,8 @@ impl Process {
 			rusage: Default::default(),
 		})?;
 		if queue {
-			SCHEDULER.add_process(thread.clone())?;
+			PROCESSES.write().insert(*thread.pid, thread.clone())?;
+			enqueue(&thread);
 		}
 		Ok(thread)
 	}
@@ -545,6 +556,8 @@ impl Process {
 			vfork_done: AtomicBool::new(false),
 			links: Mutex::new(ProcessLinks::default()),
 
+			scheduler: None,
+
 			kernel_stack: KernelStack::new()?,
 			kernel_sp: AtomicPtr::default(),
 			fpu: Mutex::new(FxState([0; 512])),
@@ -571,7 +584,8 @@ impl Process {
 
 			rusage: Default::default(),
 		})?;
-		SCHEDULER.add_process(proc.clone())?;
+		PROCESSES.write().insert(INIT_PID, proc.clone())?;
+		enqueue(&proc);
 		Ok(proc)
 	}
 
@@ -654,26 +668,6 @@ impl Process {
 		links.children.insert(i, pid)
 	}
 
-	/// Unlinks the process from its parent and group.
-	pub fn unlink(&self) {
-		let (parent, group_leader) = {
-			let mut links = self.links.lock();
-			(links.parent.take(), links.group_leader.take())
-		};
-		if let Some(parent) = parent {
-			let mut links = parent.links.lock();
-			if let Ok(i) = links.children.binary_search(&self.get_pid()) {
-				links.children.remove(i);
-			}
-		}
-		if let Some(group_leader) = group_leader {
-			let mut links = group_leader.links.lock();
-			if let Ok(i) = links.process_group.binary_search(&self.get_pid()) {
-				links.process_group.remove(i);
-			}
-		}
-	}
-
 	/// Returns the process's current state.
 	///
 	/// **Note**: since the process cannot be locked, this function may cause data races. Use with
@@ -713,10 +707,12 @@ impl Process {
 				pid = self.get_pid()
 			);
 			// Update the number of running processes
-			if new_state == State::Running {
-				SCHEDULER.increment_running();
-			} else if old_state == State::Running {
-				SCHEDULER.decrement_running();
+			if let Some(sched) = self.scheduler {
+				if new_state == State::Running {
+					sched.increment_running();
+				} else if old_state == State::Running {
+					sched.decrement_running();
+				}
 			}
 			if new_state == State::Zombie {
 				if self.is_init() {
@@ -767,6 +763,9 @@ impl Process {
 		let res = self.state.fetch_update(SeqCst, SeqCst, |old_state| {
 			(old_state == State::Sleeping as _).then_some(State::Running as _)
 		});
+		if res.is_err() {
+			return;
+		}
 		#[cfg(feature = "strace")]
 		println!(
 			"[strace {pid}] changed state: {old_state:?} -> {new_state:?}",
@@ -774,10 +773,7 @@ impl Process {
 			new_state = State::Running,
 			pid = self.get_pid()
 		);
-		// Update the number of running processes
-		if res.is_ok() {
-			SCHEDULER.increment_running();
-		}
+		enqueue(self);
 	}
 
 	/// Signals the parent that the `vfork` operation has completed.
@@ -874,6 +870,8 @@ impl Process {
 				..Default::default()
 			}),
 
+			scheduler: None,
+
 			kernel_stack: KernelStack::new()?,
 			kernel_sp: AtomicPtr::default(),
 			fpu: Mutex::new(this.fpu.lock().clone()),
@@ -904,7 +902,8 @@ impl Process {
 				links.process_group.insert(i, pid_int)?;
 			}
 		}
-		SCHEDULER.add_process(proc.clone())?;
+		PROCESSES.write().insert(*proc.pid, proc.clone())?;
+		enqueue(&proc);
 		Ok(proc)
 	}
 
@@ -954,6 +953,36 @@ impl Process {
 		self.signal.lock().exit_status = status as ExitStatus;
 		self.set_state(State::Zombie);
 	}
+
+	/// Removes all references to the process in order to free the structure.
+	///
+	/// The process is unlinked from:
+	/// - Its parent
+	/// - Its group
+	/// - Its scheduler
+	/// - The processes list
+	pub fn remove(this: Arc<Self>) {
+		let (parent, group_leader) = {
+			let mut links = this.links.lock();
+			(links.parent.take(), links.group_leader.take())
+		};
+		if let Some(parent) = parent {
+			let mut links = parent.links.lock();
+			if let Ok(i) = links.children.binary_search(&this.get_pid()) {
+				links.children.remove(i);
+			}
+		}
+		if let Some(group_leader) = group_leader {
+			let mut links = group_leader.links.lock();
+			if let Ok(i) = links.process_group.binary_search(&this.get_pid()) {
+				links.process_group.remove(i);
+			}
+		}
+		if let Some(sched) = this.scheduler {
+			sched.dequeue(*this.pid);
+		}
+		PROCESSES.write().remove(&*this.pid);
+	}
 }
 
 impl fmt::Debug for Process {
@@ -983,56 +1012,5 @@ impl Drop for Process {
 		if self.is_init() {
 			panic!("Terminated init process!");
 		}
-	}
-}
-
-/// Returns `true` if the execution shall continue. Else, the execution shall be paused.
-fn yield_current_impl(frame: &mut IntFrame) -> bool {
-	// Disable interruptions to prevent execution from being stopped before the reference to
-	// `Process` is dropped
-	cli();
-	// If the process is not running anymore, stop execution
-	let proc = Process::current();
-	if proc.get_state() != State::Running {
-		return false;
-	}
-	// Get signal handler to execute, if any
-	let (sig, handler) = {
-		let mut signal_manager = proc.signal.lock();
-		let Some(sig) = signal_manager.next_signal() else {
-			return true;
-		};
-		let handler = signal_manager.handlers.lock()[sig as usize].clone();
-		(sig, handler)
-	};
-	// Prepare for execution of signal handler
-	handler.exec(sig, &proc, frame);
-	// If the process is still running, continue execution
-	proc.get_state() == State::Running
-}
-
-/// Before returning to userspace from the current context, this function checks the state of the
-/// current process to potentially alter the execution flow.
-///
-/// Arguments:
-/// - `ring` is the ring the current context is returning to.
-/// - `frame` is the interrupt frame.
-///
-/// The execution flow can be altered by:
-/// - The process is no longer in [`State::Running`] state
-/// - A signal handler has to be executed
-///
-/// This function disables interruptions.
-///
-/// This function never returns in case the process state turns to [`State::Zombie`].
-pub fn yield_current(ring: u8, frame: &mut IntFrame) {
-	// If returning to kernelspace, do nothing
-	if ring < 3 {
-		return;
-	}
-	// Use a separate function to drop everything, since `Scheduler::tick` may never return
-	let cont = yield_current_impl(frame);
-	if !cont {
-		schedule();
 	}
 }

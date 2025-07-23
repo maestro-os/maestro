@@ -87,7 +87,7 @@ use crate::{
 	process::{
 		Process, exec,
 		exec::{ExecInfo, exec},
-		scheduler::{SCHEDULER, switch, switch::idle_task},
+		scheduler::{core_local, switch, switch::idle_task},
 	},
 	sync::mutex::Mutex,
 	tty::TTY,
@@ -136,7 +136,7 @@ fn init(init_path: String) -> EResult<IntFrame> {
 		)?;
 		let proc = Process::init()?;
 		exec(&proc, &mut frame, program_image)?;
-		SCHEDULER.swap_current_process(proc);
+		core_local().scheduler.swap_current_process(proc);
 	}
 	Ok(frame)
 }
