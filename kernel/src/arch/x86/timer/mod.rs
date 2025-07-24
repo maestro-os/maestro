@@ -20,7 +20,6 @@
 //!
 //! The following timers are available:
 //! - PIT (legacy)
-//! - RTC (legacy)
 //! - APIC
 //! - HPET
 //!
@@ -30,9 +29,8 @@
 //! Since we do not know the frequency of the APIC timer, we need to use another timer with a known
 //! frequency to measure it. This is called **calibration**.
 //!
-//! The kernel will attempt to detect the presence of an HPET.
-//!
-//! TODO: if the HPET is net present, fallback on the PIT
+//! The kernel will attempt to detect the presence of an HPET. If not present, it will then
+//! fallback on the PIT.
 
 // TODO calibrate the TSC if present and use it for timekeeping.
 // If the TSC is unavailable, fallback in this order:
@@ -45,28 +43,27 @@ use crate::{
 	acpi,
 	arch::{x86, x86::timer::hpet::AcpiHpet},
 };
-use utils::errno::AllocResult;
 
 pub mod apic;
 pub mod hpet;
 pub mod pit;
-pub mod rtc;
+mod rtc;
 
 /// Initializes x86 timers.
-pub(crate) fn init() -> AllocResult<()> {
+pub(crate) fn init() {
 	if !x86::apic::is_present() {
 		// We assume the PIT is the only timer present
-		pit::init(10);
-		return Ok(());
+		pit::init(1); // TODO choose another frequency
+		return;
 	}
+	// Detect HPET
+	let acpi_hpet = acpi::get_table::<AcpiHpet>();
 	// Initialize a known-frequency timer
-	if let Some(hpet) = acpi::get_table::<AcpiHpet>() {
-		hpet::init(hpet);
-		apic::calibrate_hpet()?;
+	if let Some(hpet) = acpi_hpet {
+		let hpet = hpet::init(hpet);
+		apic::calibrate(hpet);
 	} else {
-		// No HPET, we assume the PIT is present
-		pit::init(10);
-		apic::calibrate_pit();
+		let pit = pit::init(1); // TODO choose another frequency
+		apic::calibrate(pit);
 	}
-	Ok(())
 }

@@ -23,25 +23,8 @@
 use crate::{
 	acpi,
 	acpi::{GenericAddr, TableHdr},
-	arch::x86::paging::{FLAG_CACHE_DISABLE, FLAG_WRITE, FLAG_WRITE_THROUGH},
-	memory::{PhysAddr, vmem::KERNEL_VMEM},
-	sync::once::OnceInit,
+	time::HwTimer,
 };
-use core::ptr;
-
-/// HPET register: General Capability and ID
-const REG_CAP_ID: usize = 0x0;
-/// HPET register: General Configuration
-const REG_GENERAL_CONFIG: usize = 0x10;
-/// HPET register: Main Counter Value
-const REG_MAIN_COUNTER: usize = 0xf0;
-
-/// Base offset for timer registers
-const TIMER_BASE: usize = 0x100;
-/// Offset to the configuration register of a timer
-const TIMER_CONFIG_OFF: usize = 0x0;
-/// Offset to the comparator value register of a timer
-const TIMER_COMPARATOR_OFF: usize = 0x8;
 
 /// ACPI HPET table
 #[repr(C, packed)]
@@ -65,68 +48,24 @@ impl acpi::Table for AcpiHpet {
 	const SIGNATURE: &'static [u8; 4] = b"HPET";
 }
 
-/// Read register at offset `off`.
-unsafe fn reg_read(info: &AcpiHpet, off: usize) -> u64 {
-	let addr = PhysAddr(info.base_address.address as _)
-		.kernel_to_virtual()
-		.unwrap();
-	ptr::read_volatile(addr.as_ptr::<u64>().byte_add(off))
-}
+/// Structure representing the HPET
+pub struct Hpet;
 
-/// Write register at offset `off`.
-unsafe fn reg_write(info: &AcpiHpet, off: usize, val: u64) {
-	let addr = PhysAddr(info.base_address.address as _)
-		.kernel_to_virtual()
-		.unwrap();
-	ptr::write_volatile(addr.as_ptr::<u64>().byte_add(off), val);
-}
+impl HwTimer for Hpet {
+	fn set_enabled(&mut self, _enable: bool) {
+		todo!()
+	}
 
-/// HPET information.
-pub struct Hpet {
-	/// The HPET's ACPI information
-	pub acpi_info: &'static AcpiHpet,
-	/// The period of a tick in nanoseconds
-	pub tick_period: u32,
-}
+	fn set_frequency(&mut self, _freq: u32) {
+		todo!()
+	}
 
-/// The HPET's information.
-pub static INFO: OnceInit<Hpet> = unsafe { OnceInit::new() };
+	fn get_interrupt_vector(&self) -> u32 {
+		todo!()
+	}
+}
 
 /// Initializes the HPET.
-pub(crate) fn init(acpi_info: &'static AcpiHpet) {
-	// Map registers
-	let physaddr = PhysAddr(acpi_info.base_address.address as _);
-	KERNEL_VMEM.lock().map(
-		physaddr,
-		physaddr.kernel_to_virtual().unwrap(),
-		FLAG_WRITE | FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH,
-	);
-	// Read period
-	let tick_period =
-		unsafe { (reg_read(acpi_info, REG_CAP_ID) >> 32) as u32 }.div_ceil(1_000_000);
-	let info = Hpet {
-		acpi_info,
-		tick_period,
-	};
-	unsafe {
-		OnceInit::init(&INFO, info);
-	}
-}
-
-/// Enables or disables the HPET.
-pub fn set_enabled(enabled: bool) {
-	unsafe {
-		let mut val = reg_read(INFO.acpi_info, REG_GENERAL_CONFIG);
-		if enabled {
-			val |= 1;
-		} else {
-			val &= !1;
-		}
-		reg_write(INFO.acpi_info, REG_GENERAL_CONFIG, val);
-	}
-}
-
-/// Returns the current value of the HPET main counter.
-pub fn read_counter() -> u64 {
-	unsafe { reg_read(INFO.acpi_info, REG_MAIN_COUNTER) }
+pub(crate) fn init(_info: &AcpiHpet) -> Hpet {
+	todo!()
 }

@@ -19,11 +19,20 @@
 //! Architecture-specific **Hardware Abstraction Layers** (HAL).
 
 use crate::{
-	arch::x86::{apic, enumerate_cpus, gdt, pic, sti, timer, tss},
+	acpi,
+	acpi::madt::{IOAPIC, InterruptSourceOverride, Madt, ProcessorLocalApic},
+	arch::x86::{
+		apic,
+		apic::{IO_APIC_REDIRECTIONS_OFF, ioapic_redirect_count, ioapic_write},
+		paging::{FLAG_CACHE_DISABLE, FLAG_GLOBAL, FLAG_WRITE, FLAG_WRITE_THROUGH},
+		pic,
+	},
+	memory::{PhysAddr, vmem::KERNEL_VMEM},
 	println,
-	process::scheduler::{alloc_core_local, init_core_local},
+	process::scheduler::{CPU, Cpu},
+	sync::once::OnceInit,
 };
-use utils::errno::AllocResult;
+use utils::{collections::vec::Vec, limits::PAGE_SIZE};
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[macro_use]
@@ -57,7 +66,6 @@ pub(crate) fn init1(first: bool) {
 			panic!("SSE support is required to run this kernel :(");
 		}
 		enable_sse();
-		// Setup interrupt handlers
 		if first {
 			idt::init_table();
 		}
@@ -79,7 +87,7 @@ pub(crate) fn init1(first: bool) {
 }
 
 /// Architecture-specific initialization, stage 2.
-pub(crate) fn init2() -> AllocResult<()> {
+pub(crate) fn init2() {
 	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	{
 		// Detect APIC
@@ -88,27 +96,95 @@ pub(crate) fn init2() -> AllocResult<()> {
 			APIC = apic;
 		}
 		if apic {
-			println!("Setup APIC");
 			pic::disable();
 			apic::init();
-			println!("Enumerate CPU cores");
-			enumerate_cpus();
 		} else {
-			println!("No APIC found. Fallback to the PIC");
 			pic::enable(0x20, 0x28);
 		}
-
-		// Init core-local
-		alloc_core_local()?;
-		init_core_local();
-		gdt::flush();
-		tss::init();
-
-		println!("Setup timers");
-		sti();
-		timer::init()?;
+		// List CPUs with ACPI
+		let mut cpu = Vec::new();
+		if let Some(madt) = acpi::get_table::<Madt>() {
+			// Register CPU cores
+			madt.entries()
+				.filter(|e| e.entry_type == 0)
+				.map(|e| unsafe { e.body::<ProcessorLocalApic>() })
+				.for_each(|e| {
+					if e.apic_flags & 0b11 == 0 {
+						return;
+					}
+					cpu.push(Cpu {
+						id: e.processor_id,
+						apic_id: e.apic_id,
+						apic_flags: e.apic_flags,
+					})
+					.expect("could not insert CPU");
+				});
+			if apic {
+				// Map I/O APIC registers
+				madt.entries()
+					.filter(|e| e.entry_type == 1)
+					.map(|e| unsafe { e.body::<IOAPIC>() })
+					.for_each(|e| {
+						let base_addr = PhysAddr(e.ioapic_address as _).down_align_to(PAGE_SIZE);
+						KERNEL_VMEM.lock().map(
+							base_addr,
+							base_addr.kernel_to_virtual().unwrap(),
+							FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH | FLAG_WRITE | FLAG_GLOBAL,
+						);
+					});
+				// Remap legacy interrupts
+				madt.entries()
+					.filter(|e| e.entry_type == 2)
+					.map(|e| unsafe { e.body::<InterruptSourceOverride>() })
+					.for_each(|e| {
+						// Find the associated I/O APIC
+						let ioapic = madt
+							.entries()
+							.filter(|e| e.entry_type == 1)
+							.map(|e| unsafe { e.body::<IOAPIC>() })
+							.find(|ioapic| {
+								let gsi = e.gsi;
+								let base_addr = PhysAddr(ioapic.ioapic_address as _);
+								let max_entries =
+									unsafe { ioapic_redirect_count(base_addr) } as u32;
+								(ioapic.gsi..ioapic.gsi + max_entries).contains(&gsi)
+							});
+						// Remap the interrupt
+						if let Some(ioapic) = ioapic {
+							let base_addr = PhysAddr(ioapic.ioapic_address as _);
+							let i = (e.gsi - ioapic.gsi) as u8;
+							// TODO flags?
+							let val = 0x20 + e.irq_source as u64;
+							unsafe {
+								ioapic_write(
+									base_addr,
+									IO_APIC_REDIRECTIONS_OFF + i * 2,
+									val as u32,
+								);
+								ioapic_write(
+									base_addr,
+									IO_APIC_REDIRECTIONS_OFF + i * 2 + 1,
+									(val >> 32) as u32,
+								);
+							}
+						}
+					});
+			}
+		}
+		// If no CPU is found, just add the current
+		if cpu.is_empty() {
+			cpu.push(Cpu {
+				id: 1,
+				apic_id: 0,
+				apic_flags: 0,
+			})
+			.expect("could not insert CPU");
+		}
+		println!("{} CPU cores found", cpu.len());
+		unsafe {
+			OnceInit::init(&CPU, cpu);
+		}
 	}
-	Ok(())
 }
 
 /// Enables interruptions on the given IRQ.
@@ -117,7 +193,7 @@ pub fn enable_irq(irq: u8) {
 	{
 		use x86::*;
 		if unsafe { APIC } {
-			// TODO enable in I/O APIC
+			// TODO
 		} else {
 			pic::enable_irq(irq);
 		}
@@ -130,7 +206,7 @@ pub fn disable_irq(irq: u8) {
 	{
 		use x86::*;
 		if unsafe { APIC } {
-			// TODO disable in I/O APIC
+			// TODO
 		} else {
 			pic::disable_irq(irq);
 		}

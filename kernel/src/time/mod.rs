@@ -29,9 +29,6 @@ pub mod timer;
 pub mod unit;
 
 use crate::{
-	arch::x86::timer::rtc,
-	int,
-	int::CallbackResult,
 	process::{
 		Process, State,
 		scheduler::schedule,
@@ -43,9 +40,27 @@ use crate::{
 		unit::TimeUnit,
 	},
 };
-use core::{hint::unlikely, mem::ManuallyDrop};
+use core::hint::unlikely;
 use unit::Timestamp;
 use utils::{errno, errno::EResult};
+
+/// Trait representing a hardware timer.
+pub trait HwTimer {
+	/// Enables or disable the timer.
+	fn set_enabled(&mut self, enable: bool);
+	/// Sets the timer's frequency in hertz.
+	///
+	/// The function selects the closest possible frequency to `freq`.
+	fn set_frequency(&mut self, freq: u32);
+
+	/// Returns the value of the timer, if applicable.
+	fn get_value(&self) -> Option<Timestamp> {
+		None
+	}
+
+	/// Returns the interrupt vector of the timer.
+	fn get_interrupt_vector(&self) -> u32;
+}
 
 /// Makes the current thread sleep for `delay`, in nanoseconds.
 ///
@@ -86,18 +101,8 @@ pub fn sleep_for(clock: Clock, delay: Timestamp, remain: &mut Timestamp) -> ERes
 	Ok(())
 }
 
-/// Initializes timekeeping
+/// Initializes time management.
 pub(crate) fn init() -> EResult<()> {
-	const FREQUENCY: u32 = 1024;
-	rtc::set_frequency(FREQUENCY);
-	let hook = int::register_callback(rtc::INTERRUPT_VECTOR, move |_, _, _, _| {
-		rtc::reset();
-		// FIXME: we are loosing precision here
-		clock::update((1_000_000_000 / FREQUENCY) as _);
-		timer::tick();
-		CallbackResult::Continue
-	})?;
-	let _ = ManuallyDrop::new(hook);
-	rtc::set_enabled(true);
+	// TODO initialize timekeeping
 	Ok(())
 }

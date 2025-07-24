@@ -27,6 +27,10 @@ use core::{
 	hint::{likely, unlikely},
 	mem::size_of,
 	slice,
+	sync::{
+		atomic,
+		atomic::{AtomicBool, Ordering::Relaxed},
+	},
 };
 use fadt::Fadt;
 use utils::errno::AllocResult;
@@ -200,25 +204,11 @@ pub trait Table {
 /// Base address for some control registers.
 #[repr(C, packed)]
 pub struct GenericAddr {
-	/// Address space:
-	/// - `0`: is system memory
-	/// - `1`: I/O ports
-	///
-	/// TODO: describe all values
-	pub addr_space: u8,
-	/// Size in bits of the given register
-	pub bit_width: u8,
-	/// Bit offset of the given register at the given address
-	pub bit_offset: u8,
-	/// Access size:
-	/// - `0`: undefined
-	/// - `1`: byte
-	/// - `2`: word
-	/// - `3`: dword
-	/// - `4`: qword
-	pub access_size: u8,
-	/// Address of the register in the address space
-	pub address: u64,
+	addr_space: u8,
+	bit_width: u8,
+	bit_offset: u8,
+	access_size: u8,
+	address: u64,
 }
 
 /// Finds the [`Rsdp`] and returns a reference to it.
@@ -234,6 +224,14 @@ unsafe fn find_rsdp() -> Option<&'static Rsdp> {
 		ptr = ptr.add(16);
 	}
 	None
+}
+
+/// Boolean value telling whether the century register of the CMOS exist.
+static CENTURY_REGISTER: AtomicBool = AtomicBool::new(false);
+
+/// Tells whether the century register of the CMOS is present.
+pub fn is_century_register_present() -> bool {
+	CENTURY_REGISTER.load(atomic::Ordering::Relaxed)
 }
 
 /// Returns an ACPI table.
@@ -259,10 +257,11 @@ pub(crate) fn init() -> AllocResult<()> {
 	if unlikely(!rsdp.check()) {
 		panic!("ACPI: invalid RSDP");
 	}
-	// FIXME: pointer issue (bad alignment?)
-	let Some(_fadt) = get_table::<Fadt>() else {
+	let Some(fadt) = get_table::<Fadt>() else {
 		return Ok(());
 	};
+	CENTURY_REGISTER.store(fadt.century != 0, Relaxed);
+	// FIXME: pointer issue (bad alignment?)
 	/*if let Some(dsdt) = fadt.get_dsdt() {
 		// Parse AML code
 		let _aml = dsdt.get_aml();
