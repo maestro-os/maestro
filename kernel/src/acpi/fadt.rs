@@ -18,19 +18,9 @@
 
 //! This module handles ACPI's Fixed ACPI Description Table (FADT).
 
-use super::{Table, TableHdr, dsdt::Dsdt};
+use super::{GenericAddr, Table, TableHdr, dsdt::Dsdt};
 use crate::memory::PhysAddr;
 use core::slice;
-
-/// TODO doc
-#[repr(C, packed)]
-pub struct GenericAddr {
-	addr_space: u8,
-	bit_width: u8,
-	bit_offset: u8,
-	access_size: u8,
-	address: u64,
-}
 
 /// The Fixed ACPI Description Table.
 ///

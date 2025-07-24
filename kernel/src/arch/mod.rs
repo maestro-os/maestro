@@ -20,7 +20,7 @@
 
 use crate::{
 	acpi,
-	acpi::madt::{IOAPIC, InterruptSourceOverride, ProcessorLocalApic},
+	acpi::madt::{IOAPIC, InterruptSourceOverride, Madt, ProcessorLocalApic},
 	arch::x86::{
 		apic,
 		apic::{IO_APIC_REDIRECTIONS_OFF, ioapic_redirect_count, ioapic_write},
@@ -103,7 +103,7 @@ pub(crate) fn init2() {
 		}
 		// List CPUs with ACPI
 		let mut cpu = Vec::new();
-		if let Some(madt) = acpi::get_madt() {
+		if let Some(madt) = acpi::get_table::<Madt>() {
 			// Register CPU cores
 			madt.entries()
 				.filter(|e| e.entry_type == 0)

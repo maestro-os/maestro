@@ -33,7 +33,6 @@ use core::{
 	},
 };
 use fadt::Fadt;
-use madt::Madt;
 use utils::errno::AllocResult;
 
 mod aml;
@@ -202,6 +201,16 @@ pub trait Table {
 	}
 }
 
+/// Base address for some control registers.
+#[repr(C, packed)]
+pub struct GenericAddr {
+	addr_space: u8,
+	bit_width: u8,
+	bit_offset: u8,
+	access_size: u8,
+	address: u64,
+}
+
 /// Finds the [`Rsdp`] and returns a reference to it.
 unsafe fn find_rsdp() -> Option<&'static Rsdp> {
 	let begin = (KERNEL_BEGIN + RSDP_SCAN_BEGIN).as_ptr();
@@ -225,17 +234,15 @@ pub fn is_century_register_present() -> bool {
 	CENTURY_REGISTER.load(atomic::Ordering::Relaxed)
 }
 
-/// Returns a reference to the MADT.
-///
-/// If no MADT is present, the function returns `None`.
-pub fn get_madt() -> Option<&'static Madt> {
-	let rsdp = unsafe { find_rsdp()? };
-	// No need to check the RSDP is valid since this is done at boot
+/// Returns an ACPI table.
+pub fn get_table<T: Table>() -> Option<&'static T> {
+	let rsdp = unsafe { find_rsdp() }?;
+	// The validity of the RSDP is checked at boot
 	if let Some(xsdt) = unsafe { rsdp.get_xsdt() } {
-		xsdt.get_table::<Madt>()
+		xsdt.get_table::<T>()
 	} else {
 		let rsdt = unsafe { rsdp.get_rsdt() };
-		rsdt.get_table::<Madt>()
+		rsdt.get_table::<T>()
 	}
 }
 
@@ -250,13 +257,7 @@ pub(crate) fn init() -> AllocResult<()> {
 	if unlikely(!rsdp.check()) {
 		panic!("ACPI: invalid RSDP");
 	}
-	let fadt = if let Some(xsdt) = unsafe { rsdp.get_xsdt() } {
-		xsdt.get_table::<Fadt>()
-	} else {
-		let rsdt = unsafe { rsdp.get_rsdt() };
-		rsdt.get_table::<Fadt>()
-	};
-	let Some(fadt) = fadt else {
+	let Some(fadt) = get_table::<Fadt>() else {
 		return Ok(());
 	};
 	CENTURY_REGISTER.store(fadt.century != 0, Relaxed);

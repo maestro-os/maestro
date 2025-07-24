@@ -16,13 +16,11 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module handles the PIT (Programmable Interrupt Timer) which allows to
-//! trigger interruptions at a fixed interval.
+//! PIT (Programmable Interrupt Timer) implementation.
 
-use super::HwClock;
 use crate::{
-	arch,
 	arch::x86::{idt, io::outb},
+	time::HwTimer,
 };
 
 /// PIT channel number 0.
@@ -49,49 +47,23 @@ const MODE_3: u8 = 0b011 << 1;
 /// The base frequency of the PIT.
 const BASE_FREQUENCY: u32 = 1193182;
 
-// FIXME prevent having several instances at the same time
+/// Structure representing the PIT.
+pub struct Pit;
 
-/// The PIT.
-pub struct PIT {}
-
-impl PIT {
-	/// Creates a new instance.
-	///
-	/// By default, the timer is disabled and its frequency is undefined.
-	#[allow(clippy::new_without_default)]
-	pub fn new() -> Self {
-		let mut s = Self {};
-		s.set_enabled(false);
-		idt::wrap_disable_interrupts(|| unsafe {
-			outb(
-				PIT_COMMAND,
-				SELECT_CHANNEL_0 | ACCESS_LOBYTE_HIBYTE | MODE_3,
-			);
-			s.set_frequency(1);
-		});
-		s
-	}
-}
-
-impl HwClock for PIT {
-	fn set_enabled(&mut self, enable: bool) {
-		if enable {
-			arch::enable_irq(0x0);
-		} else {
-			arch::disable_irq(0x0);
-		}
+impl HwTimer for Pit {
+	fn set_enabled(&mut self, _enable: bool) {
+		todo!() // mask/unmask interrupt
 	}
 
-	fn set_frequency(&mut self, frequency: u32) {
-		let mut count = if frequency != 0 {
-			(BASE_FREQUENCY / frequency) as u16
+	fn set_frequency(&mut self, freq: u32) {
+		let mut count = if freq != 0 {
+			(BASE_FREQUENCY / freq) as u16
 		} else {
 			0
 		};
 		if count == 0xffff {
 			count = 0;
 		}
-
 		// Update frequency divider's value
 		idt::wrap_disable_interrupts(|| unsafe {
 			outb(CHANNEL_0, (count & 0xff) as u8);
@@ -104,8 +76,15 @@ impl HwClock for PIT {
 	}
 }
 
-impl Drop for PIT {
-	fn drop(&mut self) {
-		self.set_enabled(false);
-	}
+/// Initializes the PIT.
+pub fn init(freq: u32) -> Pit {
+	let mut pit = Pit;
+	idt::wrap_disable_interrupts(|| unsafe {
+		outb(
+			PIT_COMMAND,
+			SELECT_CHANNEL_0 | ACCESS_LOBYTE_HIBYTE | MODE_3,
+		);
+		pit.set_frequency(freq);
+	});
+	pit
 }

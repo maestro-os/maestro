@@ -32,7 +32,6 @@ use crate::{
 		once::OnceInit,
 		rwlock::{IntRwLock, RwLock},
 	},
-	time,
 };
 use core::{
 	cell::UnsafeCell,
@@ -153,7 +152,6 @@ pub fn init() -> AllocResult<()> {
 
 				queue: RwLock::new(BTreeMap::new()),
 				cur_proc: AtomicArc::from(idle_task.clone()),
-				running_procs: AtomicUsize::new(0),
 
 				idle_task: idle_task.clone(),
 			},
@@ -173,13 +171,6 @@ pub fn init() -> AllocResult<()> {
 	Ok(())
 }
 
-/// Returns the current ticking frequency of the scheduler.
-///
-/// `running` is the number of running processes.
-fn get_ticking_frequency(running: usize) -> u32 {
-	(10 * running) as _
-}
-
 /// A process scheduler.
 ///
 /// Each CPU core has its own scheduler.
@@ -191,8 +182,6 @@ pub struct Scheduler {
 	queue: IntRwLock<BTreeMap<Pid, Arc<Process>>>,
 	/// The currently running process
 	cur_proc: AtomicArc<Process>,
-	/// The current number of processes in running state
-	running_procs: AtomicUsize,
 
 	/// The task used to make the current CPU idle
 	idle_task: Arc<Process>,
@@ -220,10 +209,8 @@ impl Scheduler {
 	}
 
 	/// Adds a process to the scheduler's queue.
+	#[inline]
 	pub fn enqueue(&self, proc: Arc<Process>) -> AllocResult<()> {
-		if proc.get_state() == State::Running {
-			self.increment_running();
-		}
 		self.queue.write().insert(*proc.pid, proc)?;
 		Ok(())
 	}
@@ -231,36 +218,9 @@ impl Scheduler {
 	/// Removes the process with the given `pid` from the scheduler's queue.
 	///
 	/// If the process is not attached to this scheduler, the function does nothing.
+	#[inline]
 	pub fn dequeue(&self, pid: Pid) {
-		let proc = self.queue.write().remove(&pid);
-		if let Some(proc) = proc {
-			if proc.get_state() == State::Running {
-				self.decrement_running();
-			}
-		}
-	}
-
-	/// Increments the number of running processes.
-	pub fn increment_running(&self) {
-		let running = self.running_procs.fetch_add(1, Release) + 1;
-		let mut clocks = time::hw::CLOCKS.lock();
-		let pit = clocks.get_mut(b"pit".as_slice()).unwrap();
-		if running >= 1 {
-			pit.set_frequency(get_ticking_frequency(running));
-			pit.set_enabled(true);
-		}
-	}
-
-	/// Decrements the number of running processes.
-	pub fn decrement_running(&self) {
-		let running = self.running_procs.fetch_sub(1, Release) - 1;
-		let mut clocks = time::hw::CLOCKS.lock();
-		let pit = clocks.get_mut(b"pit".as_slice()).unwrap();
-		if running == 0 {
-			pit.set_enabled(false);
-		} else {
-			pit.set_frequency(get_ticking_frequency(running));
-		}
+		self.queue.write().remove(&pid);
 	}
 
 	/// Returns the next process to run with its PID.
