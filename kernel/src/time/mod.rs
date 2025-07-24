@@ -25,13 +25,10 @@
 //! - Software Clocks, which maintain a timestamp based on hardware clocks.
 
 pub mod clock;
-pub mod hw;
 pub mod timer;
 pub mod unit;
 
 use crate::{
-	event,
-	event::CallbackResult,
 	process::{
 		Process, State,
 		scheduler::schedule,
@@ -43,12 +40,27 @@ use crate::{
 		unit::TimeUnit,
 	},
 };
-use core::{hint::unlikely, mem::ManuallyDrop};
+use core::hint::unlikely;
 use unit::Timestamp;
-use utils::{boxed::Box, errno, errno::EResult};
+use utils::{errno, errno::EResult};
 
-/// Timer frequency.
-const FREQUENCY: u32 = 1024;
+/// Trait representing a hardware timer.
+pub trait HwTimer {
+	/// Enables or disable the timer.
+	fn set_enabled(&mut self, enable: bool);
+	/// Sets the timer's frequency in hertz.
+	///
+	/// The function selects the closest possible frequency to `freq`.
+	fn set_frequency(&mut self, freq: u32);
+
+	/// Returns the value of the timer, if applicable.
+	fn get_value(&self) -> Option<Timestamp> {
+		None
+	}
+
+	/// Returns the interrupt vector of the timer.
+	fn get_interrupt_vector(&self) -> u32;
+}
 
 /// Makes the current thread sleep for `delay`, in nanoseconds.
 ///
@@ -91,23 +103,6 @@ pub fn sleep_for(clock: Clock, delay: Timestamp, remain: &mut Timestamp) -> ERes
 
 /// Initializes time management.
 pub(crate) fn init() -> EResult<()> {
-	// Initialize hardware clocks
-	let mut hw_clocks = hw::CLOCKS.lock();
-	hw_clocks.insert(b"pit".try_into()?, Box::new(hw::pit::PIT::new())?)?;
-	hw_clocks.insert(b"rtc".try_into()?, Box::new(hw::rtc::RTC::new())?)?;
-	// TODO implement HPET
-	// TODO implement APIC timer
-	// Link hardware clock to software clock
-	let rtc = hw_clocks.get_mut(b"rtc".as_slice()).unwrap();
-	rtc.set_frequency(FREQUENCY);
-	let hook = event::register_callback(rtc.get_interrupt_vector(), move |_, _, _, _| {
-		hw::rtc::RTC::reset();
-		// FIXME: we are loosing precision here
-		clock::update((1_000_000_000 / FREQUENCY) as _);
-		timer::tick();
-		CallbackResult::Continue
-	})?;
-	let _ = ManuallyDrop::new(hook);
-	rtc.set_enabled(true);
+	// TODO initialize timekeeping
 	Ok(())
 }

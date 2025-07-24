@@ -706,12 +706,12 @@ impl Process {
 				"[strace {pid}] changed state: {old_state:?} -> {new_state:?}",
 				pid = self.get_pid()
 			);
-			// Update the number of running processes
-			if let Some(sched) = self.scheduler {
-				if new_state == State::Running {
-					sched.increment_running();
-				} else if old_state == State::Running {
-					sched.decrement_running();
+			// Enqueue or dequeue the process
+			if new_state == State::Running {
+				enqueue(self);
+			} else if old_state == State::Running {
+				if let Some(sched) = self.scheduler {
+					sched.dequeue(self.get_pid());
 				}
 			}
 			if new_state == State::Zombie {

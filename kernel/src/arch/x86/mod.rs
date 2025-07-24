@@ -17,6 +17,8 @@
  */
 
 //! x86-specific code.
+//!
+//! Documentation for the x86 architecture is available [here](https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html).
 
 pub mod apic;
 pub mod gdt;
@@ -25,6 +27,7 @@ pub mod io;
 pub mod paging;
 pub mod pic;
 pub mod smp;
+pub mod timer;
 pub mod tss;
 
 use core::arch::asm;

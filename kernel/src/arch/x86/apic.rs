@@ -39,6 +39,17 @@ pub const REG_ERROR_STATUS: usize = 0x280;
 pub const REG_ICR_LO: usize = 0x300;
 /// APIC register: Interrupt Command Register (high)
 pub const REG_ICR_HI: usize = 0x310;
+/// APIC register: LVT Timer
+pub const REG_LVT_TIMER: usize = 0x320;
+/// APIC register: Initial Count Register
+pub const REG_TIMER_INIT_COUNT: usize = 0x380;
+/// APIC register: Current Count Register
+pub const REG_TIMER_CURRENT_COUNT: usize = 0x390;
+/// APIC register: Divide Configuration Register
+pub const REG_TIMER_DIVIDE: usize = 0x3e0;
+
+/// LVT flag: mask interrupt
+pub const LVT_MASKED: u32 = 1 << 16;
 
 /// I/O APIC: redirection entries registers offset
 pub const IO_APIC_REDIRECTIONS_OFF: u8 = 0x10;
