@@ -24,7 +24,7 @@ pub mod switch;
 use crate::{
 	arch::{
 		end_of_interrupt,
-		x86::{cli, gdt, gdt::Gdt, idt::IntFrame, smp, tss, tss::Tss},
+		x86::{cli, gdt::Gdt, idt::IntFrame, tss::Tss},
 	},
 	process::{Process, State, mem_space::MemSpace, pid::Pid, scheduler::switch::switch},
 	sync::{
@@ -76,8 +76,8 @@ pub struct CoreLocal {
 
 	/// The core's scheduler.
 	pub scheduler: Scheduler,
-	/// The time in between each jiffy on the core, in nanoseconds.
-	pub time_per_jiffy: AtomicU64,
+	/// The time in between each tick on the core, in nanoseconds.
+	pub tick_period: AtomicU64,
 
 	/// Attached memory space
 	///
@@ -98,6 +98,40 @@ impl CoreLocal {
 	}
 }
 
+/// Allocate core-local structures.
+pub(crate) fn alloc_core_local() -> AllocResult<()> {
+	let idle_task = Process::idle_task()?;
+	// Initialize core locales
+	let core_locals = CPU
+		.iter()
+		.map(|cpu| CoreLocal {
+			kernel_stack: AtomicUsize::new(0),
+			user_stack: AtomicUsize::new(0),
+
+			cpu,
+			gdt: Default::default(),
+			tss: Default::default(),
+
+			scheduler: Scheduler {
+				total_ticks: AtomicU64::new(0),
+
+				queue: RwLock::new(BTreeMap::new()),
+				cur_proc: AtomicArc::from(idle_task.clone()),
+
+				idle_task: idle_task.clone(),
+			},
+			tick_period: AtomicU64::new(0),
+
+			mem_space: AtomicOptionalArc::new(),
+		})
+		.collect::<CollectResult<Vec<CoreLocal>>>()
+		.0?;
+	unsafe {
+		OnceInit::init(&CORE_LOCAL, core_locals);
+	}
+	Ok(())
+}
+
 /// Sets, on the current CPU core, the register to make the associated [`CoreLocal`] structure
 /// available.
 pub(crate) fn init_core_local() {
@@ -111,7 +145,7 @@ pub(crate) fn init_core_local() {
 	}
 }
 
-/// Returns the core-local structure for the current core.
+/// Returns the CPU-local structure for the current core.
 #[inline]
 pub fn core_local() -> &'static CoreLocal {
 	#[cfg(target_arch = "x86")]
@@ -135,48 +169,7 @@ pub fn core_local() -> &'static CoreLocal {
 /// The list of CPU cores on the system.
 pub static CPU: OnceInit<Vec<Cpu>> = unsafe { OnceInit::new() };
 /// The list of core-local structures. There is one per CPU.
-pub static CORE_LOCAL: OnceInit<Vec<CoreLocal>> = unsafe { OnceInit::new() };
-
-/// Initializes the CPU-local structures with their respective scheduler structures.
-///
-/// This function is called only once, at boot, and requires CPUs to have been enumerated.
-pub(crate) fn init() -> AllocResult<()> {
-	let idle_task = Process::idle_task()?;
-	// Initialize core locales
-	let core_locals = CPU
-		.iter()
-		.map(|cpu| CoreLocal {
-			kernel_stack: AtomicUsize::new(0),
-			user_stack: AtomicUsize::new(0),
-
-			cpu,
-			gdt: Default::default(),
-			tss: Default::default(),
-
-			scheduler: Scheduler {
-				total_ticks: AtomicU64::new(0),
-
-				queue: RwLock::new(BTreeMap::new()),
-				cur_proc: AtomicArc::from(idle_task.clone()),
-
-				idle_task: idle_task.clone(),
-			},
-			time_per_jiffy: AtomicU64::new(0),
-
-			mem_space: AtomicOptionalArc::new(),
-		})
-		.collect::<CollectResult<Vec<CoreLocal>>>()
-		.0?;
-	unsafe {
-		OnceInit::init(&CORE_LOCAL, core_locals);
-	}
-	init_core_local();
-	gdt::flush();
-	tss::init();
-	println!("Setup SMP");
-	smp::init(&CPU)?;
-	Ok(())
-}
+static CORE_LOCAL: OnceInit<Vec<CoreLocal>> = unsafe { OnceInit::new() };
 
 /// A process scheduler.
 ///

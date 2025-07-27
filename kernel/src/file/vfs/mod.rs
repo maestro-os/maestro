@@ -308,7 +308,7 @@ impl ResolutionSettings {
 	///
 	/// `follow_link` tells whether symbolic links are followed.
 	pub fn for_process(proc: &Process, follow_link: bool) -> Self {
-		let fs = proc.fs.lock();
+		let fs = proc.fs().lock();
 		Self {
 			root: fs.chroot.clone(),
 			cwd: Some(fs.cwd.clone()),

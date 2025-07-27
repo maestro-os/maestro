@@ -219,7 +219,7 @@ impl FromSyscall for Arc<Mutex<FileDescriptorTable>> {
 
 impl FromSyscall for AccessProfile {
 	fn from_syscall(_frame: &IntFrame) -> Self {
-		Process::current().fs.lock().access_profile
+		Process::current().fs().lock().access_profile
 	}
 }
 
@@ -234,7 +234,7 @@ pub struct Umask(Mode);
 
 impl FromSyscall for Umask {
 	fn from_syscall(_frame: &IntFrame) -> Self {
-		Self(Process::current().fs.lock().umask())
+		Self(Process::current().fs().lock().umask())
 	}
 }
 
