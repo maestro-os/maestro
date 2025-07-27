@@ -185,7 +185,7 @@ complete_flush:
 gdt_entries:
 	.long 0, 0
 	.long 0x0000ffff, 0x00cf9a00 # code
-	.long 0x0000ffff, 0x008f9200 # data
+	.long 0x0000ffff, 0x00cf9200 # data
 gdt:
 	.word gdt - gdt_entries - 1
 	.long 0xc0000000 + gdt_entries
