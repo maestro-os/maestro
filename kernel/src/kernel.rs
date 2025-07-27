@@ -178,8 +178,6 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	let args_parser = cmdline::ArgsParser::parse(cmdline).expect("could not parse command line");
 	LOGGER.lock().silent = args_parser.is_silent();
 
-	println!("Boot {NAME} version {VERSION}");
-
 	println!("Find ACPI structures");
 	acpi::init().expect("ACPI initialization failed");
 	// Architecture-specific initialization, stage 2
