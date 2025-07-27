@@ -27,10 +27,6 @@ use core::{
 	hint::{likely, unlikely},
 	mem::size_of,
 	slice,
-	sync::{
-		atomic,
-		atomic::{AtomicBool, Ordering::Relaxed},
-	},
 };
 use fadt::Fadt;
 use utils::errno::AllocResult;
@@ -240,14 +236,6 @@ unsafe fn find_rsdp() -> Option<&'static Rsdp> {
 	None
 }
 
-/// Boolean value telling whether the century register of the CMOS exist.
-static CENTURY_REGISTER: AtomicBool = AtomicBool::new(false);
-
-/// Tells whether the century register of the CMOS is present.
-pub fn is_century_register_present() -> bool {
-	CENTURY_REGISTER.load(atomic::Ordering::Relaxed)
-}
-
 /// Returns an ACPI table.
 pub fn get_table<T: Table>() -> Option<&'static T> {
 	let rsdp = unsafe { find_rsdp() }?;
@@ -271,11 +259,10 @@ pub(crate) fn init() -> AllocResult<()> {
 	if unlikely(!rsdp.check()) {
 		panic!("ACPI: invalid RSDP");
 	}
-	let Some(fadt) = get_table::<Fadt>() else {
+	// FIXME: pointer issue (bad alignment?)
+	let Some(_fadt) = get_table::<Fadt>() else {
 		return Ok(());
 	};
-	CENTURY_REGISTER.store(fadt.century != 0, Relaxed);
-	// FIXME: pointer issue (bad alignment?)
 	/*if let Some(dsdt) = fadt.get_dsdt() {
 		// Parse AML code
 		let _aml = dsdt.get_aml();

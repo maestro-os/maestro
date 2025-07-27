@@ -87,7 +87,8 @@ use crate::{
 	process::{
 		Process, exec,
 		exec::{ExecInfo, exec},
-		scheduler::{CPU, core_local, switch, switch::idle_task},
+		scheduler,
+		scheduler::{core_local, switch, switch::idle_task},
 	},
 	sync::mutex::Mutex,
 	tty::TTY,
@@ -177,10 +178,12 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	let args_parser = cmdline::ArgsParser::parse(cmdline).expect("could not parse command line");
 	LOGGER.lock().silent = args_parser.is_silent();
 
+	println!("Boot {NAME} version {VERSION}");
+
 	println!("Find ACPI structures");
 	acpi::init().expect("ACPI initialization failed");
 	// Architecture-specific initialization, stage 2
-	arch::init2().expect("Architecture-specific initialization failed");
+	arch::init2().expect("architecture-specific initialization failed");
 
 	println!("Setup time management");
 	time::init().expect("time management initialization failed");
@@ -199,9 +202,8 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	}
 	device::stage2().expect("device files creation failure");
 
-	println!("Setup SMP");
-	smp::init(&CPU).expect("SMP setup failed");
 	println!("Setup processes");
+	scheduler::init().expect("scheduler initialization failed");
 	process::init().expect("processes initialization failed");
 	exec::vdso::init().expect("vDSO loading failed");
 

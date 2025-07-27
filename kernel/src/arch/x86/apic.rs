@@ -50,6 +50,12 @@ pub const REG_TIMER_DIVIDE: usize = 0x3e0;
 
 /// LVT flag: mask interrupt
 pub const LVT_MASKED: u32 = 1 << 16;
+/// LVT mode: Oneshot
+pub const LVT_ONESHOT: u32 = 0b00 << 17;
+/// LVT mode: Periodic
+pub const LVT_PERIODIC: u32 = 0b01 << 17;
+/// LVT mode: TSC deadline
+pub const LVT_TSC_DEADLINE: u32 = 0b10 << 17;
 
 /// I/O APIC: redirection entries registers offset
 pub const IO_APIC_REDIRECTIONS_OFF: u8 = 0x10;
