@@ -31,7 +31,7 @@
 //! frequency to measure it. This is called **calibration**.
 //!
 //! The kernel will attempt to detect the presence of an HPET.
-//! 
+//!
 //! TODO: if the HPET is net present, fallback on the PIT
 
 // TODO calibrate the TSC if present and use it for timekeeping.
