@@ -20,6 +20,7 @@
 //!
 //! The following timers are available:
 //! - PIT (legacy)
+//! - RTC (legacy)
 //! - APIC
 //! - HPET
 //!
@@ -29,8 +30,9 @@
 //! Since we do not know the frequency of the APIC timer, we need to use another timer with a known
 //! frequency to measure it. This is called **calibration**.
 //!
-//! The kernel will attempt to detect the presence of an HPET. If not present, it will then
-//! fallback on the PIT.
+//! The kernel will attempt to detect the presence of an HPET.
+//! 
+//! TODO: if the HPET is net present, fallback on the PIT
 
 // TODO calibrate the TSC if present and use it for timekeeping.
 // If the TSC is unavailable, fallback in this order:
