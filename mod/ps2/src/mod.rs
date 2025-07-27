@@ -35,8 +35,8 @@ use kernel::{
 		keyboard::{Keyboard, KeyboardAction, KeyboardKey, KeyboardLED, KeyboardManager},
 		manager,
 	},
-	event,
-	event::{CallbackHook, CallbackResult},
+	int,
+	int::{CallbackHook, CallbackResult},
 	println,
 	sync::mutex::Mutex,
 };
@@ -313,7 +313,7 @@ fn init_in() -> Result<(), ()> {
 		CallbackResult::Continue
 	};
 
-	let hook_result = event::register_callback(KEYBOARD_INTERRUPT_ID, callback);
+	let hook_result = int::register_callback(KEYBOARD_INTERRUPT_ID, callback);
 	kbd.keyboard_interrupt_callback_hook = hook_result.map_err(|_| ())?;
 
 	Ok(())
