@@ -257,9 +257,10 @@ complete_flush:
 	mov fs, ax
 	mov gs, ax
 
-	# Update stack
+	# Update stack and GDT
 	mov rax, 0xffff800000000000
     add rsp, rax
+    lgdt [gdt]
 
 	# Call kernel_main
 	xor rdi, rdi

@@ -276,7 +276,11 @@ pub(crate) fn init() {
 			flags |= FLAG_USER;
 		}
 		// Map
-		let virt_addr = VirtAddr(section.sh_addr as _);
+		let virt_addr = if section.sh_addr as usize >= KERNEL_BEGIN.0 {
+			VirtAddr(section.sh_addr as _)
+		} else {
+			KERNEL_BEGIN + section.sh_addr as _
+		};
 		let Some(phys_addr) = virt_addr.kernel_to_physical() else {
 			continue;
 		};
