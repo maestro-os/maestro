@@ -204,11 +204,25 @@ pub trait Table {
 /// Base address for some control registers.
 #[repr(C, packed)]
 pub struct GenericAddr {
-	addr_space: u8,
-	bit_width: u8,
-	bit_offset: u8,
-	access_size: u8,
-	address: u64,
+	/// Address space:
+	/// - `0`: is system memory
+	/// - `1`: I/O ports
+	///
+	/// TODO: describe all values
+	pub addr_space: u8,
+	/// Size in bits of the given register
+	pub bit_width: u8,
+	/// Bit offset of the given register at the given address
+	pub bit_offset: u8,
+	/// Access size:
+	/// - `0`: undefined
+	/// - `1`: byte
+	/// - `2`: word
+	/// - `3`: dword
+	/// - `4`: qword
+	pub access_size: u8,
+	/// Address of the register in the address space
+	pub address: u64,
 }
 
 /// Finds the [`Rsdp`] and returns a reference to it.
