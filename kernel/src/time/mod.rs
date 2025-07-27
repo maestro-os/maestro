@@ -29,6 +29,9 @@ pub mod timer;
 pub mod unit;
 
 use crate::{
+	arch::x86::timer::rtc,
+	int,
+	int::CallbackResult,
 	process::{
 		Process, State,
 		scheduler::schedule,
@@ -40,7 +43,7 @@ use crate::{
 		unit::TimeUnit,
 	},
 };
-use core::hint::unlikely;
+use core::{hint::unlikely, mem::ManuallyDrop};
 use unit::Timestamp;
 use utils::{errno, errno::EResult};
 
@@ -83,8 +86,18 @@ pub fn sleep_for(clock: Clock, delay: Timestamp, remain: &mut Timestamp) -> ERes
 	Ok(())
 }
 
-/// Initializes time management.
+/// Initializes timekeeping
 pub(crate) fn init() -> EResult<()> {
-	// TODO initialize timekeeping
+	const FREQUENCY: u32 = 1024;
+	rtc::set_frequency(FREQUENCY);
+	let hook = int::register_callback(rtc::INTERRUPT_VECTOR, move |_, _, _, _| {
+		rtc::reset();
+		// FIXME: we are loosing precision here
+		clock::update((1_000_000_000 / FREQUENCY) as _);
+		timer::tick();
+		CallbackResult::Continue
+	})?;
+	let _ = ManuallyDrop::new(hook);
+	rtc::set_enabled(true);
 	Ok(())
 }
