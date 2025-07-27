@@ -44,24 +44,6 @@ use core::hint::unlikely;
 use unit::Timestamp;
 use utils::{errno, errno::EResult};
 
-/// Trait representing a hardware timer.
-pub trait HwTimer {
-	/// Enables or disable the timer.
-	fn set_enabled(&mut self, enable: bool);
-	/// Sets the timer's frequency in hertz.
-	///
-	/// The function selects the closest possible frequency to `freq`.
-	fn set_frequency(&mut self, freq: u32);
-
-	/// Returns the value of the timer, if applicable.
-	fn get_value(&self) -> Option<Timestamp> {
-		None
-	}
-
-	/// Returns the interrupt vector of the timer.
-	fn get_interrupt_vector(&self) -> u32;
-}
-
 /// Makes the current thread sleep for `delay`, in nanoseconds.
 ///
 /// `clock` is the clock to use.

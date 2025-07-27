@@ -18,9 +18,9 @@
 
 //! PIT (Programmable Interrupt Timer) implementation.
 
-use crate::{
-	arch::x86::{idt, io::outb},
-	time::HwTimer,
+use crate::arch::{
+	disable_irq, enable_irq,
+	x86::{idt, io::outb},
 };
 
 /// PIT channel number 0.
@@ -46,45 +46,42 @@ const MODE_3: u8 = 0b011 << 1;
 
 /// The base frequency of the PIT.
 const BASE_FREQUENCY: u32 = 1193182;
-
-/// Structure representing the PIT.
-pub struct Pit;
-
-impl HwTimer for Pit {
-	fn set_enabled(&mut self, _enable: bool) {
-		todo!() // mask/unmask interrupt
-	}
-
-	fn set_frequency(&mut self, freq: u32) {
-		let mut count = if freq != 0 {
-			(BASE_FREQUENCY / freq) as u16
-		} else {
-			0
-		};
-		if count == 0xffff {
-			count = 0;
-		}
-		// Update frequency divider's value
-		idt::wrap_disable_interrupts(|| unsafe {
-			outb(CHANNEL_0, (count & 0xff) as u8);
-			outb(CHANNEL_0, ((count >> 8) & 0xff) as u8);
-		});
-	}
-
-	fn get_interrupt_vector(&self) -> u32 {
-		0x20
-	}
-}
+/// Interrupt vector for the PIT.
+pub const INTERRUPT_VECTOR: u32 = 0x20;
 
 /// Initializes the PIT.
-pub fn init(freq: u32) -> Pit {
-	let mut pit = Pit;
+pub fn init(freq: u32) {
 	idt::wrap_disable_interrupts(|| unsafe {
 		outb(
 			PIT_COMMAND,
 			SELECT_CHANNEL_0 | ACCESS_LOBYTE_HIBYTE | MODE_3,
 		);
-		pit.set_frequency(freq);
+		set_frequency(freq);
 	});
-	pit
+}
+
+/// Enables or disables the PIT.
+pub fn set_enabled(enable: bool) {
+	if enable {
+		enable_irq(0x20);
+	} else {
+		disable_irq(0x20);
+	}
+}
+
+/// Sets the PIT's frequency.
+pub fn set_frequency(freq: u32) {
+	let mut count = if freq != 0 {
+		(BASE_FREQUENCY / freq) as u16
+	} else {
+		0
+	};
+	if count == 0xffff {
+		count = 0;
+	}
+	// Update frequency divider's value
+	idt::wrap_disable_interrupts(|| unsafe {
+		outb(CHANNEL_0, (count & 0xff) as u8);
+		outb(CHANNEL_0, ((count >> 8) & 0xff) as u8);
+	});
 }

@@ -24,7 +24,7 @@ pub mod switch;
 use crate::{
 	arch::{
 		end_of_interrupt,
-		x86::{cli, gdt, gdt::Gdt, idt::IntFrame, smp, tss, tss::Tss},
+		x86::{cli, gdt::Gdt, idt::IntFrame, tss::Tss},
 	},
 	process::{Process, State, mem_space::MemSpace, pid::Pid, scheduler::switch::switch},
 	sync::{
@@ -56,6 +56,8 @@ pub struct Cpu {
 	pub apic_flags: u32,
 }
 
+// TODO somehow allow to declare per-core variables everywhere in the codebase
+
 // This structure is using the C representation because field offsets are important for assembly
 /// Kernel core-local storage.
 #[repr(C)]
@@ -74,6 +76,8 @@ pub struct CoreLocal {
 
 	/// The core's scheduler.
 	pub scheduler: Scheduler,
+	/// The time in between each jiffy on the core, in nanoseconds.
+	pub time_per_jiffy: AtomicU64,
 
 	/// Attached memory space
 	///
@@ -133,8 +137,10 @@ pub static CPU: OnceInit<Vec<Cpu>> = unsafe { OnceInit::new() };
 /// The list of core-local structures. There is one per CPU.
 pub static CORE_LOCAL: OnceInit<Vec<CoreLocal>> = unsafe { OnceInit::new() };
 
-/// Initializes schedulers.
-pub fn init() -> AllocResult<()> {
+/// Allocates core-local structures.
+///
+/// This function is called only once, at boot, and requires CPUs to have been enumerated.
+pub(crate) fn alloc_core_local() -> AllocResult<()> {
 	let idle_task = Process::idle_task()?;
 	// Initialize core locales
 	let core_locals = CPU
@@ -155,6 +161,7 @@ pub fn init() -> AllocResult<()> {
 
 				idle_task: idle_task.clone(),
 			},
+			time_per_jiffy: AtomicU64::new(0),
 
 			mem_space: AtomicOptionalArc::new(),
 		})
@@ -163,11 +170,6 @@ pub fn init() -> AllocResult<()> {
 	unsafe {
 		OnceInit::init(&CORE_LOCAL, core_locals);
 	}
-	init_core_local();
-	gdt::flush();
-	tss::init();
-	// Boot other cores
-	smp::init(&CPU)?;
 	Ok(())
 }
 

@@ -180,7 +180,7 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	println!("Find ACPI structures");
 	acpi::init().expect("ACPI initialization failed");
 	// Architecture-specific initialization, stage 2
-	arch::init2().expect("architecture-specific initialization failed");
+	arch::init2().expect("Architecture-specific initialization failed");
 
 	println!("Setup time management");
 	time::init().expect("time management initialization failed");
