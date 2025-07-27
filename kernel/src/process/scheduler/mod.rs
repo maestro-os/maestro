@@ -173,7 +173,7 @@ pub(crate) fn init() -> AllocResult<()> {
 	init_core_local();
 	gdt::flush();
 	tss::init();
-	// Boot other cores
+	println!("Setup SMP");
 	smp::init(&CPU)?;
 	Ok(())
 }
