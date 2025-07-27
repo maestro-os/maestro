@@ -19,21 +19,10 @@
 //! Architecture-specific **Hardware Abstraction Layers** (HAL).
 
 use crate::{
-	acpi,
-	acpi::madt::{IOAPIC, InterruptSourceOverride, Madt, ProcessorLocalApic},
-	arch::x86::{
-		apic,
-		apic::{IO_APIC_REDIRECTIONS_OFF, ioapic_redirect_count, ioapic_write},
-		gdt,
-		paging::{FLAG_CACHE_DISABLE, FLAG_GLOBAL, FLAG_WRITE, FLAG_WRITE_THROUGH},
-		pic, smp, sti, timer, tss,
-	},
-	memory::{PhysAddr, vmem::KERNEL_VMEM},
+	arch::x86::{apic, enumerate_cpus, pic, sti, timer},
 	println,
-	process::scheduler::{CPU, Cpu, alloc_core_local, init_core_local},
-	sync::once::OnceInit,
 };
-use utils::{collections::vec::Vec, errno::AllocResult, limits::PAGE_SIZE};
+use utils::errno::AllocResult;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[macro_use]
@@ -98,105 +87,18 @@ pub(crate) fn init2() -> AllocResult<()> {
 			APIC = apic;
 		}
 		if apic {
+			println!("Setup APIC");
 			pic::disable();
 			apic::init();
+			println!("Enumerate CPUs");
+			enumerate_cpus();
 		} else {
+			println!("No APIC found. Fallback to the PIC");
 			pic::enable(0x20, 0x28);
 		}
 		sti();
-		// List CPUs with ACPI
-		let mut cpu = Vec::new();
-		if let Some(madt) = acpi::get_table::<Madt>() {
-			// Register CPU cores
-			madt.entries()
-				.filter(|e| e.entry_type == 0)
-				.map(|e| unsafe { e.body::<ProcessorLocalApic>() })
-				.for_each(|e| {
-					if e.apic_flags & 0b11 == 0 {
-						return;
-					}
-					cpu.push(Cpu {
-						id: e.processor_id,
-						apic_id: e.apic_id,
-						apic_flags: e.apic_flags,
-					})
-					.expect("could not insert CPU");
-				});
-			if apic {
-				// Map I/O APIC registers
-				madt.entries()
-					.filter(|e| e.entry_type == 1)
-					.map(|e| unsafe { e.body::<IOAPIC>() })
-					.for_each(|e| {
-						let base_addr = PhysAddr(e.ioapic_address as _).down_align_to(PAGE_SIZE);
-						KERNEL_VMEM.lock().map(
-							base_addr,
-							base_addr.kernel_to_virtual().unwrap(),
-							FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH | FLAG_WRITE | FLAG_GLOBAL,
-						);
-					});
-				// Remap legacy interrupts
-				madt.entries()
-					.filter(|e| e.entry_type == 2)
-					.map(|e| unsafe { e.body::<InterruptSourceOverride>() })
-					.for_each(|e| {
-						// Find the associated I/O APIC
-						let ioapic = madt
-							.entries()
-							.filter(|e| e.entry_type == 1)
-							.map(|e| unsafe { e.body::<IOAPIC>() })
-							.find(|ioapic| {
-								let gsi = e.gsi;
-								let base_addr = PhysAddr(ioapic.ioapic_address as _);
-								let max_entries =
-									unsafe { ioapic_redirect_count(base_addr) } as u32;
-								(ioapic.gsi..ioapic.gsi + max_entries).contains(&gsi)
-							});
-						// Remap the interrupt
-						if let Some(ioapic) = ioapic {
-							let base_addr = PhysAddr(ioapic.ioapic_address as _);
-							let i = (e.gsi - ioapic.gsi) as u8;
-							// TODO flags?
-							let val = 0x20 + e.irq_source as u64;
-							unsafe {
-								ioapic_write(
-									base_addr,
-									IO_APIC_REDIRECTIONS_OFF + i * 2,
-									val as u32,
-								);
-								ioapic_write(
-									base_addr,
-									IO_APIC_REDIRECTIONS_OFF + i * 2 + 1,
-									(val >> 32) as u32,
-								);
-							}
-						}
-					});
-			}
-		}
-		// If no CPU is found, just add the current
-		if cpu.is_empty() {
-			cpu.push(Cpu {
-				id: 1,
-				apic_id: 0,
-				apic_flags: 0,
-			})
-			.expect("could not insert CPU");
-		}
-		println!("{} CPU cores found", cpu.len());
-		unsafe {
-			OnceInit::init(&CPU, cpu);
-		}
-		// Init core local structures
-		alloc_core_local()?;
-		init_core_local();
-		// Update GDT
-		gdt::flush();
-		tss::init();
-		// Timer calibration
+		println!("Setup timers");
 		timer::init()?;
-		// Boot other cores
-		smp::init(&CPU)?;
 	}
 	Ok(())
 }

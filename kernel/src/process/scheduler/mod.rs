@@ -24,7 +24,7 @@ pub mod switch;
 use crate::{
 	arch::{
 		end_of_interrupt,
-		x86::{cli, gdt::Gdt, idt::IntFrame, tss::Tss},
+		x86::{cli, gdt, gdt::Gdt, idt::IntFrame, smp, tss, tss::Tss},
 	},
 	process::{Process, State, mem_space::MemSpace, pid::Pid, scheduler::switch::switch},
 	sync::{
@@ -137,10 +137,10 @@ pub static CPU: OnceInit<Vec<Cpu>> = unsafe { OnceInit::new() };
 /// The list of core-local structures. There is one per CPU.
 pub static CORE_LOCAL: OnceInit<Vec<CoreLocal>> = unsafe { OnceInit::new() };
 
-/// Allocates core-local structures.
+/// Initializes the CPU-local structures with their respective scheduler structures.
 ///
 /// This function is called only once, at boot, and requires CPUs to have been enumerated.
-pub(crate) fn alloc_core_local() -> AllocResult<()> {
+pub(crate) fn init() -> AllocResult<()> {
 	let idle_task = Process::idle_task()?;
 	// Initialize core locales
 	let core_locals = CPU
@@ -170,6 +170,11 @@ pub(crate) fn alloc_core_local() -> AllocResult<()> {
 	unsafe {
 		OnceInit::init(&CORE_LOCAL, core_locals);
 	}
+	init_core_local();
+	gdt::flush();
+	tss::init();
+	// Boot other cores
+	smp::init(&CPU)?;
 	Ok(())
 }
 

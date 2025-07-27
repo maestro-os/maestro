@@ -86,6 +86,7 @@ use crate::{
 	process::{
 		Process, exec,
 		exec::{ExecInfo, exec},
+		scheduler,
 		scheduler::{core_local, switch, switch::idle_task},
 	},
 	sync::mutex::Mutex,
@@ -164,8 +165,7 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	// initialized
 
 	// Init kernel symbols map
-	elf::kernel::init()
-		.unwrap_or_else(|_| panic!("Cannot initialize kernel symbols map! (out of memory)"));
+	elf::kernel::init().expect("cannot initialize kernel symbols map");
 
 	// Perform kernel self-tests
 	#[cfg(test)]
@@ -173,52 +173,44 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 
 	// Parse bootloader command line arguments
 	let cmdline = boot_info.cmdline.unwrap_or_default();
-	let args_parser = match cmdline::ArgsParser::parse(cmdline) {
-		Ok(p) => p,
-		Err(e) => {
-			println!("{e}");
-			power::halt();
-		}
-	};
+	let args_parser = cmdline::ArgsParser::parse(cmdline).expect("could not parse command line");
 	LOGGER.lock().silent = args_parser.is_silent();
 
-	println!("Booting Maestro kernel version {VERSION}");
+	println!("Boot {NAME} version {VERSION}");
 
-	println!("Initializing ACPI...");
-	acpi::init().unwrap_or_else(|e| panic!("Failed to initialize ACPI! ({e})"));
+	println!("Find ACPI structures");
+	acpi::init().expect("ACPI initialization failed");
 	// Architecture-specific initialization, stage 2
-	arch::init2().expect("Architecture-specific initialization failed");
+	arch::init2().expect("architecture-specific initialization failed");
 
-	println!("Initializing time management...");
-	time::init().unwrap_or_else(|e| panic!("Failed to initialize time management! ({e})"));
+	println!("Setup time management");
+	time::init().expect("time management initialization failed");
 
-	println!("Initializing devices management...");
-	device::init().unwrap_or_else(|e| panic!("Failed to initialize devices management! ({e})"));
-	net::osi::init().unwrap_or_else(|e| panic!("Failed to initialize network! ({e})"));
-	crypto::init()
-		.unwrap_or_else(|_| panic!("Failed to initialize cryptography! (out of memory)"));
+	println!("Setup devices management");
+	device::init().expect("devices management initialization failed");
+	net::osi::init().expect("network initialization failed");
+	crypto::init().expect("cryptography initialization failed");
 
 	let root = args_parser.get_root_dev();
-	println!("Initializing files management...");
-	file::init(root).unwrap_or_else(|e| panic!("Failed to initialize files management! ({e})"));
+	println!("Setup files management");
+	file::init(root).expect("files management initialization failed");
 	if let Some(initramfs) = boot_info.initramfs {
-		println!("Initializing initramfs...");
-		initramfs::load(initramfs)
-			.unwrap_or_else(|e| panic!("Failed to initialize initramfs! ({e})"));
+		println!("Load initramfs");
+		initramfs::load(initramfs).expect("initramfs loading failed");
 	}
-	device::stage2().unwrap_or_else(|e| panic!("Failed to create device files! ({e})"));
+	device::stage2().expect("device files creation failure");
 
-	println!("Initializing processes...");
-	process::init().unwrap_or_else(|e| panic!("Failed to init processes! ({e})"));
-	exec::vdso::init().unwrap_or_else(|e| panic!("Failed to load vDSO! ({e})"));
+	println!("Setup processes");
+	scheduler::init().expect("scheduler initialization failed");
+	process::init().expect("processes initialization failed");
+	exec::vdso::init().expect("vDSO loading failed");
 
 	let init_path = args_parser.get_init_path().unwrap_or(INIT_PATH);
 	let init_path = String::try_from(init_path).unwrap();
-	let init_frame =
-		init(init_path).unwrap_or_else(|e| panic!("Cannot execute init process: {e}"));
+	println!("Execute init process ({init_path})");
+	let init_frame = init(init_path).expect("init process execution failed");
 
-	Process::new_kthread(None, cache::flush_task, true)
-		.unwrap_or_else(|e| panic!("Cannot launch the cache flush task: {e}"));
+	Process::new_kthread(None, cache::flush_task, true).expect("cache flush task launch failed");
 
 	unsafe {
 		switch::init_ctx(&init_frame);
