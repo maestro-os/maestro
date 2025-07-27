@@ -109,7 +109,7 @@ pub fn enable_irq(irq: u8) {
 	{
 		use x86::*;
 		if unsafe { APIC } {
-			// TODO
+			// TODO enable in I/O APIC
 		} else {
 			pic::enable_irq(irq);
 		}
@@ -122,7 +122,7 @@ pub fn disable_irq(irq: u8) {
 	{
 		use x86::*;
 		if unsafe { APIC } {
-			// TODO
+			// TODO disable in I/O APIC
 		} else {
 			pic::disable_irq(irq);
 		}
