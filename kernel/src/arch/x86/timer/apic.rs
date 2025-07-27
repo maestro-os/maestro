@@ -30,9 +30,9 @@ use crate::{
 		timer::hpet,
 	},
 	memory::PhysAddr,
-	println,
+	process::scheduler::core_local,
 };
-use core::{hint, hint::likely};
+use core::{hint, hint::likely, sync::atomic::Ordering::Relaxed};
 use utils::errno::AllocResult;
 
 /// Measures and stores the frequency of the APIC timer, using the HPET.
@@ -61,8 +61,7 @@ pub(crate) fn calibrate_hpet() -> AllocResult<()> {
 		let period = hpet_delta * hpet::INFO.tick_period as u64;
 		period / APIC_TICKS as u64
 	};
-	println!("period per tick {period}");
-	// TODO store
+	core_local().tick_period.store(period, Relaxed);
 	Ok(())
 }
 

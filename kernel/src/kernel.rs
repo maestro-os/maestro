@@ -87,8 +87,7 @@ use crate::{
 	process::{
 		Process, exec,
 		exec::{ExecInfo, exec},
-		scheduler,
-		scheduler::{core_local, switch, switch::idle_task},
+		scheduler::{CPU, core_local, switch, switch::idle_task},
 	},
 	sync::mutex::Mutex,
 	tty::TTY,
@@ -200,8 +199,9 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	}
 	device::stage2().expect("device files creation failure");
 
+	println!("Setup SMP");
+	smp::init(&CPU).expect("SMP setup failed");
 	println!("Setup processes");
-	scheduler::init().expect("scheduler initialization failed");
 	process::init().expect("processes initialization failed");
 	exec::vdso::init().expect("vDSO loading failed");
 
