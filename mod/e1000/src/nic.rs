@@ -21,8 +21,8 @@
 use core::{cmp::min, hint::unlikely, mem::size_of, ptr, slice};
 use kernel::{
 	device::{bar::BAR, manager::PhysicalDevice},
-	event,
-	event::CallbackHook,
+	int,
+	int::CallbackHook,
 	memory::{PhysAddr, VirtAddr, buddy},
 	net,
 	net::{BindAddress, MAC, buf::BufList},
@@ -254,7 +254,7 @@ impl Nic {
 		let bar0 = dev.get_bars()[0].clone().ok_or("Invalid BAR for NIC")?;
 
 		let int_line = dev.get_interrupt_line().ok_or("Invalid BAR for NIC")?;
-		let int_hook = event::register_callback(int_line as _, |_, _, _, _| todo!())
+		let int_hook = int::register_callback(int_line as _, |_, _, _, _| todo!())
 			.map_err(|_| "Memory allocation failed")?
 			.unwrap();
 
