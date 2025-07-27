@@ -340,7 +340,7 @@ pub struct Process {
 	/// The virtual memory of the process.
 	pub mem_space: UnsafeMut<Option<Arc<MemSpace>>>,
 	/// Filesystem access information.
-	pub fs: Mutex<ProcessFs>, // TODO rwlock
+	fs: Option<Mutex<ProcessFs>>, // TODO rwlock
 	/// The list of open file descriptors with their respective ID.
 	pub file_descriptors: UnsafeMut<Option<Arc<Mutex<FileDescriptorTable>>>>,
 	/// Process's timers, shared between all threads of the same process.
@@ -490,14 +490,9 @@ impl Process {
 			fpu: Mutex::new(FxState([0; 512])),
 			tls: Default::default(),
 
-			// TODO this is not needed. find a way to avoid init
+			// Not needed for kernel threads
 			mem_space: Default::default(),
-			fs: Mutex::new(ProcessFs {
-				access_profile: AccessProfile::KERNEL,
-				umask: Default::default(),
-				cwd: vfs::ROOT.clone(),
-				chroot: vfs::ROOT.clone(),
-			}),
+			fs: None,
 			file_descriptors: Default::default(),
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(0)?))?,
 			signal: Mutex::new(ProcessSignal::new()?),
@@ -563,12 +558,12 @@ impl Process {
 			tls: Default::default(),
 
 			mem_space: UnsafeMut::new(None),
-			fs: Mutex::new(ProcessFs {
+			fs: Some(Mutex::new(ProcessFs {
 				access_profile: rs.access_profile,
 				umask: AtomicU32::new(DEFAULT_UMASK),
 				cwd: root_dir.clone(),
 				chroot: root_dir,
-			}),
+			})),
 			file_descriptors: UnsafeMut::new(Some(Arc::new(Mutex::new(file_descriptors))?)),
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(INIT_PID)?))?,
 			signal: Mutex::new(ProcessSignal {
@@ -877,7 +872,7 @@ impl Process {
 			tls: Mutex::new(*this.tls.lock()),
 
 			mem_space: UnsafeMut::new(Some(mem_space)),
-			fs: Mutex::new(this.fs.lock().clone()),
+			fs: Some(Mutex::new(this.fs().lock().clone())),
 			file_descriptors: UnsafeMut::new(file_descriptors),
 			// TODO if creating a thread: timer_manager: this.timer_manager.clone(),
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid_int)?))?,
@@ -904,6 +899,16 @@ impl Process {
 		PROCESSES.write().insert(*proc.pid, proc.clone())?;
 		enqueue(&proc);
 		Ok(proc)
+	}
+
+	/// Returns the process's [`ProcessFs`].
+	///
+	/// If the process is a kernel thread, the function panics.
+	#[inline]
+	pub fn fs(&self) -> &Mutex<ProcessFs> {
+		self.fs
+			.as_ref()
+			.expect("kernel threads don't have ProcessFS structures")
 	}
 
 	/// Kills the process with the given signal `sig`.
@@ -998,7 +1003,7 @@ impl AccessProfile {
 			return true;
 		}
 		// if sender's `uid` or `euid` equals receiver's `uid` or `suid`
-		let fs = proc.fs.lock();
+		let fs = proc.fs().lock();
 		self.uid == fs.access_profile.uid
 			|| self.uid == fs.access_profile.suid
 			|| self.euid == fs.access_profile.uid

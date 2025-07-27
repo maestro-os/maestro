@@ -321,6 +321,7 @@ pub fn init(cpu: &[Cpu]) -> AllocResult<()> {
 #[unsafe(no_mangle)]
 unsafe extern "C" fn smp_main() -> ! {
 	arch::init1(false);
+	// TODO call init2? need to setup APIC? need to calibrate the APIC timer
 	init_core_local();
 	gdt::flush();
 	tss::init();

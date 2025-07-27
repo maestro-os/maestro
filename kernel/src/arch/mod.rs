@@ -19,8 +19,9 @@
 //! Architecture-specific **Hardware Abstraction Layers** (HAL).
 
 use crate::{
-	arch::x86::{apic, enumerate_cpus, pic, sti, timer},
+	arch::x86::{apic, enumerate_cpus, gdt, pic, sti, timer, tss},
 	println,
+	process::scheduler::{alloc_core_local, init_core_local},
 };
 use utils::errno::AllocResult;
 
@@ -90,14 +91,21 @@ pub(crate) fn init2() -> AllocResult<()> {
 			println!("Setup APIC");
 			pic::disable();
 			apic::init();
-			println!("Enumerate CPUs");
+			println!("Enumerate CPU cores");
 			enumerate_cpus();
 		} else {
 			println!("No APIC found. Fallback to the PIC");
 			pic::enable(0x20, 0x28);
 		}
-		sti();
+
+		// Init core-local
+		alloc_core_local()?;
+		init_core_local();
+		gdt::flush();
+		tss::init();
+
 		println!("Setup timers");
+		sti();
 		timer::init()?;
 	}
 	Ok(())
