@@ -32,8 +32,6 @@ pub mod user_desc;
 
 use crate::{
 	arch::x86::{FxState, gdt, idt, idt::IntFrame},
-	event,
-	event::CallbackResult,
 	file,
 	file::{
 		File, O_RDWR,
@@ -42,6 +40,8 @@ use crate::{
 		vfs,
 		vfs::ResolutionSettings,
 	},
+	int,
+	int::CallbackResult,
 	memory::{VirtAddr, buddy, buddy::FrameOrder, oom, user, user::UserPtr},
 	process::{
 		pid::{IDLE_PID, INIT_PID, PidHandle},
@@ -361,7 +361,6 @@ pub static PROCESSES: IntRwLock<BTreeMap<Pid, Arc<Process>>> = IntRwLock::new(BT
 ///
 /// This function must be called only once, at kernel initialization.
 pub(crate) fn init() -> EResult<()> {
-	scheduler::init()?;
 	// Register interruption callbacks
 	let callback = |id: u32, _code: u32, frame: &mut IntFrame, ring: u8| {
 		if ring < 3 {
@@ -426,14 +425,14 @@ pub(crate) fn init() -> EResult<()> {
 		}
 		CallbackResult::Continue
 	};
-	let _ = ManuallyDrop::new(event::register_callback(0x00, callback)?);
-	let _ = ManuallyDrop::new(event::register_callback(0x03, callback)?);
-	let _ = ManuallyDrop::new(event::register_callback(0x06, callback)?);
-	let _ = ManuallyDrop::new(event::register_callback(0x0d, callback)?);
-	let _ = ManuallyDrop::new(event::register_callback(0x0e, page_fault_callback)?);
-	let _ = ManuallyDrop::new(event::register_callback(0x10, callback)?);
-	let _ = ManuallyDrop::new(event::register_callback(0x11, callback)?);
-	let _ = ManuallyDrop::new(event::register_callback(0x13, callback)?);
+	let _ = ManuallyDrop::new(int::register_callback(0x00, callback)?);
+	let _ = ManuallyDrop::new(int::register_callback(0x03, callback)?);
+	let _ = ManuallyDrop::new(int::register_callback(0x06, callback)?);
+	let _ = ManuallyDrop::new(int::register_callback(0x0d, callback)?);
+	let _ = ManuallyDrop::new(int::register_callback(0x0e, page_fault_callback)?);
+	let _ = ManuallyDrop::new(int::register_callback(0x10, callback)?);
+	let _ = ManuallyDrop::new(int::register_callback(0x11, callback)?);
+	let _ = ManuallyDrop::new(int::register_callback(0x13, callback)?);
 	Ok(())
 }
 

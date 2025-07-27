@@ -43,27 +43,28 @@ use crate::{
 	acpi,
 	arch::{x86, x86::timer::hpet::AcpiHpet},
 };
+use utils::errno::AllocResult;
 
 pub mod apic;
 pub mod hpet;
 pub mod pit;
-mod rtc;
+pub mod rtc;
 
 /// Initializes x86 timers.
-pub(crate) fn init() {
+pub(crate) fn init() -> AllocResult<()> {
 	if !x86::apic::is_present() {
 		// We assume the PIT is the only timer present
-		pit::init(1); // TODO choose another frequency
-		return;
+		pit::init(10);
+		return Ok(());
 	}
-	// Detect HPET
-	let acpi_hpet = acpi::get_table::<AcpiHpet>();
 	// Initialize a known-frequency timer
-	if let Some(hpet) = acpi_hpet {
-		let hpet = hpet::init(hpet);
-		apic::calibrate(hpet);
+	if let Some(hpet) = acpi::get_table::<AcpiHpet>() {
+		hpet::init(hpet);
+		apic::calibrate_hpet()?;
 	} else {
-		let pit = pit::init(1); // TODO choose another frequency
-		apic::calibrate(pit);
+		// No HPET, we assume the PIT is present
+		pit::init(10);
+		apic::calibrate_pit();
 	}
+	Ok(())
 }

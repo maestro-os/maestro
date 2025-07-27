@@ -24,15 +24,16 @@ use crate::{
 	arch::x86::{
 		apic,
 		apic::{IO_APIC_REDIRECTIONS_OFF, ioapic_redirect_count, ioapic_write},
+		gdt,
 		paging::{FLAG_CACHE_DISABLE, FLAG_GLOBAL, FLAG_WRITE, FLAG_WRITE_THROUGH},
-		pic,
+		pic, smp, sti, timer, tss,
 	},
 	memory::{PhysAddr, vmem::KERNEL_VMEM},
 	println,
-	process::scheduler::{CPU, Cpu},
+	process::scheduler::{CPU, Cpu, alloc_core_local, init_core_local},
 	sync::once::OnceInit,
 };
-use utils::{collections::vec::Vec, limits::PAGE_SIZE};
+use utils::{collections::vec::Vec, errno::AllocResult, limits::PAGE_SIZE};
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[macro_use]
@@ -66,6 +67,7 @@ pub(crate) fn init1(first: bool) {
 			panic!("SSE support is required to run this kernel :(");
 		}
 		enable_sse();
+		// Setup interrupt handlers
 		if first {
 			idt::init_table();
 		}
@@ -87,7 +89,7 @@ pub(crate) fn init1(first: bool) {
 }
 
 /// Architecture-specific initialization, stage 2.
-pub(crate) fn init2() {
+pub(crate) fn init2() -> AllocResult<()> {
 	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	{
 		// Detect APIC
@@ -101,6 +103,7 @@ pub(crate) fn init2() {
 		} else {
 			pic::enable(0x20, 0x28);
 		}
+		sti();
 		// List CPUs with ACPI
 		let mut cpu = Vec::new();
 		if let Some(madt) = acpi::get_table::<Madt>() {
@@ -184,7 +187,18 @@ pub(crate) fn init2() {
 		unsafe {
 			OnceInit::init(&CPU, cpu);
 		}
+		// Init core local structures
+		alloc_core_local()?;
+		init_core_local();
+		// Update GDT
+		gdt::flush();
+		tss::init();
+		// Timer calibration
+		timer::init()?;
+		// Boot other cores
+		smp::init(&CPU)?;
 	}
+	Ok(())
 }
 
 /// Enables interruptions on the given IRQ.

@@ -59,8 +59,8 @@ pub mod crypto;
 pub mod debug;
 pub mod device;
 pub mod elf;
-pub mod event;
 pub mod file;
+pub mod int;
 pub mod logger;
 pub mod memory;
 pub mod module;
@@ -187,7 +187,7 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	println!("Initializing ACPI...");
 	acpi::init().unwrap_or_else(|e| panic!("Failed to initialize ACPI! ({e})"));
 	// Architecture-specific initialization, stage 2
-	arch::init2();
+	arch::init2().expect("Architecture-specific initialization failed");
 
 	println!("Initializing time management...");
 	time::init().unwrap_or_else(|e| panic!("Failed to initialize time management! ({e})"));
