@@ -57,19 +57,6 @@ pub fn mmap_iter() -> impl Iterator<Item = multiboot::MmapEntry> {
 		})
 }
 
-/// Prints the physical memory mapping.
-#[cfg(debug_assertions)]
-pub(crate) fn print_entries() {
-	crate::println!("--- Memory mapping ---");
-	crate::println!("<begin> <end> <type>");
-	mmap_iter().for_each(|entry| {
-		let begin = entry.addr;
-		let end = begin + entry.len;
-		let type_ = entry.get_type_string();
-		crate::println!("- {begin:08x} {end:08x} {type_}");
-	});
-}
-
 /// Computes and returns the physical address to the end of the kernel's ELF sections' content.
 fn sections_end(boot_info: &BootInfo) -> PhysAddr {
 	// The end of ELF sections list

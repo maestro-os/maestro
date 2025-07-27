@@ -148,6 +148,8 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	// Architecture-specific initialization, stage 1
 	arch::init1(true);
 
+	println!("Boot {NAME} version {VERSION}");
+
 	// Read multiboot information
 	if unlikely(magic != multiboot::BOOTLOADER_MAGIC || !multiboot_ptr.is_aligned_to(8)) {
 		panic!("Bootloader non compliant with Multiboot2!");
@@ -155,9 +157,8 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	let boot_info = unsafe { multiboot::read(multiboot_ptr) };
 
 	// Initialize memory management
+	println!("Setup memory management");
 	memory::memmap::init(boot_info);
-	#[cfg(debug_assertions)]
-	memory::memmap::print_entries();
 	memory::alloc::init();
 	vmem::init();
 
@@ -175,8 +176,6 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	let cmdline = boot_info.cmdline.unwrap_or_default();
 	let args_parser = cmdline::ArgsParser::parse(cmdline).expect("could not parse command line");
 	LOGGER.lock().silent = args_parser.is_silent();
-
-	println!("Boot {NAME} version {VERSION}");
 
 	println!("Find ACPI structures");
 	acpi::init().expect("ACPI initialization failed");
