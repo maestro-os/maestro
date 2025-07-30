@@ -47,7 +47,7 @@ use crate::{
 		pid::{IDLE_PID, INIT_PID, PidHandle},
 		rusage::Rusage,
 		scheduler::{
-			Scheduler, core_local, enqueue, switch,
+			Scheduler, core_local, dequeue, enqueue, switch,
 			switch::{KThreadEntry, idle_task},
 		},
 		signal::{SIGNALS_COUNT, SigSet},
@@ -76,6 +76,7 @@ use signal::{Signal, SignalHandler};
 use utils::{
 	collections::{
 		btreemap::BTreeMap,
+		list::ListNode,
 		path::{Path, PathBuf},
 		vec::Vec,
 	},
@@ -209,6 +210,9 @@ impl Drop for KernelStack {
 /// A process's links to other processes.
 #[derive(Default)]
 pub struct ProcessLinks {
+	/// The scheduler the process is enqueued on.
+	sched: Option<&'static Scheduler>,
+
 	/// A pointer to the parent process.
 	parent: Option<Arc<Process>>,
 	/// The list of children processes.
@@ -325,8 +329,8 @@ pub struct Process {
 	/// The links to other processes.
 	pub links: Mutex<ProcessLinks>,
 
-	/// The scheduler the process is enqueued on.
-	scheduler: Option<&'static Scheduler>,
+	/// The node in the scheduler's run queue.
+	sched_node: ListNode,
 
 	/// A pointer to the kernelspace stack.
 	kernel_stack: KernelStack,
@@ -387,7 +391,7 @@ pub(crate) fn init() -> EResult<()> {
 				let opcode = ptr.copy_from_user();
 				// If the instruction is `hlt`, exit
 				if opcode == Ok(Some(HLT_INSTRUCTION)) {
-					proc.exit(frame.get_syscall_id() as _);
+					Process::exit(&proc, frame.get_syscall_id() as _);
 				} else {
 					proc.kill(Signal::SIGSEGV);
 				}
@@ -483,7 +487,7 @@ impl Process {
 			vfork_done: AtomicBool::new(false),
 			links: Default::default(),
 
-			scheduler: None,
+			sched_node: ListNode::default(),
 
 			kernel_stack,
 			kernel_sp: AtomicPtr::new(kernel_sp),
@@ -550,7 +554,7 @@ impl Process {
 			vfork_done: AtomicBool::new(false),
 			links: Mutex::new(ProcessLinks::default()),
 
-			scheduler: None,
+			sched_node: ListNode::default(),
 
 			kernel_stack: KernelStack::new()?,
 			kernel_sp: AtomicPtr::default(),
@@ -676,11 +680,11 @@ impl Process {
 	///
 	/// If the transition from the previous state to `new_state` is invalid, the function does
 	/// nothing.
-	pub fn set_state(&self, new_state: State) {
+	pub fn set_state(this: &Arc<Self>, new_state: State) {
 		// Disable interruptions to ensure the function can finish before the scheduler switches
 		// context (and thus never resume if the new state is `Zombie`)
 		idt::wrap_disable_interrupts(|| {
-			let Ok(old_state) = self.state.fetch_update(Release, Acquire, |old_state| {
+			let Ok(old_state) = this.state.fetch_update(Release, Acquire, |old_state| {
 				let old_state = State::from_id(old_state);
 				let valid = matches!(
 					(old_state, new_state),
@@ -698,32 +702,30 @@ impl Process {
 			#[cfg(feature = "strace")]
 			println!(
 				"[strace {pid}] changed state: {old_state:?} -> {new_state:?}",
-				pid = self.get_pid()
+				pid = this.get_pid()
 			);
 			// Enqueue or dequeue the process
 			if new_state == State::Running {
-				enqueue(self);
+				enqueue(this);
 			} else if old_state == State::Running {
-				if let Some(sched) = self.scheduler {
-					sched.dequeue(self.get_pid());
-				}
+				dequeue(this);
 			}
 			if new_state == State::Zombie {
-				if self.is_init() {
+				if this.is_init() {
 					panic!("Terminated init process!");
 				}
 				// Remove the memory space and file descriptors table to reclaim memory
 				unsafe {
-					//self.mem_space = None; // TODO Handle the case where the memory space is
+					//this.mem_space = None; // TODO Handle the case where the memory space is
 					// bound
-					*self.file_descriptors.get_mut() = None;
+					*this.file_descriptors.get_mut() = None;
 				}
 				// Attach every child to the init process
 				let init_proc = Process::get_by_pid(INIT_PID).unwrap();
-				let children = mem::take(&mut self.links.lock().children);
+				let children = mem::take(&mut this.links.lock().children);
 				for child_pid in children {
 					// Check just in case
-					if child_pid == *self.pid {
+					if child_pid == *this.pid {
 						continue;
 					}
 					// TODO do the same for process group members
@@ -733,11 +735,11 @@ impl Process {
 					}
 				}
 				// Set vfork as done just in case
-				self.vfork_wake();
+				this.vfork_wake();
 			}
 			// Send SIGCHLD
 			if matches!(new_state, State::Running | State::Stopped | State::Zombie) {
-				let links = self.links.lock();
+				let links = this.links.lock();
 				if let Some(parent) = &links.parent {
 					parent.kill(Signal::SIGCHLD);
 				}
@@ -751,10 +753,10 @@ impl Process {
 		signal.sigpending.0 & !signal.sigmask.0 != 0
 	}
 
-	/// Wakes up the process if in [`State::Sleeping`] state.
-	pub fn wake(&self) {
+	/// Wakes up the process if in [`Sleeping`] state.
+	pub fn wake(this: &Arc<Self>) {
 		// TODO make sure the ordering is right
-		let res = self.state.fetch_update(SeqCst, SeqCst, |old_state| {
+		let res = this.state.fetch_update(SeqCst, SeqCst, |old_state| {
 			(old_state == State::Sleeping as _).then_some(State::Running as _)
 		});
 		if res.is_err() {
@@ -765,9 +767,9 @@ impl Process {
 			"[strace {pid}] changed state: {old_state:?} -> {new_state:?}",
 			old_state = State::Sleeping,
 			new_state = State::Running,
-			pid = self.get_pid()
+			pid = this.get_pid()
 		);
-		enqueue(self);
+		enqueue(this);
 	}
 
 	/// Signals the parent that the `vfork` operation has completed.
@@ -775,7 +777,7 @@ impl Process {
 		self.vfork_done.store(true, Release);
 		let links = self.links.lock();
 		if let Some(parent) = &links.parent {
-			parent.set_state(State::Running);
+			Process::set_state(parent, State::Running);
 		}
 	}
 
@@ -864,7 +866,7 @@ impl Process {
 				..Default::default()
 			}),
 
-			scheduler: None,
+			sched_node: ListNode::default(),
 
 			kernel_stack: KernelStack::new()?,
 			kernel_sp: AtomicPtr::default(),
@@ -948,14 +950,14 @@ impl Process {
 	/// Exits the process with the given `status`.
 	///
 	/// This function changes the process's status to `Zombie`.
-	pub fn exit(&self, status: u32) {
+	pub fn exit(this: &Arc<Self>, status: u32) {
 		#[cfg(feature = "strace")]
 		println!(
 			"[strace {pid}] exited with status `{status}`",
-			pid = *self.pid
+			pid = *this.pid
 		);
-		self.signal.lock().exit_status = status as ExitStatus;
-		self.set_state(State::Zombie);
+		this.signal.lock().exit_status = status as ExitStatus;
+		Process::set_state(this, State::Zombie);
 	}
 
 	/// Removes all references to the process in order to free the structure.
@@ -982,9 +984,7 @@ impl Process {
 				links.process_group.remove(i);
 			}
 		}
-		if let Some(sched) = this.scheduler {
-			sched.dequeue(*this.pid);
-		}
+		dequeue(&this);
 		PROCESSES.write().remove(&*this.pid);
 	}
 }

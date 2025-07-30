@@ -26,23 +26,21 @@ use crate::{
 		end_of_interrupt,
 		x86::{cli, gdt::Gdt, idt::IntFrame, tss::Tss},
 	},
-	process::{Process, State, mem_space::MemSpace, pid::Pid, scheduler::switch::switch},
-	sync::{
-		atomic::AtomicU64,
-		once::OnceInit,
-		rwlock::{IntRwLock, RwLock},
-	},
+	process::{Process, State, State::Running, mem_space::MemSpace, scheduler::switch::switch},
+	sync::{atomic::AtomicU64, mutex::IntMutex, once::OnceInit},
 };
 use core::{
 	cell::UnsafeCell,
+	ptr,
 	sync::atomic::{
 		AtomicUsize,
-		Ordering::{Relaxed, Release},
+		Ordering::{Acquire, Release},
 	},
 };
 use utils::{
-	collections::{btreemap::BTreeMap, vec::Vec},
+	collections::vec::Vec,
 	errno::{AllocResult, CollectResult},
+	list, list_type,
 	ptr::arc::{Arc, AtomicArc, AtomicOptionalArc},
 };
 
@@ -113,9 +111,8 @@ pub(crate) fn alloc_core_local() -> AllocResult<()> {
 			tss: Default::default(),
 
 			scheduler: Scheduler {
-				total_ticks: AtomicU64::new(0),
-
-				queue: RwLock::new(BTreeMap::new()),
+				queue: IntMutex::new(list!(Process, sched_node)),
+				queue_len: AtomicUsize::new(0),
 				cur_proc: AtomicArc::from(idle_task.clone()),
 
 				idle_task: idle_task.clone(),
@@ -175,11 +172,10 @@ static CORE_LOCAL: OnceInit<Vec<CoreLocal>> = unsafe { OnceInit::new() };
 ///
 /// Each CPU core has its own scheduler.
 pub struct Scheduler {
-	/// The total number of ticks since the instantiation of the scheduler
-	total_ticks: AtomicU64,
-
 	/// Queue of processes to run
-	queue: IntRwLock<BTreeMap<Pid, Arc<Process>>>,
+	queue: IntMutex<list_type!(Process, sched_node)>,
+	/// The number of processes in queue
+	queue_len: AtomicUsize,
 	/// The currently running process
 	cur_proc: AtomicArc<Process>,
 
@@ -188,12 +184,6 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
-	/// Returns the total number of ticks since the instantiation of the
-	/// scheduler.
-	pub fn get_total_ticks(&self) -> u64 {
-		self.total_ticks.load(Relaxed)
-	}
-
 	/// Returns the current running process.
 	#[inline]
 	pub fn get_current_process(&self) -> Arc<Process> {
@@ -208,50 +198,62 @@ impl Scheduler {
 		self.cur_proc.replace(new)
 	}
 
-	/// Adds a process to the scheduler's queue.
-	#[inline]
-	pub fn enqueue(&self, proc: Arc<Process>) -> AllocResult<()> {
-		self.queue.write().insert(*proc.pid, proc)?;
-		Ok(())
-	}
-
-	/// Removes the process with the given `pid` from the scheduler's queue.
-	///
-	/// If the process is not attached to this scheduler, the function does nothing.
-	#[inline]
-	pub fn dequeue(&self, pid: Pid) {
-		self.queue.write().remove(&pid);
-	}
-
 	/// Returns the next process to run with its PID.
 	///
-	/// `cur_pid` is the PID of the currently running process
-	fn get_next_process(&self, cur_pid: Pid) -> Option<Arc<Process>> {
-		// Get the current process, or take the first process in the list if no
-		// process is running
-		let process_filter =
-			|(_, proc): &(&Pid, &Arc<Process>)| proc.get_state() == State::Running;
-		let processes = self.queue.read();
-		processes
-			.range((cur_pid + 1)..)
-			.find(process_filter)
-			.or_else(|| {
-				// If no suitable process is found, go back to the beginning to check processes
-				// located before the previous process (looping)
-				processes.range(..=cur_pid).find(process_filter)
-			})
-			.map(|(_, proc)| proc.clone())
+	/// If no process is left to run, the function returns `None`.
+	fn get_next_process(&self) -> Option<Arc<Process>> {
+		let mut queue = self.queue.lock();
+		let proc = queue.front()?;
+		// Send to the back of the queue
+		unsafe {
+			queue.lru_demote(&proc);
+		}
+		Some(proc)
 	}
 }
 
-// TODO take into account power-states, NUMA, process priority and core affinity
 /// Enqueues `proc` onto a scheduler.
 ///
 /// This function attempts to select the scheduler that is the most suitable for the process, in an
 /// attempt to load-balance processes across CPU cores.
-pub fn enqueue(_proc: &Process) {
-	// select a scheduler to run the process onto
-	todo!()
+pub fn enqueue(proc: &Arc<Process>) {
+	// If the process already is enqueued, do nothing
+	let mut links = proc.links.lock();
+	if links.sched.is_some() {
+		return;
+	}
+	// Select the scheduler with the least running processes
+	let sched = CORE_LOCAL
+		.iter()
+		.map(|cl| &cl.scheduler)
+		// TODO when selecting the scheduler, take into account power-states, NUMA, process
+		// priority and core affinity
+		.min_by(|s0, s1| {
+			let count0 = s0.queue_len.load(Acquire);
+			let count1 = s1.queue_len.load(Acquire);
+			count0.cmp(&count1)
+		})
+		.unwrap();
+	// Enqueue
+	let mut queue = sched.queue.lock();
+	queue.insert_back(proc.clone());
+	sched.queue_len.fetch_add(1, Release);
+	links.sched = Some(sched);
+}
+
+/// Removes the process from its scheduler, if any.
+pub fn dequeue(proc: &Arc<Process>) {
+	// If the process is not enqueued, do nothing
+	let mut links = proc.links.lock();
+	let Some(sched) = links.sched else {
+		return;
+	};
+	// Remove from queue
+	let mut queue = sched.queue.lock();
+	unsafe {
+		queue.remove(proc);
+	}
+	links.sched = None;
 }
 
 /// Runs the scheduler. Switching context to the next process to run on the current core.
@@ -262,15 +264,13 @@ pub fn schedule() {
 	// Disable interrupts so that no interrupt can occur before switching to the next process
 	cli();
 	let sched = &core_local().scheduler;
-	sched.total_ticks.fetch_add(1, Relaxed);
-	let cur_pid = sched.cur_proc.get().get_pid();
 	let (prev, next) = {
 		// Find the next process to run
 		let next = sched
-			.get_next_process(cur_pid)
+			.get_next_process()
 			.unwrap_or_else(|| sched.idle_task.clone());
 		// If the process to run is the current, do nothing
-		if next.get_pid() == cur_pid {
+		if ptr::eq(next.as_ref(), sched.cur_proc.get().as_ref()) {
 			return;
 		}
 		// Swap current running process. We use pointers to avoid cloning the Arc

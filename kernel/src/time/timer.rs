@@ -90,7 +90,7 @@ impl TimerInner {
 			return;
 		};
 		match self.sevp.sigev_notify {
-			SIGEV_NONE => proc.wake(),
+			SIGEV_NONE => Process::wake(&proc),
 			SIGEV_SIGNAL => {
 				let Ok(signal) = Signal::try_from(self.sevp.sigev_signo) else {
 					return;

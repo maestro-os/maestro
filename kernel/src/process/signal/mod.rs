@@ -40,7 +40,7 @@ use core::{
 use ucontext::UContext32;
 #[cfg(target_pointer_width = "64")]
 use ucontext::UContext64;
-use utils::{errno, errno::Errno};
+use utils::{errno, errno::Errno, ptr::arc::Arc};
 
 /// Signal handler value: Ignoring the signal.
 pub const SIG_IGN: usize = 0x0;
@@ -86,17 +86,19 @@ pub enum SignalAction {
 
 impl SignalAction {
 	/// Executes the signal action for the given process.
-	pub fn exec(self, process: &Process) {
+	pub fn exec(self, process: &Arc<Process>) {
 		match self {
 			// TODO when `Abort`ing, dump core
-			SignalAction::Terminate | SignalAction::Abort => process.set_state(State::Zombie),
+			SignalAction::Terminate | SignalAction::Abort => {
+				Process::set_state(process, State::Zombie)
+			}
 			SignalAction::Ignore => {}
 			SignalAction::Stop => {
-				process.set_state(State::Stopped);
+				Process::set_state(process, State::Stopped);
 				process.parent_event.fetch_or(WUNTRACED as _, Release);
 			}
 			SignalAction::Continue => {
-				process.set_state(State::Running);
+				Process::set_state(process, State::Running);
 				process.parent_event.fetch_or(WCONTINUED as _, Release);
 			}
 		}
@@ -349,7 +351,7 @@ impl SignalHandler {
 	}
 
 	/// Executes the action for `signal` on the **current** process `process`.
-	pub fn exec(&self, signal: Signal, process: &Process, frame: &mut IntFrame) {
+	pub fn exec(&self, signal: Signal, process: &Arc<Process>, frame: &mut IntFrame) {
 		let process_state = process.get_state();
 		if matches!(process_state, State::Zombie) {
 			return;
