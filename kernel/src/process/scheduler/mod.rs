@@ -24,17 +24,17 @@ pub mod switch;
 use crate::{
 	arch::{
 		end_of_interrupt,
-		x86::{cli, gdt::Gdt, idt::IntFrame, tss::Tss},
+		x86::{cli, gdt::Gdt, idt, idt::IntFrame, tss::Tss},
 	},
-	process::{Process, State, State::Running, mem_space::MemSpace, scheduler::switch::switch},
+	process::{Process, State, mem_space::MemSpace, scheduler::switch::switch},
 	sync::{atomic::AtomicU64, mutex::IntMutex, once::OnceInit},
 };
 use core::{
 	cell::UnsafeCell,
 	ptr,
 	sync::atomic::{
-		AtomicUsize,
-		Ordering::{Acquire, Release},
+		AtomicBool, AtomicUsize,
+		Ordering::{Acquire, Relaxed, Release},
 	},
 };
 use utils::{
@@ -116,6 +116,8 @@ pub(crate) fn alloc_core_local() -> AllocResult<()> {
 				cur_proc: AtomicArc::from(idle_task.clone()),
 
 				idle_task: idle_task.clone(),
+
+				need_reschedule: AtomicBool::new(false),
 			},
 			tick_period: AtomicU64::new(0),
 
@@ -181,6 +183,9 @@ pub struct Scheduler {
 
 	/// The task used to make the current CPU idle
 	idle_task: Arc<Process>,
+
+	/// Tells whether the current process has elapsed its time frame.
+	pub need_reschedule: AtomicBool,
 }
 
 impl Scheduler {
@@ -290,7 +295,12 @@ pub fn schedule() {
 /// This function may never return in case the process has been turned to a zombie after switching
 /// to another process.
 pub fn may_schedule() {
-	todo!()
+	let need_reschedule = idt::wrap_disable_interrupts(|| {
+		core_local().scheduler.need_reschedule.swap(false, Relaxed)
+	});
+	if need_reschedule {
+		schedule();
+	}
 }
 
 /// Returns `false` if the execution shall continue. Else, the execution shall be paused.
