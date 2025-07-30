@@ -394,8 +394,9 @@ pub fn generic_file_write(file: &File, mut off: u64, buf: UserSlice<u8>) -> ERes
 	Ok(buf_off)
 }
 
+/// `NodeOps` and/or `FileOps` implementation that does nothing or returns errors.
 #[derive(Debug)]
-struct DummyOps;
+pub struct DummyOps;
 
 impl NodeOps for DummyOps {}
 
