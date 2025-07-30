@@ -26,6 +26,7 @@ use std::{
 	os::unix::ffi::OsStrExt,
 	path::Path,
 	process::{Command, Stdio},
+	ptr::null,
 };
 
 pub struct TestError(pub String);
@@ -220,6 +221,24 @@ pub fn signal(signum: c_int, handler: sighandler_t) -> io::Result<()> {
 pub fn kill(pid: pid_t, sig: c_int) -> io::Result<()> {
 	let res = unsafe { libc::kill(pid, sig) };
 	if res >= 0 {
+		Ok(())
+	} else {
+		Err(io::Error::last_os_error())
+	}
+}
+
+pub fn finit_module(fd: c_int) -> io::Result<()> {
+	let res = unsafe { libc::syscall(libc::SYS_finit_module, fd, null::<()>(), 0) };
+	if res == 0 {
+		Ok(())
+	} else {
+		Err(io::Error::last_os_error())
+	}
+}
+
+pub fn delete_module(name: &CStr) -> io::Result<()> {
+	let res = unsafe { libc::syscall(libc::SYS_delete_module, name.as_ptr(), 0) };
+	if res == 0 {
 		Ok(())
 	} else {
 		Err(io::Error::last_os_error())

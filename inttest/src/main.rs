@@ -27,6 +27,7 @@ use crate::{
 use std::{path::Path, process::exit};
 
 mod filesystem;
+mod module;
 mod mount;
 mod procfs;
 mod signal;
@@ -179,6 +180,22 @@ const TESTS: &[TestSuite] = &[
 				start: procfs::environ,
 			},
 			// TODO /proc/self/stat
+		],
+	},
+	TestSuite {
+		name: "module",
+		desc: "Load/unload a kernel module",
+		tests: &[
+			Test {
+				name: "load",
+				desc: "Load a kernel module",
+				start: module::load,
+			},
+			Test {
+				name: "unload",
+				desc: "Unload the previously loaded kernel module",
+				start: module::unload,
+			},
 		],
 	},
 	// TODO install required commands
