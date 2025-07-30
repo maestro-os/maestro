@@ -191,7 +191,7 @@ impl<T, const OFF: usize> List<T, OFF> {
 	#[inline]
 	pub fn front(&self) -> Option<Arc<T>> {
 		let node = self.head_node()?;
-		let cursor = Cursor { list: NonNull::from(&*self), node };
+		let cursor = Cursor { list: NonNull::from(self), node };
 		Some(cursor.arc())
 	}
 
@@ -199,7 +199,7 @@ impl<T, const OFF: usize> List<T, OFF> {
 	#[inline]
 	pub fn back(&self) -> Option<Arc<T>> {
 		let node = self.head_node()?.prev()?;
-		let cursor = Cursor { list: NonNull::from(&*self), node };
+		let cursor = Cursor { list: NonNull::from(self), node };
 		Some(cursor.arc())
 	}
 
