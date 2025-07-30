@@ -326,7 +326,6 @@ unsafe extern "C" fn smp_main() -> ! {
 	gdt::flush();
 	tss::init();
 	println!("started core {}!", lapic_id());
-	// TODO init the core's scheduler
 	BOOTED_CORES.fetch_add(1, Acquire);
 	// Wait for work
 	unsafe {

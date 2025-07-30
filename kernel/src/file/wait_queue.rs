@@ -20,8 +20,7 @@
 //! the resource is available.
 
 use crate::{
-	process,
-	process::{Process, pid::Pid, scheduler::schedule},
+	process::{Process, State, pid::Pid, scheduler::schedule},
 	sync::mutex::{IntMutex, Mutex},
 };
 use core::mem;
@@ -53,7 +52,7 @@ impl WaitQueue {
 			{
 				let proc = Process::current();
 				self.0.lock().push(proc.get_pid())?;
-				proc.set_state(process::State::Sleeping);
+				Process::set_state(&proc, State::Sleeping);
 			}
 			schedule();
 			// TODO try to remove the process from the queue (since it might get woken up by
@@ -85,7 +84,7 @@ impl WaitQueue {
 			};
 			break proc;
 		};
-		proc.wake();
+		Process::wake(&proc);
 	}
 
 	/// Wakes all processes.
@@ -96,7 +95,7 @@ impl WaitQueue {
 				// Process does not exist, try next
 				continue;
 			};
-			proc.wake();
+			Process::wake(&proc);
 		}
 	}
 }

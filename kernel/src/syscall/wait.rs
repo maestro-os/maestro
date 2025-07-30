@@ -158,7 +158,7 @@ pub fn do_waitpid(
 			}
 			// When a child process has its state changed by a signal, SIGCHLD is sent to the
 			// current process to wake it up
-			proc.set_state(State::Sleeping);
+			Process::set_state(&proc, State::Sleeping);
 		}
 		schedule();
 	}

@@ -79,7 +79,7 @@ pub fn sleep_for(clock: Clock, delay: Timestamp, remain: &mut Timestamp) -> ERes
 				*remain = timer.get_time().it_value.to_nano();
 				return Err(errno!(EINTR));
 			}
-			proc.set_state(State::Sleeping);
+			Process::set_state(&proc, State::Sleeping);
 		}
 		schedule();
 	}

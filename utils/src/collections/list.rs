@@ -187,6 +187,22 @@ impl<T, const OFF: usize> List<T, OFF> {
 		unsafe { self.head.map(|n| n.as_ref()) }
 	}
 
+	/// Returns a reference to the first element of the list.
+	#[inline]
+	pub fn front(&self) -> Option<Arc<T>> {
+		let node = self.head_node()?;
+		let cursor = Cursor { list: NonNull::from(&*self), node };
+		Some(cursor.arc())
+	}
+
+	/// Returns a reference to the last element of the list.
+	#[inline]
+	pub fn back(&self) -> Option<Arc<T>> {
+		let node = self.head_node()?.prev()?;
+		let cursor = Cursor { list: NonNull::from(&*self), node };
+		Some(cursor.arc())
+	}
+
 	/// Returns an iterator over the list.
 	pub fn iter(&mut self) -> Iter<'_, T, OFF> {
 		Iter {
@@ -215,6 +231,27 @@ impl<T, const OFF: usize> List<T, OFF> {
 		}
 		// Update head
 		self.head = Some(node);
+	}
+
+	/// Inserts `val` at the last position of the list.
+	pub fn insert_back(&mut self, val: Arc<T>) {
+		let node = Self::get_node(&val);
+		// Keep reference
+		mem::forget(val);
+		if let Some(head) = self.head {
+			// There is already an element in the list
+			unsafe {
+				node.as_ref().insert_before(head);
+			}
+		} else {
+			// The list is empty: make a cycle
+			unsafe {
+				*node.as_ref().prev.get() = Some(node);
+				*node.as_ref().next.get() = Some(node);
+			}
+			// Set as head
+			self.head = Some(node);
+		}
 	}
 
 	/// Removes the first element of the list and returns it, if any.
@@ -252,6 +289,20 @@ impl<T, const OFF: usize> List<T, OFF> {
 			node: Self::get_node(val).as_ref(),
 		};
 		cursor.lru_promote();
+	}
+
+	/// Moves the node to the end of the list.
+	/// 
+	/// # Safety
+	///
+	/// The function is marked as unsafe because it cannot ensure `val` actually is inserted in
+	/// `self`. This is the caller's responsibility.
+	pub unsafe fn lru_demote(&mut self, val: &Arc<T>) {
+		let mut cursor = Cursor {
+			list: NonNull::from(&mut *self),
+			node: Self::get_node(val).as_ref(),
+		};
+		cursor.lru_demote();
 	}
 
 	/// Unlinks all the elements from the list.
@@ -332,6 +383,25 @@ impl<'l, T: 'l, const OFF: usize> Cursor<'l, T, OFF> {
 			self.node.insert_before(head);
 			// Update head
 			list.head.replace(NonNull::from(self.node));
+		}
+	}
+
+	/// Moves the node to the end of the list.
+	///
+	/// This is useful when the list is used as an LRU.
+	pub fn lru_demote(&mut self) {
+		unsafe {
+			let list = self.list.as_mut();
+			// Cannot fail since `self` is in the list
+			let head = list.head.unwrap();
+			let tail = head.as_ref().prev().unwrap();
+			// If the node is already the tail, do nothing
+			if ptr::eq(self.node, tail) {
+				return;
+			}
+			// Move the node in the list
+			self.node.unlink();
+			self.node.insert_before(head);
 		}
 	}
 }

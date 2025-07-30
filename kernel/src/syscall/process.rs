@@ -222,10 +222,10 @@ fn wait_vfork_done(child_pid: Pid) {
 				break;
 			}
 			// Sleep until done
-			proc.set_state(State::Sleeping);
+			Process::set_state(&proc, State::Sleeping);
 			// If vfork has completed in between, cancel sleeping
 			if unlikely(child.is_vfork_done()) {
-				proc.set_state(State::Running);
+				Process::set_state(&proc, State::Running);
 				break;
 			}
 		}
@@ -477,7 +477,7 @@ pub fn do_exit(status: u32, thread_group: bool) -> ! {
 	cli();
 	{
 		let proc = Process::current();
-		proc.exit(status);
+		Process::exit(&proc, status);
 		let _pid = proc.get_pid();
 		let _tid = proc.tid;
 		if thread_group {
