@@ -13,7 +13,7 @@ case ${TARGET%%-*} in
 		ARCH=x86_64
 		;;
 	*)
-		2> echo "Unsupported architecture"
+		>&2 echo "Unsupported architecture"
 		exit 1
 		;;
 esac
