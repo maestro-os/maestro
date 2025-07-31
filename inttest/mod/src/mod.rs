@@ -36,11 +36,10 @@ static mut DEV: Option<Arc<CharDev>> = None;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn init() -> bool {
-	kernel::println!("Module loaded");
 	let dev = CharDev::new(
 		DeviceID {
-			major: u32::MAX,
-			minor: u32::MAX,
+			major: 255,
+			minor: 255,
 		},
 		PathBuf::try_from(b"/dev/test").unwrap(),
 		0o777,
@@ -58,5 +57,4 @@ pub extern "C" fn fini() {
 	unsafe {
 		DEV = None;
 	}
-	kernel::println!("Module unloaded");
 }

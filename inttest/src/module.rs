@@ -41,7 +41,7 @@ pub fn load() -> TestResult {
 	log!("Check presence of the device file");
 	let stat = fs::metadata("/dev/test")?;
 	test_assert!(stat.file_type().is_char_device());
-	test_assert_eq!(stat.dev(), u64::MAX);
+	test_assert_eq!(stat.rdev(), libc::makedev(255, 255));
 
 	Ok(())
 }
