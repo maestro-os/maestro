@@ -191,7 +191,10 @@ impl<T, const OFF: usize> List<T, OFF> {
 	#[inline]
 	pub fn front(&self) -> Option<Arc<T>> {
 		let node = self.head_node()?;
-		let cursor = Cursor { list: NonNull::from(self), node };
+		let cursor = Cursor {
+			list: NonNull::from(self),
+			node,
+		};
 		Some(cursor.arc())
 	}
 
@@ -199,7 +202,10 @@ impl<T, const OFF: usize> List<T, OFF> {
 	#[inline]
 	pub fn back(&self) -> Option<Arc<T>> {
 		let node = self.head_node()?.prev()?;
-		let cursor = Cursor { list: NonNull::from(self), node };
+		let cursor = Cursor {
+			list: NonNull::from(self),
+			node,
+		};
 		Some(cursor.arc())
 	}
 
@@ -292,7 +298,7 @@ impl<T, const OFF: usize> List<T, OFF> {
 	}
 
 	/// Moves the node to the end of the list.
-	/// 
+	///
 	/// # Safety
 	///
 	/// The function is marked as unsafe because it cannot ensure `val` actually is inserted in
