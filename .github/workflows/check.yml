@@ -84,9 +84,35 @@ jobs:
           MIRIFLAGS: -Zmiri-disable-stacked-borrows
         run: cargo miri test
         timeout-minutes: 10
-  selftest:
+  module:
     runs-on: [self-hosted, linux]
     needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        mod: ["e1000", "ps2"]
+        arch: ["x86", "x86_64"]
+        profile: ["debug", "release"]
+    steps:
+      - name: Clippy
+        working-directory: mod/${{ matrix.mod }}
+        env:
+          ARCH: ${{ matrix.arch }}
+          CMD: clippy
+          PROFILE: ${{ matrix.profile }}
+        run: ../build -- -D warnings
+      - name: Format
+        working-directory: mod/${{ matrix.mod }}
+        run: cargo fmt --check
+      - name: Build
+        working-directory: mod/${{ matrix.mod }}
+        env:
+          ARCH: ${{ matrix.arch }}
+          PROFILE: ${{ matrix.profile }}
+        run: ../build
+  selftest:
+    runs-on: [self-hosted, linux]
+    needs: module
     strategy:
       fail-fast: false
       matrix:
@@ -105,7 +131,7 @@ jobs:
   inttest:
     name: inttest (${{ matrix.arch.kernel }})
     runs-on: [self-hosted, linux]
-    needs: build
+    needs: module
     strategy:
       fail-fast: false
       matrix:
@@ -144,29 +170,3 @@ jobs:
           CARGOFLAGS: --target arch/${{ matrix.arch.kernel }}/${{ matrix.arch.kernel }}.json
         run: ci/test.sh int
         timeout-minutes: 10
-  module:
-    runs-on: [self-hosted, linux]
-    needs: build
-    strategy:
-      fail-fast: false
-      matrix:
-        mod: ["e1000", "ps2"]
-        arch: ["x86", "x86_64"]
-        profile: ["debug", "release"]
-    steps:
-      - name: Clippy
-        working-directory: mod/${{ matrix.mod }}
-        env:
-          ARCH: ${{ matrix.arch }}
-          CMD: clippy
-          PROFILE: ${{ matrix.profile }}
-        run: ../build -- -D warnings
-      - name: Format
-        working-directory: mod/${{ matrix.mod }}
-        run: cargo fmt --check
-      - name: Build
-        working-directory: mod/${{ matrix.mod }}
-        env:
-          ARCH: ${{ matrix.arch }}
-          PROFILE: ${{ matrix.profile }}
-        run: ../build
