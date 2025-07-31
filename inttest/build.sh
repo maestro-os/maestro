@@ -17,11 +17,13 @@ case ${TARGET%%-*} in
 		exit 1
 		;;
 esac
+export ARCH
 
 # Build programs
 cargo build -Zbuild-std --target "$TARGET"
 # Build kernel module
 cd mod/
+cargo clean
 ../../mod/build
 cd ..
 
