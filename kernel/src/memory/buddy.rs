@@ -28,8 +28,9 @@ use super::{PhysAddr, VirtAddr, oom, stats};
 use crate::sync::{atomic::AtomicU64, mutex::IntMutex};
 use core::{
 	alloc::AllocError,
-	hint::{likely, unlikely},
+	hint::unlikely,
 	mem::{offset_of, size_of},
+	num::NonZeroUsize,
 	ptr,
 	ptr::{NonNull, null_mut},
 	slice,
@@ -383,12 +384,13 @@ pub fn get_frame_size(order: FrameOrder) -> usize {
 
 /// Returns the buddy order required to fit the given number of pages.
 #[inline]
-pub fn get_order(pages: usize) -> FrameOrder {
-	// this is equivalent to `ceil(log2(pages))`
-	if likely(pages != 0) {
-		(usize::BITS - pages.leading_zeros()) as _
+pub fn get_order(pages: NonZeroUsize) -> FrameOrder {
+	if pages.is_power_of_two() {
+		// avoid rounding up unnecessarily
+		pages.ilog2() as _
 	} else {
-		0
+		// this is equivalent to `ceil(log2(pages))`
+		(usize::BITS - pages.leading_zeros()) as _
 	}
 }
 

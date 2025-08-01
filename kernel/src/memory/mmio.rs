@@ -20,17 +20,12 @@
 //! memory.
 
 use super::{PhysAddr, VirtAddr, buddy, oom};
-use crate::{arch::x86, memory::vmem::KERNEL_VMEM};
-use core::ptr::NonNull;
+use crate::{
+	arch::x86::paging::{FLAG_CACHE_DISABLE, FLAG_GLOBAL, FLAG_WRITE, FLAG_WRITE_THROUGH},
+	memory::vmem::KERNEL_VMEM,
+};
+use core::{num::NonZeroUsize, ptr::NonNull};
 use utils::errno::AllocResult;
-
-/// Default flags for kernelspace in virtual memory.
-const DEFAULT_FLAGS: usize = x86::paging::FLAG_WRITE;
-
-/// MMIO flags in virtual memory.
-const MMIO_FLAGS: usize =
-	x86::paging::FLAG_WRITE_THROUGH | x86::paging::FLAG_WRITE | x86::paging::FLAG_GLOBAL;
-
 // TODO allow usage of virtual memory that isn't linked to any physical pages
 
 /// The mapping of a chunk of memory for MMIO.
@@ -42,7 +37,7 @@ pub struct MMIO {
 	virt_addr: VirtAddr,
 
 	/// The number of mapped pages.
-	pages: usize,
+	pages: NonZeroUsize,
 }
 
 impl MMIO {
@@ -57,19 +52,16 @@ impl MMIO {
 	///
 	/// If not enough physical or virtual memory is available, the function returns an error.
 	#[allow(clippy::not_unsafe_ptr_arg_deref)]
-	pub fn new(phys_addr: PhysAddr, pages: usize, prefetchable: bool) -> AllocResult<Self> {
+	pub fn new(phys_addr: PhysAddr, pages: NonZeroUsize, prefetchable: bool) -> AllocResult<Self> {
 		let order = buddy::get_order(pages);
-		let virt_addr = buddy::alloc_kernel(order, 0)?.into();
-
-		let mut flags = MMIO_FLAGS;
+		let virt_addr = VirtAddr::from(buddy::alloc_kernel(order, 0)?);
+		let mut flags = FLAG_WRITE_THROUGH | FLAG_WRITE | FLAG_GLOBAL;
 		if !prefetchable {
-			flags |= x86::paging::FLAG_CACHE_DISABLE;
+			flags |= FLAG_CACHE_DISABLE;
 		}
-
 		KERNEL_VMEM
 			.lock()
-			.map_range(phys_addr, virt_addr, pages, flags);
-
+			.map_range(phys_addr, virt_addr, pages.get(), flags);
 		Ok(Self {
 			phys_addr,
 			virt_addr,
@@ -90,8 +82,8 @@ impl MMIO {
 		KERNEL_VMEM.lock().map_range(
 			self.phys_addr,
 			self.phys_addr.kernel_to_virtual().unwrap(),
-			self.pages,
-			DEFAULT_FLAGS,
+			self.pages.get(),
+			FLAG_WRITE | FLAG_GLOBAL,
 		);
 		// Free allocated virtual pages
 		let order = buddy::get_order(self.pages);

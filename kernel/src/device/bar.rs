@@ -20,7 +20,7 @@
 //! Direct Access Memory (DMA).
 
 use crate::arch::x86::io::{inb, inl, inw, outb, outl, outw};
-use core::{mem::size_of, ptr, ptr::NonNull};
+use core::{mem::size_of, num::NonZeroUsize, ptr, ptr::NonNull};
 
 /// Enumeration of Memory Space BAR types.
 #[derive(Clone, Debug)]
@@ -44,7 +44,7 @@ pub enum BAR {
 		/// Pointer to the registers.
 		address: NonNull<u8>,
 		/// The size of the address space in bytes.
-		size: usize,
+		size: NonZeroUsize,
 	},
 	/// A IO port mapped register.
 	IOSpace {
@@ -61,7 +61,7 @@ impl BAR {
 		match self {
 			Self::MemorySpace {
 				size, ..
-			} => *size,
+			} => size.get(),
 			Self::IOSpace {
 				size, ..
 			} => *size,

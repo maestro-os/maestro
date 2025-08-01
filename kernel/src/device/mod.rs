@@ -405,12 +405,9 @@ impl FileOps for BlkDevFileOps {
 pub(crate) fn init() -> EResult<()> {
 	let keyboard_manager = KeyboardManager::new();
 	manager::register(keyboard_manager)?;
-
 	let storage_manager = StorageManager::new()?;
 	manager::register(storage_manager)?;
-
 	bus::detect()?;
-
 	// Testing disk I/O (if enabled)
 	#[cfg(config_debug_storage_test)]
 	{

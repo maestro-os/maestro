@@ -41,6 +41,7 @@
 #![feature(pointer_is_aligned_to)]
 #![feature(ptr_metadata)]
 #![feature(strict_provenance_lints)]
+#![feature(unsigned_nonzero_div_ceil)]
 #![deny(fuzzy_provenance_casts)]
 #![deny(missing_docs)]
 #![allow(clippy::tabs_in_doc_comments)]
