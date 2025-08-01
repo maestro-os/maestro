@@ -32,7 +32,7 @@ use std::{
 	},
 };
 
-pub fn load() -> TestResult {
+pub fn dummy() -> TestResult {
 	log!("Load the module");
 	let file = File::open("/mod.kmod")?;
 	finit_module(file.as_raw_fd())?;
@@ -43,10 +43,6 @@ pub fn load() -> TestResult {
 	test_assert!(stat.file_type().is_char_device());
 	test_assert_eq!(stat.rdev(), libc::makedev(255, 255));
 
-	Ok(())
-}
-
-pub fn unload() -> TestResult {
 	log!("Unload the module");
 	delete_module(c"inttest")?;
 
