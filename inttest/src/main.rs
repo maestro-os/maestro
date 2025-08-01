@@ -184,19 +184,12 @@ const TESTS: &[TestSuite] = &[
 	},
 	TestSuite {
 		name: "module",
-		desc: "Load/unload a kernel module",
-		tests: &[
-			Test {
-				name: "load",
-				desc: "Load a kernel module",
-				start: module::load,
-			},
-			Test {
-				name: "unload",
-				desc: "Unload the previously loaded kernel module",
-				start: module::unload,
-			},
-		],
+		desc: "Load/unload a kernel modules",
+		tests: &[Test {
+			name: "dummy",
+			desc: "Load a dummy kernel module",
+			start: module::dummy,
+		}],
 	},
 	// TODO install required commands
 	/*TestSuite {
