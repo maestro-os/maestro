@@ -18,7 +18,7 @@
 
 //! NIC structure, representing an e1000-compatible NIC.
 
-use core::{cmp::min, hint::unlikely, mem::size_of, ptr, slice};
+use core::{cmp::min, hint::unlikely, mem::size_of, num::NonZeroUsize, ptr, slice};
 use kernel::{
 	device::{bar::BAR, manager::PhysicalDevice},
 	event,
@@ -258,10 +258,14 @@ impl Nic {
 			.map_err(|_| "Memory allocation failed")?
 			.unwrap();
 
-		let rx_order = buddy::get_order((RX_DESC_COUNT * size_of::<RXDesc>()).div_ceil(PAGE_SIZE));
+		let rx_pages =
+			NonZeroUsize::new((RX_DESC_COUNT * size_of::<RXDesc>()).div_ceil(PAGE_SIZE)).unwrap();
+		let rx_order = buddy::get_order(rx_pages);
 		let rx_descs = buddy::alloc_kernel(rx_order, 0).map_err(|_| "Memory allocation failed")?;
 
-		let tx_order = buddy::get_order((TX_DESC_COUNT * size_of::<TXDesc>()).div_ceil(PAGE_SIZE));
+		let tx_pages =
+			NonZeroUsize::new((TX_DESC_COUNT * size_of::<TXDesc>()).div_ceil(PAGE_SIZE)).unwrap();
+		let tx_order = buddy::get_order(tx_pages);
 		let Ok(tx_descs) = buddy::alloc_kernel(tx_order, 0) else {
 			unsafe {
 				buddy::free_kernel(rx_descs.as_ptr(), rx_order);
@@ -354,7 +358,9 @@ impl Nic {
 		self.write_command(REG_IMS, IMS_TXQE | IMS_RXDMT0);
 
 		// Init receive ring buffer
-		let rx_buffs_order = buddy::get_order((RX_DESC_COUNT * RX_BUFF_SIZE).div_ceil(PAGE_SIZE));
+		let rx_buffs_pages =
+			NonZeroUsize::new((RX_DESC_COUNT * RX_BUFF_SIZE).div_ceil(PAGE_SIZE)).unwrap();
+		let rx_buffs_order = buddy::get_order(rx_buffs_pages);
 		let rx_buffs = buddy::alloc_kernel(rx_buffs_order, 0)?;
 		for i in 0..RX_DESC_COUNT {
 			let desc = unsafe { &mut *self.rx_descs.add(i) };
@@ -382,7 +388,9 @@ impl Nic {
 		self.write_command(REG_RCTL, flags);
 
 		// Init transmit ring buffer
-		let tx_buffs_order = buddy::get_order((TX_DESC_COUNT * TX_BUFF_SIZE).div_ceil(PAGE_SIZE));
+		let tx_buffs_pages =
+			NonZeroUsize::new((TX_DESC_COUNT * TX_BUFF_SIZE).div_ceil(PAGE_SIZE)).unwrap();
+		let tx_buffs_order = buddy::get_order(tx_buffs_pages);
 		let tx_buffs = buddy::alloc_kernel(tx_buffs_order, 0)?;
 		for i in 0..TX_DESC_COUNT {
 			let desc = unsafe { &mut *self.tx_descs.add(i) };
@@ -546,20 +554,26 @@ impl net::Interface for Nic {
 impl Drop for Nic {
 	fn drop(&mut self) {
 		unsafe {
-			let rx_buffs_order =
-				buddy::get_order((RX_DESC_COUNT * RX_BUFF_SIZE).div_ceil(PAGE_SIZE));
+			let rx_buffs_pages =
+				NonZeroUsize::new((RX_DESC_COUNT * RX_BUFF_SIZE).div_ceil(PAGE_SIZE)).unwrap();
+			let rx_buffs_order = buddy::get_order(rx_buffs_pages);
 			buddy::free_kernel((*self.rx_descs).addr as _, rx_buffs_order);
 
-			let rx_order =
-				buddy::get_order((RX_DESC_COUNT * size_of::<RXDesc>()).div_ceil(PAGE_SIZE));
+			let rx_pages =
+				NonZeroUsize::new((RX_DESC_COUNT * size_of::<RXDesc>()).div_ceil(PAGE_SIZE))
+					.unwrap();
+			let rx_order = buddy::get_order(rx_pages);
 			buddy::free_kernel(self.rx_descs as _, rx_order);
 
-			let tx_buffs_order =
-				buddy::get_order((TX_DESC_COUNT * TX_BUFF_SIZE).div_ceil(PAGE_SIZE));
+			let tx_buffs_pages =
+				NonZeroUsize::new((TX_DESC_COUNT * TX_BUFF_SIZE).div_ceil(PAGE_SIZE)).unwrap();
+			let tx_buffs_order = buddy::get_order(tx_buffs_pages);
 			buddy::free_kernel((*self.tx_descs).addr as _, tx_buffs_order);
 
-			let tx_order =
-				buddy::get_order((TX_DESC_COUNT * size_of::<TXDesc>()).div_ceil(PAGE_SIZE));
+			let tx_pages =
+				NonZeroUsize::new((TX_DESC_COUNT * size_of::<TXDesc>()).div_ceil(PAGE_SIZE))
+					.unwrap();
+			let tx_order = buddy::get_order(tx_pages);
 			buddy::free_kernel(self.tx_descs as _, tx_order);
 		}
 	}
