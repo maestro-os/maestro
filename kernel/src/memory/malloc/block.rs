@@ -23,6 +23,7 @@
 use super::chunk::{Chunk, FreeChunk};
 use crate::memory::buddy;
 use core::{
+	alloc::AllocError,
 	mem::{offset_of, size_of},
 	num::NonZeroUsize,
 	ptr,
@@ -46,8 +47,11 @@ impl Block {
 	///
 	/// The underlying chunk created by this function is **not** inserted into the free list.
 	pub fn new(min_size: NonZeroUsize) -> AllocResult<&'static mut Self> {
-		let min_total_size = size_of::<Block>() + min_size.get();
-		let block_order = buddy::get_order(min_total_size.div_ceil(PAGE_SIZE));
+		let min_pages = min_size
+			.checked_add(size_of::<Block>())
+			.ok_or(AllocError)?
+			.div_ceil(NonZeroUsize::new(PAGE_SIZE).unwrap());
+		let block_order = buddy::get_order(min_pages);
 		// The size of the first chunk
 		let first_chunk_size = buddy::get_frame_size(block_order) - size_of::<Block>();
 		debug_assert!(first_chunk_size >= min_size.get());

@@ -38,7 +38,7 @@ use crate::{
 	},
 	memory::{PhysAddr, mmio::MMIO},
 };
-use core::{cmp::min, mem::size_of};
+use core::{cmp::min, mem::size_of, num::NonZeroUsize};
 use utils::{
 	collections::vec::Vec,
 	errno::{CollectResult, EResult},
@@ -293,9 +293,12 @@ impl PCIDevice {
 			if phys_addr == 0 {
 				return Ok(None);
 			}
+			let Some(size) = NonZeroUsize::new(size) else {
+				return Ok(None);
+			};
 			let prefetchable = value & 0b1000 != 0;
 			// Create MMIO
-			let pages = size.div_ceil(PAGE_SIZE);
+			let pages = size.div_ceil(NonZeroUsize::new(PAGE_SIZE).unwrap());
 			let mmio = MMIO::new(PhysAddr(phys_addr as _), pages, prefetchable)?;
 			Ok(Some((
 				BAR::MemorySpace {
