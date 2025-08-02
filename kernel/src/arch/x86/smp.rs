@@ -34,7 +34,9 @@ use crate::{
 };
 use core::{
 	arch::global_asm,
-	hint, ptr,
+	hint,
+	num::NonZeroUsize,
+	ptr,
 	ptr::null_mut,
 	sync::atomic::{AtomicUsize, Ordering::Acquire},
 };
@@ -252,7 +254,8 @@ pub fn init(cpu: &[Cpu]) -> AllocResult<()> {
 		}
 		// Allocate stack
 		unsafe {
-			let order = buddy::get_order(BOOT_STACK_SIZE / PAGE_SIZE);
+			let pages = NonZeroUsize::new(BOOT_STACK_SIZE / PAGE_SIZE).unwrap();
+			let order = buddy::get_order(pages);
 			let stack = buddy::alloc_kernel(order, 0)?.cast();
 			stacks[cpu.apic_id as usize] = stack.add(BOOT_STACK_SIZE).as_ptr();
 		}
