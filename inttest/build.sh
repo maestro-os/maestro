@@ -5,19 +5,21 @@ set -e
 if [ -z "$TARGET" ]; then
 	export TARGET=x86_64-unknown-linux-musl
 fi
-case ${TARGET%%-*} in
-	i*86)
-		ARCH=x86
-		;;
-	x86_64)
-		ARCH=x86_64
-		;;
-	*)
-		>&2 echo "Unsupported architecture"
-		exit 1
-		;;
-esac
-export ARCH
+if [ -z "$ARCH" ]; then
+	case ${TARGET%%-*} in
+		i*86)
+			ARCH=x86
+			;;
+		x86_64)
+			ARCH=x86_64
+			;;
+		*)
+			>&2 echo "Unsupported architecture"
+			exit 1
+			;;
+	esac
+	export ARCH
+fi
 
 # Build programs
 cargo build -Zbuild-std --target "$TARGET"

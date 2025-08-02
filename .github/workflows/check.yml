@@ -145,6 +145,7 @@ jobs:
       - name: Build tests
         working-directory: inttest
         env:
+          ARCH: ${{ matrix.arch.kernel }}
           TARGET: ${{ matrix.arch.user }}
         run: |
           ./build.sh
@@ -159,6 +160,7 @@ jobs:
         if: ${{ matrix.arch.user_compat }}
         working-directory: inttest
         env:
+          ARCH: ${{ matrix.arch.kernel }}
           TARGET: ${{ matrix.arch.user_compat }}
         run: |
           ./build.sh
