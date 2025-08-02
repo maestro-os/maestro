@@ -295,7 +295,7 @@ impl Module {
 			return Err(errno!(EINVAL));
 		}
 		// Get the module's name
-		let name = get_attribute::<&'static str>(&mem, &parser, b"MOD_NAME").ok_or_else(|| {
+		let name = get_attribute::<&str>(&mem, &parser, b"MOD_NAME").ok_or_else(|| {
 			println!("Missing `MOD_NAME` symbol in module image");
 			errno!(EINVAL)
 		})?;
