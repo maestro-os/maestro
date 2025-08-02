@@ -498,8 +498,8 @@ impl Relocation for Rela {
 		self.r_info as _
 	}
 
-	fn get_addend(&self) -> isize {
-		self.r_addend as _
+	fn get_addend(&self) -> Option<isize> {
+		Some(self.r_addend as _)
 	}
 }
 

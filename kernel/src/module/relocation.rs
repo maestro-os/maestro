@@ -75,8 +75,10 @@ pub trait Relocation {
 	}
 
 	/// Returns the relocation's addend.
-	fn get_addend(&self) -> isize {
-		0
+	///
+	/// If an implicit addend is to be used, the function returns `None`.
+	fn get_addend(&self) -> Option<isize> {
+		None
 	}
 }
 
@@ -104,47 +106,57 @@ pub unsafe fn perform<R: Relocation, F>(
 where
 	F: FnOnce(u32, usize) -> Result<usize, RelocationError>,
 {
-	// The value of the symbol
-	let get_sym = || get_sym(rel_section.sh_link, rel.get_sym());
-	#[cfg(target_pointer_width = "32")]
-	let value = match rel.get_type() {
-		R_386_32 => get_sym()?.wrapping_add_signed(rel.get_addend()),
-		R_386_PC32 => get_sym()?
-			.wrapping_add_signed(rel.get_addend())
-			.wrapping_sub(rel.get_offset()),
-		R_386_GLOB_DAT | R_386_JMP_SLOT => get_sym()?,
-		R_386_RELATIVE => (base_addr as usize).wrapping_add_signed(rel.get_addend()),
-		// Ignored
-		R_386_NONE | R_386_COPY => return Ok(()),
-		// Invalid or unsupported
-		_ => return Err(RelocationError),
-	};
+	// Determine the size of the relocation
 	#[cfg(target_pointer_width = "32")]
 	let size = 4;
 	#[cfg(target_pointer_width = "64")]
-	let (value, size) = match rel.get_type() {
-		R_X86_64_64 => (get_sym()?.wrapping_add_signed(rel.get_addend()), 8),
-		R_X86_64_PC32 => (
-			get_sym()?
-				.wrapping_add_signed(rel.get_addend())
-				.wrapping_sub(rel.get_offset()),
-			4,
-		),
-		R_X86_64_GLOB_DAT | R_X86_64_JUMP_SLOT => (get_sym()?, 8),
-		R_X86_64_RELATIVE => (
-			(base_addr as usize).wrapping_add_signed(rel.get_addend()),
-			8,
-		),
-		// Ignored
-		R_X86_64_NONE | R_X86_64_COPY => return Ok(()),
-		// Invalid or unsupported
-		_ => return Err(RelocationError),
+	let size = match rel.get_type() {
+		R_X86_64_PC32 => 4,
+		_ => 8,
 	};
 	// If the address is in userspace, error
 	let addr = base_addr.add(rel.get_offset());
 	if unlikely(bound_check(addr as _, size)) {
 		return Err(RelocationError);
 	}
+	// Compute new value
+	let get_sym = || get_sym(rel_section.sh_link, rel.get_sym());
+	let get_addend = || {
+		rel.get_addend().unwrap_or_else(|| {
+			// Read implicit addend
+			match size {
+				4 => ptr::read_unaligned::<u32>(addr as _) as _,
+				8 => ptr::read_unaligned::<u64>(addr as _) as _,
+				_ => unreachable!(),
+			}
+		})
+	};
+	#[cfg(target_pointer_width = "32")]
+	let value = match rel.get_type() {
+		R_386_32 => get_sym()?.wrapping_add_signed(get_addend()),
+		R_386_PC32 => get_sym()?
+			.wrapping_add_signed(get_addend())
+			.wrapping_sub(rel.get_offset()),
+		R_386_GLOB_DAT | R_386_JMP_SLOT => get_sym()?,
+		R_386_RELATIVE => (base_addr as usize).wrapping_add_signed(get_addend()),
+		// Ignored
+		R_386_NONE | R_386_COPY => return Ok(()),
+		// Invalid or unsupported
+		_ => return Err(RelocationError),
+	};
+	#[cfg(target_pointer_width = "64")]
+	let value = match rel.get_type() {
+		R_X86_64_64 => get_sym()?.wrapping_add_signed(get_addend()),
+		R_X86_64_PC32 => get_sym()?
+			.wrapping_add_signed(get_addend())
+			.wrapping_sub(rel.get_offset()),
+		R_X86_64_GLOB_DAT | R_X86_64_JUMP_SLOT => get_sym()?,
+		R_X86_64_RELATIVE => (base_addr as usize).wrapping_add_signed(get_addend()),
+		// Ignored
+		R_X86_64_NONE | R_X86_64_COPY => return Ok(()),
+		// Invalid or unsupported
+		_ => return Err(RelocationError),
+	};
 	// Write value
 	match size {
 		4 => ptr::write_unaligned::<u32>(addr as _, value as _),
