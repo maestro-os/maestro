@@ -63,7 +63,6 @@ use core::{
 	fmt::Formatter,
 	hint::unlikely,
 	mem,
-	mem::ManuallyDrop,
 	ptr::NonNull,
 	sync::atomic::{
 		AtomicBool, AtomicPtr, AtomicU8, AtomicU32,
@@ -402,6 +401,13 @@ pub(crate) fn init() -> EResult<()> {
 		}
 		CallbackResult::Continue
 	};
+	mem::forget(int::register_callback(0x00, callback)?);
+	mem::forget(int::register_callback(0x03, callback)?);
+	mem::forget(int::register_callback(0x06, callback)?);
+	mem::forget(int::register_callback(0x0d, callback)?);
+	mem::forget(int::register_callback(0x10, callback)?);
+	mem::forget(int::register_callback(0x11, callback)?);
+	mem::forget(int::register_callback(0x13, callback)?);
 	let page_fault_callback = |_id: u32, code: u32, frame: &mut IntFrame, ring: u8| {
 		let accessed_addr = VirtAddr(register_get!("cr2"));
 		let pc = frame.get_program_counter();
@@ -429,14 +435,7 @@ pub(crate) fn init() -> EResult<()> {
 		}
 		CallbackResult::Continue
 	};
-	let _ = ManuallyDrop::new(int::register_callback(0x00, callback)?);
-	let _ = ManuallyDrop::new(int::register_callback(0x03, callback)?);
-	let _ = ManuallyDrop::new(int::register_callback(0x06, callback)?);
-	let _ = ManuallyDrop::new(int::register_callback(0x0d, callback)?);
-	let _ = ManuallyDrop::new(int::register_callback(0x0e, page_fault_callback)?);
-	let _ = ManuallyDrop::new(int::register_callback(0x10, callback)?);
-	let _ = ManuallyDrop::new(int::register_callback(0x11, callback)?);
-	let _ = ManuallyDrop::new(int::register_callback(0x13, callback)?);
+	mem::forget(int::register_callback(0x0e, page_fault_callback)?);
 	Ok(())
 }
 

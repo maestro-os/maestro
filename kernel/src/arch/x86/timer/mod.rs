@@ -52,6 +52,27 @@ pub mod hpet;
 pub mod pit;
 pub mod rtc;
 
+/// Makes the current CPU cores wait for at least `ms` milliseconds.
+#[inline]
+pub fn mdelay(ms: u32) {
+	ndelay(ms * 1_000_000)
+}
+
+/// Makes the current CPU cores wait for at least `us` microseconds.
+#[inline]
+pub fn udelay(us: u32) {
+	ndelay(us * 1000)
+}
+
+/// Makes the current CPU cores wait for at least `ns` nanoseconds.
+pub fn ndelay(ns: u32) {
+	if x86::apic::is_present() {
+		apic::ndelay(ns);
+	} else {
+		todo!() // use PIT
+	}
+}
+
 /// Initializes x86 timers.
 pub(crate) fn init() -> AllocResult<()> {
 	if !x86::apic::is_present() {

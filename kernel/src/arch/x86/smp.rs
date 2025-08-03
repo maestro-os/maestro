@@ -18,8 +18,11 @@
 
 //! Symmetric MultiProcessing management.
 
-use super::apic::{
-	REG_ERROR_STATUS, REG_ICR_HI, REG_ICR_LO, lapic_id, read_reg, wait_delivery, write_reg,
+use super::{
+	apic::{
+		REG_ERROR_STATUS, REG_ICR_HI, REG_ICR_LO, lapic_id, read_reg, wait_delivery, write_reg,
+	},
+	timer::udelay,
 };
 use crate::{
 	arch,
@@ -214,6 +217,7 @@ unsafe extern "C" {
 /// The number of running CPU cores.
 static BOOTED_CORES: AtomicUsize = AtomicUsize::new(1);
 
+// TODO: if the CPU is recent enough, we may use delays of 0 and 10 microseconds respectively
 /// Initializes the SMP.
 ///
 /// `cpu` is the list of CPU cores on the system.
@@ -290,7 +294,7 @@ pub fn init(cpu: &[Cpu]) -> AllocResult<()> {
 			);
 			wait_delivery(base_addr);
 		}
-		// TODO 10 msec delay
+		udelay(10000);
 		// Send startup IPI twice
 		for _ in 0..2 {
 			unsafe {
@@ -308,7 +312,7 @@ pub fn init(cpu: &[Cpu]) -> AllocResult<()> {
 					REG_ICR_LO,
 					(read_reg(base_addr, REG_ICR_LO) & 0xfff0f800) | 0x608,
 				);
-				// TODO wait for 200 usec
+				udelay(300);
 				wait_delivery(base_addr);
 			}
 		}
@@ -328,7 +332,7 @@ unsafe extern "C" fn smp_main() -> ! {
 	init_core_local();
 	gdt::flush();
 	tss::init();
-	println!("started core {}!", lapic_id());
+	println!("Started core {}", lapic_id());
 	BOOTED_CORES.fetch_add(1, Acquire);
 	// Wait for work
 	unsafe {
