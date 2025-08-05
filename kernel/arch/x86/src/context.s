@@ -168,11 +168,6 @@ LOAD_REGS
 	iretd
 
 idle_task:
-    # Lazy cleanup
-    xor ax, ax
-    mov fs, ax
-    mov gs, ax
-0:
     sti
     hlt
-    jmp 0b
+    jmp idle_task

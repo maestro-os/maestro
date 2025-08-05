@@ -36,9 +36,8 @@ pub fn stash_segments<F: FnOnce() -> T, T>(f: F) -> T {
 	{
 		use crate::arch::x86;
 		use core::arch::asm;
-		// Save MSR
+		// Save MSR (not the kernel's GS since the task might change CPU)
 		let fs_base = x86::rdmsr(x86::IA32_FS_BASE);
-		let gs_base = x86::rdmsr(x86::IA32_GS_BASE);
 		let kernel_gs_base = x86::rdmsr(x86::IA32_KERNEL_GS_BASE);
 		// Save segment selectors
 		let mut fs: u16;
@@ -53,6 +52,7 @@ pub fn stash_segments<F: FnOnce() -> T, T>(f: F) -> T {
 		}
 		let res = f();
 		// Restore segment selectors
+		let gs_base = x86::rdmsr(x86::IA32_GS_BASE);
 		unsafe {
 			asm!(
 				"mov fs, {fs:x}",

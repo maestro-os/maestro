@@ -436,6 +436,10 @@ pub(crate) fn init() -> EResult<()> {
 		CallbackResult::Continue
 	};
 	mem::forget(int::register_callback(0x0e, page_fault_callback)?);
+	mem::forget(int::register_callback(0x20, |_, _, _, _| {
+		core_local().scheduler.need_reschedule.store(true, Relaxed);
+		CallbackResult::Continue
+	})?);
 	Ok(())
 }
 
