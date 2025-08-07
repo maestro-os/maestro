@@ -259,6 +259,16 @@ impl<T, const OFF: usize> List<T, OFF> {
 			self.head = Some(node);
 		}
 	}
+	
+	/// Rotates the circular list, making the second element the new head, and the old head the new tail.
+	pub fn rotate_left(&mut self) {
+		self.head = self.head.and_then(|h| unsafe { *h.as_ref().next.get() });
+	}
+
+	/// Rotates the circular list, making the tail the new head, and the old head the second element.
+	pub fn rotate_right(&mut self) {
+		self.head = self.head.and_then(|h| unsafe { *h.as_ref().prev.get() });
+	}
 
 	/// Removes the first element of the list and returns it, if any.
 	pub fn remove_front(&mut self) -> Option<Arc<T>> {
@@ -295,20 +305,6 @@ impl<T, const OFF: usize> List<T, OFF> {
 			node: Self::get_node(val).as_ref(),
 		};
 		cursor.lru_promote();
-	}
-
-	/// Moves the node to the end of the list.
-	///
-	/// # Safety
-	///
-	/// The function is marked as unsafe because it cannot ensure `val` actually is inserted in
-	/// `self`. This is the caller's responsibility.
-	pub unsafe fn lru_demote(&mut self, val: &Arc<T>) {
-		let mut cursor = Cursor {
-			list: NonNull::from(&mut *self),
-			node: Self::get_node(val).as_ref(),
-		};
-		cursor.lru_demote();
 	}
 
 	/// Unlinks all the elements from the list.
@@ -389,25 +385,6 @@ impl<'l, T: 'l, const OFF: usize> Cursor<'l, T, OFF> {
 			self.node.insert_before(head);
 			// Update head
 			list.head.replace(NonNull::from(self.node));
-		}
-	}
-
-	/// Moves the node to the end of the list.
-	///
-	/// This is useful when the list is used as an LRU.
-	pub fn lru_demote(&mut self) {
-		unsafe {
-			let list = self.list.as_mut();
-			// Cannot fail since `self` is in the list
-			let head = list.head.unwrap();
-			let tail = head.as_ref().prev().unwrap();
-			// If the node is already the tail, do nothing
-			if ptr::eq(self.node, tail) {
-				return;
-			}
-			// Move the node in the list
-			self.node.unlink();
-			self.node.insert_before(head);
 		}
 	}
 }
@@ -499,10 +476,13 @@ mod test {
 		init(&mut list);
 
 		let mut iter = list.iter();
+		let mut cnt = 0;
 		for (i, j) in iter.by_ref().rev().enumerate() {
 			assert_eq!(i, j.value().foo);
+			cnt += 1;
 		}
 		assert!(iter.next().is_none());
+		assert_eq!(cnt, 3);
 	}
 
 	#[test]

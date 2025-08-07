@@ -152,12 +152,7 @@ pub fn register_callback(id: u32, callback: Callback) -> AllocResult<Option<Call
 /// `frame` is the stack frame of the interruption, with general purpose registers saved.
 #[unsafe(no_mangle)]
 extern "C" fn interrupt_handler(frame: &mut IntFrame) {
-	let id = frame.int as u32;
-	let ring = (frame.cs & 0b11) as u8;
-	let code = frame.code as u32;
-	if ring == 3 {
-		may_schedule();
-	}
+	may_schedule();
 	// Ignore page faults to avoid a deadlock (might occur when writing entropy to userspace on
 	// non-mapped page)
 	if frame.int != 0xe {
@@ -168,6 +163,9 @@ extern "C" fn interrupt_handler(frame: &mut IntFrame) {
 			let _ = pool.write(buf);
 		}
 	}
+	let id = frame.int as u32;
+	let ring = (frame.cs & 0b11) as u8;
+	let code = frame.code as u32;
 	// Call corresponding callbacks
 	let callbacks = &CALLBACKS[id as usize];
 	let mut i = 0;

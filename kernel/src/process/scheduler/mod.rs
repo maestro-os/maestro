@@ -209,10 +209,7 @@ impl Scheduler {
 	fn get_next_process(&self) -> Option<Arc<Process>> {
 		let mut queue = self.queue.lock();
 		let proc = queue.front()?;
-		// Send to the back of the queue
-		unsafe {
-			queue.lru_demote(&proc);
-		}
+		queue.rotate_left();
 		Some(proc)
 	}
 }
@@ -228,18 +225,20 @@ pub fn enqueue(proc: &Arc<Process>) {
 		return;
 	}
 	// Select the scheduler with the least running processes
-	let sched = CORE_LOCAL
+	let (lapic_id, sched) = CORE_LOCAL
 		.iter()
-		.map(|cl| &cl.scheduler)
+		.map(|cl| (cl.cpu.apic_id, &cl.scheduler))
 		// TODO when selecting the scheduler, take into account power-states, NUMA, process
 		// priority and core affinity
-		.min_by(|s0, s1| {
+		.min_by(|(_, s0), (_, s1)| {
 			let count0 = s0.queue_len.load(Acquire);
 			let count1 = s1.queue_len.load(Acquire);
 			count0.cmp(&count1)
 		})
 		.unwrap();
 	// Enqueue
+	#[cfg(feature = "strace")]
+	println!("[strace {}] enqueue on core {lapic_id}", proc.get_pid());
 	let mut queue = sched.queue.lock();
 	queue.insert_back(proc.clone());
 	sched.queue_len.fetch_add(1, Release);
@@ -254,10 +253,13 @@ pub fn dequeue(proc: &Arc<Process>) {
 		return;
 	};
 	// Remove from queue
+	#[cfg(feature = "strace")]
+	println!("[strace {}] dequeue", proc.get_pid());
 	let mut queue = sched.queue.lock();
 	unsafe {
 		queue.remove(proc);
 	}
+	sched.queue_len.fetch_sub(1, Release);
 	links.sched = None;
 }
 
