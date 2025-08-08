@@ -26,10 +26,9 @@ use crate::{
 	acpi,
 	acpi::madt::{IOAPIC, Madt},
 	arch::x86::paging::{FLAG_CACHE_DISABLE, FLAG_GLOBAL, FLAG_WRITE, FLAG_WRITE_THROUGH},
-	memory::{PhysAddr, vmem::KERNEL_VMEM},
+	memory::{PhysAddr, VirtAddr, buddy, buddy::ZONE_KERNEL, vmem::KERNEL_VMEM},
 };
-use core::{hint, hint::likely};
-use utils::limits::PAGE_SIZE;
+use core::{hint, hint::likely, ptr::null_mut};
 
 /// APIC register: Local APIC ID
 pub const REG_EOI: usize = 0xb0;
@@ -80,46 +79,49 @@ pub fn lapic_id() -> u8 {
 
 /// Returns the physical base address of local APIC registers.
 #[inline]
-pub fn get_base_addr() -> usize {
+fn get_base_addr() -> usize {
 	let val = rdmsr(IA32_APIC_BASE_MSR);
 	(val & 0xffffff000) as _
 }
 
 /// Sets the physical base address of local APIC registers.
 #[inline]
-pub fn set_base_addr(addr: usize) {
+fn set_base_addr(addr: usize) {
 	#[allow(overflowing_literals)]
 	let val = (addr & 0xfffff0000usize) | 0x800;
 	wrmsr(IA32_APIC_BASE_MSR, val as _);
 }
 
+/// The pointer to the Local APIC's registers, this initialized in [`init`]
+static mut BASE_ADDR: *mut u32 = null_mut();
+
 /// Reads a register of the local APIC.
 ///
 /// # Safety
 ///
-/// The caller must ensure the APIC is present, `base_addr` is valid, and `reg` is valid.
+/// The caller must ensure the APIC is present and `reg` is valid.
 #[inline]
-pub unsafe fn read_reg(base_addr: *mut u32, reg: usize) -> u32 {
-	base_addr.byte_add(reg).read_volatile()
+pub unsafe fn read_reg(reg: usize) -> u32 {
+	BASE_ADDR.byte_add(reg).read_volatile()
 }
 
 /// Writes a register of the local APIC.
 ///
 /// # Safety
 ///
-/// The caller must ensure the APIC is present, `base_addr` is valid, and `reg` is valid.
+/// The caller must ensure the APIC is present and `reg` is valid.
 #[inline]
-pub unsafe fn write_reg(base_addr: *mut u32, reg: usize, value: u32) {
-	base_addr.byte_add(reg).write_volatile(value);
+pub unsafe fn write_reg(reg: usize, value: u32) {
+	BASE_ADDR.byte_add(reg).write_volatile(value);
 }
 
 /// Waits for the delivery of an Inter-Processor Interrupt.
 ///
 /// # Safety
 ///
-/// The caller must ensure the APIC is present, `base_addr` is valid.
-pub unsafe fn wait_delivery(base_addr: *mut u32) {
-	while likely(read_reg(base_addr, 0x300) & (1 << 12) != 0) {
+/// The caller must ensure the APIC is present.
+pub unsafe fn wait_delivery() {
+	while likely(read_reg(0x300) & (1 << 12) != 0) {
 		hint::spin_loop();
 	}
 }
@@ -164,27 +166,40 @@ pub unsafe fn ioapic_redirect_count(base_addr: PhysAddr) -> u8 {
 
 /// Initializes the local APIC.
 pub(crate) fn init() {
-	// Get base address
-	let base_addr = get_base_addr();
+	// Get base address, if not done yet
+	let mut base_addr = VirtAddr::from(unsafe { BASE_ADDR });
+	if base_addr.is_null() {
+		base_addr = PhysAddr(get_base_addr())
+			.kernel_to_virtual()
+			.unwrap_or_else(|| {
+				// The address is too high for kernelspace. Allocate a page to move registers onto
+				// it
+				let phys_addr =
+					buddy::alloc(0, ZONE_KERNEL).expect("not enough memory for APIC registers");
+				phys_addr.kernel_to_virtual().unwrap()
+			});
+		unsafe {
+			BASE_ADDR = base_addr.as_ptr();
+		}
+	}
+	let base_addr_phys = base_addr.kernel_to_physical().unwrap();
 	// Enable APIC
-	set_base_addr(base_addr);
+	set_base_addr(base_addr_phys.0);
 	// Map registers
-	let phys_addr = PhysAddr(base_addr).down_align_to(PAGE_SIZE);
 	KERNEL_VMEM.lock().map(
-		phys_addr,
-		phys_addr.kernel_to_virtual().unwrap(),
+		base_addr_phys,
+		base_addr,
 		FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH | FLAG_WRITE | FLAG_GLOBAL,
 	);
 	// Setup spurious interrupt
-	let base_addr = PhysAddr(base_addr).kernel_to_virtual().unwrap().as_ptr();
 	unsafe {
-		let val = read_reg(base_addr, REG_SPURIOUS_INTERRUPT_VECTOR);
-		write_reg(base_addr, REG_SPURIOUS_INTERRUPT_VECTOR, val | 0x1ff);
+		let val = read_reg(REG_SPURIOUS_INTERRUPT_VECTOR);
+		write_reg(REG_SPURIOUS_INTERRUPT_VECTOR, val | 0x1ff);
 	}
 }
 
-/// Configures the I/O APIC to redirect `gsi` (Global System Interrupt) to the CPU with the given
-/// LAPIC ID `lapic`, at the interrupt vector `int`.
+/// Configures an I/O APIC to redirect `gsi` (Global System Interrupt) to the CPU with the given
+/// local APIC ID `lapic`, at the interrupt vector `int`.
 ///
 /// If no I/O APIC is available for `gsi`, the function does nothing and returns `false`. On
 /// success, it returns `true`.
@@ -216,11 +231,9 @@ pub fn redirect_int(gsi: u32, lapic: u8, int: u8) -> bool {
 }
 
 /// Sends an end of interrupt message to the APIC.
+#[inline]
 pub fn end_of_interrupt() {
-	// TODO cache
-	let base_addr = get_base_addr();
-	let base_addr = PhysAddr(base_addr).kernel_to_virtual().unwrap().as_ptr();
 	unsafe {
-		write_reg(base_addr, REG_EOI, 0);
+		write_reg(REG_EOI, 0);
 	}
 }

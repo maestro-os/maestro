@@ -25,11 +25,10 @@ use crate::{
 		apic,
 		apic::{
 			LVT_MASKED, LVT_ONESHOT, REG_LVT_TIMER, REG_TIMER_CURRENT_COUNT, REG_TIMER_DIVIDE,
-			REG_TIMER_INIT_COUNT, get_base_addr, read_reg,
+			REG_TIMER_INIT_COUNT,
 		},
 		timer::hpet,
 	},
-	memory::PhysAddr,
 	process::scheduler::core_local,
 };
 use core::{hint, hint::likely, sync::atomic::Ordering::Relaxed};
@@ -37,22 +36,18 @@ use utils::errno::AllocResult;
 
 /// Measures and stores the frequency of the APIC timer, using the HPET.
 pub(crate) fn calibrate_hpet() -> AllocResult<()> {
-	let base_addr = PhysAddr(get_base_addr())
-		.kernel_to_virtual()
-		.unwrap()
-		.as_ptr();
 	// The amount of ticks over which we calibrate
 	const APIC_TICKS: u32 = 0x10000;
 	// Setup APIC
 	let period = unsafe {
 		// Use divider `16`
-		apic::write_reg(base_addr, REG_TIMER_DIVIDE, 3);
+		apic::write_reg(REG_TIMER_DIVIDE, 3);
 		hpet::set_enabled(true);
 		let hpet_before = hpet::read_counter();
-		apic::write_reg(base_addr, REG_TIMER_INIT_COUNT, APIC_TICKS);
-		apic::write_reg(base_addr, REG_LVT_TIMER, LVT_ONESHOT | LVT_MASKED);
+		apic::write_reg(REG_TIMER_INIT_COUNT, APIC_TICKS);
+		apic::write_reg(REG_LVT_TIMER, LVT_ONESHOT | LVT_MASKED);
 		// Wait for the APIC counter to reach zero
-		while likely(apic::read_reg(base_addr, REG_TIMER_CURRENT_COUNT) != 0) {
+		while likely(apic::read_reg(REG_TIMER_CURRENT_COUNT) != 0) {
 			hint::spin_loop();
 		}
 		// Compute elapsed time
@@ -76,16 +71,12 @@ pub(crate) fn calibrate_pit() {
 pub(super) fn ndelay(ns: u32) {
 	let tick_period = core_local().tick_period.load(Relaxed);
 	let tick_count = ns.div_ceil(tick_period as _);
-	let base_addr = PhysAddr(get_base_addr())
-		.kernel_to_virtual()
-		.unwrap()
-		.as_ptr();
 	unsafe {
 		// Setup APIC
-		apic::write_reg(base_addr, REG_TIMER_INIT_COUNT, tick_count);
-		apic::write_reg(base_addr, REG_LVT_TIMER, LVT_ONESHOT | LVT_MASKED);
+		apic::write_reg(REG_TIMER_INIT_COUNT, tick_count);
+		apic::write_reg(REG_LVT_TIMER, LVT_ONESHOT | LVT_MASKED);
 		// Wait until the counter is elapsed
-		while likely(read_reg(base_addr, REG_TIMER_CURRENT_COUNT) != 0) {
+		while likely(apic::read_reg(REG_TIMER_CURRENT_COUNT) != 0) {
 			hint::spin_loop();
 		}
 	}

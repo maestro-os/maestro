@@ -26,7 +26,7 @@ use super::{
 };
 use crate::{
 	arch,
-	arch::x86::{apic, gdt, tss},
+	arch::x86::{gdt, tss},
 	boot::BOOT_STACK_SIZE,
 	memory::{
 		PhysAddr, VirtAddr, buddy,
@@ -223,10 +223,6 @@ static BOOTED_CORES: AtomicUsize = AtomicUsize::new(1);
 /// `cpu` is the list of CPU cores on the system.
 pub fn init(cpu: &[Cpu]) -> AllocResult<()> {
 	let lapic_id = lapic_id();
-	let base_addr = PhysAddr(apic::get_base_addr())
-		.kernel_to_virtual()
-		.unwrap()
-		.as_ptr();
 	// Allocate stacks list
 	let max_apic_id = cpu
 		.iter()
@@ -266,54 +262,39 @@ pub fn init(cpu: &[Cpu]) -> AllocResult<()> {
 		// Send INIT IPI
 		unsafe {
 			// Clear APIC error
-			write_reg(base_addr, REG_ERROR_STATUS, 0);
+			write_reg(REG_ERROR_STATUS, 0);
 			// Select AP
 			write_reg(
-				base_addr,
 				REG_ICR_HI,
-				(read_reg(base_addr, REG_ICR_HI) & 0x00ffffff) | ((cpu.apic_id as u32) << 24),
+				(read_reg(REG_ICR_HI) & 0x00ffffff) | ((cpu.apic_id as u32) << 24),
 			);
 			// Trigger INIT IPI
-			write_reg(
-				base_addr,
-				REG_ICR_LO,
-				(read_reg(base_addr, REG_ICR_LO) & 0xfff00000) | 0xc500,
-			);
-			wait_delivery(base_addr);
+			write_reg(REG_ICR_LO, (read_reg(REG_ICR_LO) & 0xfff00000) | 0xc500);
+			wait_delivery();
 			// Select AP
 			write_reg(
-				base_addr,
 				REG_ICR_HI,
-				(read_reg(base_addr, REG_ICR_HI) & 0x00ffffff) | ((cpu.apic_id as u32) << 24),
+				(read_reg(REG_ICR_HI) & 0x00ffffff) | ((cpu.apic_id as u32) << 24),
 			);
 			// INIT de-assert
-			write_reg(
-				base_addr,
-				REG_ICR_LO,
-				(read_reg(base_addr, REG_ICR_LO) & 0xfff00000) | 0x8500,
-			);
-			wait_delivery(base_addr);
+			write_reg(REG_ICR_LO, (read_reg(REG_ICR_LO) & 0xfff00000) | 0x8500);
+			wait_delivery();
 		}
 		udelay(10000);
 		// Send startup IPI twice
 		for _ in 0..2 {
 			unsafe {
 				// Clear APIC error
-				write_reg(base_addr, REG_ERROR_STATUS, 0);
+				write_reg(REG_ERROR_STATUS, 0);
 				// Select AP
 				write_reg(
-					base_addr,
 					REG_ICR_HI,
-					(read_reg(base_addr, REG_ICR_HI) & 0x00ffffff) | ((cpu.apic_id as u32) << 24),
+					(read_reg(REG_ICR_HI) & 0x00ffffff) | ((cpu.apic_id as u32) << 24),
 				);
 				// Trigger STARTUP IPI
-				write_reg(
-					base_addr,
-					REG_ICR_LO,
-					(read_reg(base_addr, REG_ICR_LO) & 0xfff0f800) | 0x608,
-				);
+				write_reg(REG_ICR_LO, (read_reg(REG_ICR_LO) & 0xfff0f800) | 0x608);
 				udelay(300);
-				wait_delivery(base_addr);
+				wait_delivery();
 			}
 		}
 	}
