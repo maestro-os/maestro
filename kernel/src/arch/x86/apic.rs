@@ -23,6 +23,8 @@
 
 use super::{IA32_APIC_BASE_MSR, cpuid, rdmsr, wrmsr};
 use crate::{
+	acpi,
+	acpi::madt::{IOAPIC, Madt},
 	arch::x86::paging::{FLAG_CACHE_DISABLE, FLAG_GLOBAL, FLAG_WRITE, FLAG_WRITE_THROUGH},
 	memory::{PhysAddr, vmem::KERNEL_VMEM},
 };
@@ -161,7 +163,7 @@ pub unsafe fn ioapic_redirect_count(base_addr: PhysAddr) -> u8 {
 }
 
 /// Initializes the local APIC.
-pub fn init() {
+pub(crate) fn init() {
 	// Get base address
 	let base_addr = get_base_addr();
 	// Enable APIC
@@ -179,6 +181,38 @@ pub fn init() {
 		let val = read_reg(base_addr, REG_SPURIOUS_INTERRUPT_VECTOR);
 		write_reg(base_addr, REG_SPURIOUS_INTERRUPT_VECTOR, val | 0x1ff);
 	}
+}
+
+/// Configures the I/O APIC to redirect `gsi` (Global System Interrupt) to the CPU with the given
+/// LAPIC ID `lapic`, at the interrupt vector `int`.
+///
+/// If no I/O APIC is available for `gsi`, the function does nothing and returns `false`. On
+/// success, it returns `true`.
+pub fn redirect_int(gsi: u32, lapic: u8, int: u8) -> bool {
+	// Find the associated I/O APIC
+	let ioapic = acpi::get_table::<Madt>().and_then(|madt| {
+		madt.entries()
+			.filter(|e| e.entry_type == 1)
+			.map(|e| unsafe { e.body::<IOAPIC>() })
+			.find(|ioapic| {
+				let base_addr = PhysAddr(ioapic.ioapic_address as _);
+				let max_entries = unsafe { ioapic_redirect_count(base_addr) } as u32;
+				(ioapic.gsi..ioapic.gsi + max_entries).contains(&gsi)
+			})
+	});
+	let Some(ioapic) = ioapic else {
+		return false;
+	};
+	// Configure redirection
+	let base_addr = PhysAddr(ioapic.ioapic_address as _);
+	let i = (gsi - ioapic.gsi) as u8;
+	// TODO flags
+	let val = (int as u64) | ((lapic as u64) << 56);
+	unsafe {
+		ioapic_write(base_addr, IO_APIC_REDIRECTIONS_OFF + i * 2, val as u32);
+		ioapic_write(base_addr, IO_APIC_REDIRECTIONS_OFF + i * 2 + 1, val as u32);
+	}
+	true
 }
 
 /// Sends an end of interrupt message to the APIC.

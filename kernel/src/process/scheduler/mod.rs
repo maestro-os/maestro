@@ -230,6 +230,7 @@ pub fn enqueue(proc: &Arc<Process>) {
 		return;
 	}
 	// Select the scheduler with the least running processes
+	#[allow(unused_variables)]
 	let (lapic_id, sched) = CORE_LOCAL
 		.iter()
 		.map(|cl| (cl.cpu.apic_id, &cl.scheduler))

@@ -46,8 +46,9 @@ const MODE_3: u8 = 0b011 << 1;
 
 /// The base frequency of the PIT.
 const BASE_FREQUENCY: u32 = 1193182;
+
 /// Interrupt vector for the PIT.
-pub const INTERRUPT_VECTOR: u32 = 0x20;
+pub const INTERRUPT_VECTOR: u8 = 0x20;
 
 /// Initializes the PIT.
 pub fn init(freq: u32) {

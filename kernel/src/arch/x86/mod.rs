@@ -34,7 +34,7 @@ use crate::{
 	acpi,
 	acpi::madt::{IOAPIC, InterruptSourceOverride, Madt, ProcessorLocalApic},
 	arch::x86::{
-		apic::{IO_APIC_REDIRECTIONS_OFF, ioapic_redirect_count, ioapic_write},
+		apic::lapic_id,
 		paging::{FLAG_CACHE_DISABLE, FLAG_GLOBAL, FLAG_WRITE, FLAG_WRITE_THROUGH},
 	},
 	memory::{PhysAddr, vmem::KERNEL_VMEM},
@@ -323,36 +323,12 @@ pub(crate) fn enumerate_cpus() {
 				);
 			});
 		// Remap legacy interrupts
+		let lapic_id = lapic_id();
 		madt.entries()
 			.filter(|e| e.entry_type == 2)
 			.map(|e| unsafe { e.body::<InterruptSourceOverride>() })
 			.for_each(|e| {
-				// Find the associated I/O APIC
-				let ioapic = madt
-					.entries()
-					.filter(|e| e.entry_type == 1)
-					.map(|e| unsafe { e.body::<IOAPIC>() })
-					.find(|ioapic| {
-						let gsi = e.gsi;
-						let base_addr = PhysAddr(ioapic.ioapic_address as _);
-						let max_entries = unsafe { ioapic_redirect_count(base_addr) } as u32;
-						(ioapic.gsi..ioapic.gsi + max_entries).contains(&gsi)
-					});
-				// Remap the interrupt
-				if let Some(ioapic) = ioapic {
-					let base_addr = PhysAddr(ioapic.ioapic_address as _);
-					let i = (e.gsi - ioapic.gsi) as u8;
-					// TODO flags?
-					let val = 0x20 + e.irq_source as u64;
-					unsafe {
-						ioapic_write(base_addr, IO_APIC_REDIRECTIONS_OFF + i * 2, val as u32);
-						ioapic_write(
-							base_addr,
-							IO_APIC_REDIRECTIONS_OFF + i * 2 + 1,
-							(val >> 32) as u32,
-						);
-					}
-				}
+				apic::redirect_int(e.gsi, lapic_id, 0x20 + e.irq_source);
 			});
 	}
 	// If no CPU is found, just add the current

@@ -36,7 +36,7 @@ const STATUS_B_REGISTER: u8 = 0x0b;
 const STATUS_C_REGISTER: u8 = 0x0c;
 
 /// Interrupt vector for the RTC.
-pub const INTERRUPT_VECTOR: u32 = 0x28;
+pub const INTERRUPT_VECTOR: u8 = 0x28;
 
 /// Enables or disables the RTC.
 pub fn set_enabled(enable: bool) {

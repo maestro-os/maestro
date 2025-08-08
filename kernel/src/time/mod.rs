@@ -29,7 +29,7 @@ pub mod timer;
 pub mod unit;
 
 use crate::{
-	arch::x86::timer::rtc,
+	arch::x86::{apic, apic::lapic_id, timer::rtc},
 	int,
 	int::CallbackResult,
 	process::{
@@ -90,7 +90,10 @@ pub fn sleep_for(clock: Clock, delay: Timestamp, remain: &mut Timestamp) -> ERes
 pub(crate) fn init() -> EResult<()> {
 	const FREQUENCY: u32 = 1024;
 	rtc::set_frequency(FREQUENCY);
-	let hook = int::register_callback(rtc::INTERRUPT_VECTOR, move |_, _, _, _| {
+	if apic::is_present() {
+		apic::redirect_int(0x8, lapic_id(), rtc::INTERRUPT_VECTOR);
+	}
+	let hook = int::register_callback(rtc::INTERRUPT_VECTOR as _, move |_, _, _, _| {
 		rtc::reset();
 		// FIXME: we are loosing precision here
 		clock::update((1_000_000_000 / FREQUENCY) as _);
