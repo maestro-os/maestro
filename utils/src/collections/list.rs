@@ -259,13 +259,15 @@ impl<T, const OFF: usize> List<T, OFF> {
 			self.head = Some(node);
 		}
 	}
-	
-	/// Rotates the circular list, making the second element the new head, and the old head the new tail.
+
+	/// Rotates the circular list, making the second element the new head, and the old head the new
+	/// tail.
 	pub fn rotate_left(&mut self) {
 		self.head = self.head.and_then(|h| unsafe { *h.as_ref().next.get() });
 	}
 
-	/// Rotates the circular list, making the tail the new head, and the old head the second element.
+	/// Rotates the circular list, making the tail the new head, and the old head the second
+	/// element.
 	pub fn rotate_right(&mut self) {
 		self.head = self.head.and_then(|h| unsafe { *h.as_ref().prev.get() });
 	}
