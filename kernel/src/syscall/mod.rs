@@ -51,7 +51,7 @@ use crate::{
 	process::{
 		Process,
 		mem_space::MemSpace,
-		scheduler::{alter_flow, may_schedule},
+		scheduler::{alter_flow, preempt_check_resched},
 		signal::Signal,
 	},
 	sync::mutex::Mutex,
@@ -1162,7 +1162,6 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 /// Called whenever a system call is triggered.
 #[unsafe(no_mangle)]
 pub extern "C" fn syscall_handler(frame: &mut IntFrame) {
-	may_schedule();
 	let id = frame.get_syscall_id();
 	#[cfg(target_arch = "x86")]
 	let res = do_syscall32(id, frame);
@@ -1185,6 +1184,7 @@ pub extern "C" fn syscall_handler(frame: &mut IntFrame) {
 	}
 	// If the process has been killed, handle it
 	alter_flow(3, frame);
+	preempt_check_resched();
 }
 
 unsafe extern "C" {

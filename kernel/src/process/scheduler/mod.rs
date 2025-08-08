@@ -18,22 +18,26 @@
 
 //! The role of the process scheduler is to interrupt the currently running
 //! process periodically to switch to another process that is in running state.
+//!
+//! Scheduling can be disabled/enabled by entering a **critical section**, with
+//! [`preempt_disable`]/[`preempt_enable`], or with [`critical`].
 
 pub mod switch;
 
 use crate::{
 	arch::{
 		end_of_interrupt,
-		x86::{cli, gdt::Gdt, idt, idt::IntFrame, tss::Tss},
+		x86::{cli, gdt::Gdt, idt::IntFrame, tss::Tss},
 	},
 	process::{Process, State, mem_space::MemSpace, scheduler::switch::switch},
 	sync::{atomic::AtomicU64, mutex::IntMutex, once::OnceInit},
 };
 use core::{
 	cell::UnsafeCell,
+	hint::unlikely,
 	ptr,
 	sync::atomic::{
-		AtomicBool, AtomicUsize,
+		AtomicU32, AtomicUsize,
 		Ordering::{Acquire, Relaxed, Release},
 	},
 };
@@ -76,6 +80,11 @@ pub struct CoreLocal {
 	pub scheduler: Scheduler,
 	/// The time in between each tick on the core, in nanoseconds.
 	pub tick_period: AtomicU64,
+	/// Counter for nested critical sections.
+	///
+	/// The highest bit is used to tell whether preemption has been requested by the timer (clear
+	/// = requested, set = not requested).
+	pub preempt_counter: AtomicU32,
 
 	/// Attached memory space
 	///
@@ -116,10 +125,9 @@ pub(crate) fn alloc_core_local() -> AllocResult<()> {
 				cur_proc: AtomicArc::from(idle_task.clone()),
 
 				idle_task: idle_task.clone(),
-
-				need_reschedule: AtomicBool::new(false),
 			},
 			tick_period: AtomicU64::new(0),
+			preempt_counter: AtomicU32::new(1 << 31),
 
 			mem_space: AtomicOptionalArc::new(),
 		})
@@ -183,9 +191,6 @@ pub struct Scheduler {
 
 	/// The task used to make the current CPU idle
 	idle_task: Arc<Process>,
-
-	/// Tells whether the current process has elapsed its time frame.
-	pub need_reschedule: AtomicBool,
 }
 
 impl Scheduler {
@@ -263,13 +268,15 @@ pub fn dequeue(proc: &Arc<Process>) {
 	links.sched = None;
 }
 
-/// Runs the scheduler. Switching context to the next process to run on the current core.
+/// Reschedules, switching context to the next process to run on the current core.
 ///
 /// If no process is ready to run, the scheduler halts the current core until a process becomes
 /// runnable.
 pub fn schedule() {
 	// Disable interrupts so that no interrupt can occur before switching to the next process
 	cli();
+	// Reset preempt flag
+	core_local().preempt_counter.fetch_or(1 << 31, Relaxed);
 	let sched = &core_local().scheduler;
 	let (prev, next) = {
 		// Find the next process to run
@@ -292,17 +299,50 @@ pub fn schedule() {
 	}
 }
 
-/// Runs the scheduler if the timeslice of the current process is over.
+/// Enter a critical section, disabling preemption.
+#[inline]
+pub fn preempt_disable() {
+	core_local().preempt_counter.fetch_add(1, Relaxed);
+}
+
+/// Exit a critical section, enabling preemption if the counter reaches zero.
+///
+/// The function may reschedule if the counter has reached zero.
+///
+/// # Safety
+///
+/// Calling this function outside a critical section is undefined.
+pub unsafe fn preempt_enable() {
+	let cnt = core_local().preempt_counter.fetch_sub(1, Relaxed);
+	// If the preemption hasn't been requested yet, the high bit is set, so this condition isn't
+	// fulfilled
+	if unlikely(cnt == 0) {
+		schedule();
+	}
+}
+
+/// Reschedules, if requested by the timer, and we are not in a critical section.
 ///
 /// This function may never return in case the process has been turned to a zombie after switching
 /// to another process.
-pub fn may_schedule() {
-	let need_reschedule = idt::wrap_disable_interrupts(|| {
-		core_local().scheduler.need_reschedule.swap(false, Relaxed)
-	});
-	if need_reschedule {
+pub fn preempt_check_resched() {
+	let cnt = core_local().preempt_counter.load(Relaxed);
+	// If the preemption hasn't been requested yet, the high bit is set, so this condition isn't
+	// fulfilled
+	if unlikely(cnt == 0) {
 		schedule();
 	}
+}
+
+/// Executes `f` in a critical section.
+#[inline]
+pub fn critical<F: FnOnce() -> T, T>(f: F) -> T {
+	preempt_disable();
+	let r = f();
+	unsafe {
+		preempt_enable();
+	}
+	r
 }
 
 /// Returns `false` if the execution shall continue. Else, the execution shall be paused.

@@ -25,7 +25,7 @@ use crate::{
 	},
 	memory::user::UserSlice,
 	rand,
-	process::scheduler::{alter_flow, may_schedule},
+	process::scheduler::{alter_flow, preempt_check_resched},
 	sync::mutex::IntMutex,
 };
 use core::ptr;
@@ -152,7 +152,6 @@ pub fn register_callback(id: u32, callback: Callback) -> AllocResult<Option<Call
 /// `frame` is the stack frame of the interruption, with general purpose registers saved.
 #[unsafe(no_mangle)]
 extern "C" fn interrupt_handler(frame: &mut IntFrame) {
-	may_schedule();
 	// Ignore page faults to avoid a deadlock (might occur when writing entropy to userspace on
 	// non-mapped page)
 	if frame.int != 0xe {
@@ -189,4 +188,5 @@ extern "C" fn interrupt_handler(frame: &mut IntFrame) {
 		end_of_interrupt(irq as _);
 	}
 	alter_flow(ring, frame);
+	preempt_check_resched();
 }

@@ -300,47 +300,42 @@ fn load_elf(
 	let mut load_end = load_base;
 	let mut phdr_addr = VirtAddr(0);
 	let mut exec_stack = true;
-	unsafe {
-		MemSpace::switch(mem_space, |mem_space| -> EResult<()> {
-			// Map segments
-			for seg in elf.segments() {
-				match seg.p_type {
-					PT_LOAD => {
-						let seg_end = map_segment(file.clone(), mem_space, load_base, seg)?;
-						load_end = max(seg_end, load_end);
-						// If the segment contains the phdr, keep its address
-						if (seg.p_offset..seg.p_offset + seg.p_filesz).contains(&ehdr.e_phoff) {
-							phdr_addr =
-								load_base + (ehdr.e_phoff - seg.p_offset + seg.p_vaddr) as usize;
-						}
+	MemSpace::switch(mem_space, |mem_space| -> EResult<()> {
+		// Map segments
+		for seg in elf.segments() {
+			match seg.p_type {
+				PT_LOAD => {
+					let seg_end = map_segment(file.clone(), mem_space, load_base, seg)?;
+					load_end = max(seg_end, load_end);
+					// If the segment contains the phdr, keep its address
+					if (seg.p_offset..seg.p_offset + seg.p_filesz).contains(&ehdr.e_phoff) {
+						phdr_addr =
+							load_base + (ehdr.e_phoff - seg.p_offset + seg.p_vaddr) as usize;
 					}
-					PT_GNU_STACK => exec_stack = seg.p_flags & PF_X != 0,
-					_ => {}
-				}
-			}
-			// Zero the end of segments when needed
-			vmem::write_ro(|| {
-				vmem::smap_disable(|| {
-					for seg in elf.segments() {
-						if seg.p_type != PT_LOAD {
-							continue;
-						}
-						if seg.p_memsz <= seg.p_filesz {
-							continue;
-						}
-						let begin = load_base.add(seg.p_vaddr as usize + seg.p_filesz as usize);
-						let end = load_base
-							.add(seg.p_vaddr as usize + seg.p_memsz as usize)
-							.next_multiple_of(PAGE_SIZE);
-						let len = end - begin.0;
+					// Zero the end of the segment if needed
+					if seg.p_memsz <= seg.p_filesz {
+						continue;
+					}
+					let begin = load_base.add(seg.p_vaddr as usize + seg.p_filesz as usize);
+					let end = load_base
+						.add(seg.p_vaddr as usize + seg.p_memsz as usize)
+						.next_multiple_of(PAGE_SIZE);
+					let len = end - begin.0;
+					unsafe {
 						let slice = slice::from_raw_parts_mut(begin.as_ptr::<u8>(), len);
-						slice.fill(0);
+						vmem::write_ro(|| {
+							vmem::smap_disable(|| {
+								slice.fill(0);
+							});
+						});
 					}
-				});
-			});
-			Ok(())
-		})?;
-	}
+				}
+				PT_GNU_STACK => exec_stack = seg.p_flags & PF_X != 0,
+				_ => {}
+			}
+		}
+		Ok(())
+	})?;
 	Ok(ELFLoadInfo {
 		load_end,
 
@@ -563,14 +558,11 @@ pub fn exec(ent: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
 	let aux = build_auxiliary(&exec_path, &info, interp_load_base, &load_info, &vdso)?;
 	let (_, init_stack_size) = get_init_stack_size(&info, &aux, compat);
 	let mut exe_info = mem_space.exe_info.clone();
-	unsafe {
-		MemSpace::switch(&mem_space, |_| {
-			vmem::smap_disable(|| -> EResult<()> {
-				init_stack(user_stack.as_ptr(), &info, &aux, &mut exe_info, compat);
-				Ok(())
-			})
-		})?;
-	}
+	MemSpace::switch(&mem_space, |_| unsafe {
+		vmem::smap_disable(|| {
+			init_stack(user_stack.as_ptr(), &info, &aux, &mut exe_info, compat);
+		});
+	});
 	// Set immutable fields
 	let m = Arc::as_mut(&mut mem_space).unwrap(); // Cannot fail since no one else hold a reference
 	m.exe_info = exe_info;

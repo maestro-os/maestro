@@ -46,16 +46,14 @@ pub fn read_memory(
 		// Slice is out of range: return zeros
 		return Ok(buf);
 	};
-	unsafe {
-		MemSpace::switch(mem_space, |_| {
-			let mut i = 0;
-			while i < len {
-				let Ok(len) = slice.copy_from_user(i, &mut buf[i..]) else {
-					break;
-				};
-				i += len;
-			}
-		});
-	}
+	MemSpace::switch(mem_space, |_| {
+		let mut i = 0;
+		while i < len {
+			let Ok(len) = slice.copy_from_user(i, &mut buf[i..]) else {
+				break;
+			};
+			i += len;
+		}
+	});
 	Ok(buf)
 }
