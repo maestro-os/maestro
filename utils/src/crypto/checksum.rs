@@ -86,7 +86,7 @@ pub fn compute_crc32(data: &[u8], table: &[u32; 256]) -> u32 {
 mod test {
 	use super::*;
 
-	#[test_case]
+	#[test]
 	fn rfc1071_0() {
 		for i in 0..=u16::MAX {
 			let data = [(i & 0xff) as _, (i >> 8) as _];
