@@ -21,7 +21,7 @@
 use super::{buf::BufList, osi::Layer};
 use core::mem::size_of;
 use macros::AnyRepr;
-use utils::{boxed::Box, bytes::as_bytes, crypto::checksum, errno::EResult};
+use utils::{boxed::Box, bytes::as_bytes, crypto::checksum::rfc1071, errno::EResult};
 
 /// The default TTL value.
 const DEFAULT_TTL: u8 = 128;
@@ -70,15 +70,13 @@ impl IPv4Header {
 	///
 	/// If correct, the function returns `true`.
 	pub fn check_checksum(&self) -> bool {
-		let slice = as_bytes(self);
-		checksum::compute_rfc1071(slice) == 0
+		rfc1071(as_bytes(self)) == 0
 	}
 
 	/// Computes the checksum of the header and writes it into the appropriate field.
 	pub fn compute_checksum(&mut self) {
 		self.hdr_checksum = 0;
-		let slice = as_bytes(self);
-		self.hdr_checksum = checksum::compute_rfc1071(slice);
+		self.hdr_checksum = rfc1071(as_bytes(self));
 	}
 }
 

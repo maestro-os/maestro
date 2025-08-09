@@ -53,28 +53,24 @@ macro_rules! quarter_round {
 
 /// Computes a ChaCha20 block.
 pub fn block(inout: &mut [u8; 64]) {
-	let mut buff: [u32; 16] = [0; 16];
-
+	let mut buf: [u32; 16] = [0; 16];
 	unsafe {
-		ptr::copy_nonoverlapping(inout.as_ptr(), buff.as_mut_ptr() as *mut u8, 64);
+		ptr::copy_nonoverlapping(inout.as_ptr(), buf.as_mut_ptr() as *mut u8, 64);
 	}
-
 	for _ in (0..20).step_by(2) {
 		// Odd round
-		quarter_round!(buff[0], buff[4], buff[8], buff[12]);
-		quarter_round!(buff[1], buff[5], buff[9], buff[13]);
-		quarter_round!(buff[2], buff[6], buff[10], buff[14]);
-		quarter_round!(buff[3], buff[7], buff[11], buff[15]);
-
+		quarter_round!(buf[0], buf[4], buf[8], buf[12]);
+		quarter_round!(buf[1], buf[5], buf[9], buf[13]);
+		quarter_round!(buf[2], buf[6], buf[10], buf[14]);
+		quarter_round!(buf[3], buf[7], buf[11], buf[15]);
 		// Even round
-		quarter_round!(buff[0], buff[5], buff[10], buff[15]);
-		quarter_round!(buff[1], buff[6], buff[11], buff[12]);
-		quarter_round!(buff[2], buff[7], buff[8], buff[13]);
-		quarter_round!(buff[3], buff[4], buff[9], buff[14]);
+		quarter_round!(buf[0], buf[5], buf[10], buf[15]);
+		quarter_round!(buf[1], buf[6], buf[11], buf[12]);
+		quarter_round!(buf[2], buf[7], buf[8], buf[13]);
+		quarter_round!(buf[3], buf[4], buf[9], buf[14]);
 	}
-
 	unsafe {
-		ptr::copy_nonoverlapping(buff.as_ptr() as *mut u8, inout.as_mut_ptr(), 64);
+		ptr::copy_nonoverlapping(buf.as_ptr() as *mut u8, inout.as_mut_ptr(), 64);
 	}
 }
 
