@@ -273,6 +273,8 @@ pub fn dequeue(proc: &Arc<Process>) {
 ///
 /// If no process is ready to run, the scheduler halts the current core until a process becomes
 /// runnable.
+///
+/// **Note**: calling this function inside a critical section is invalid.
 pub fn schedule() {
 	// Disable interrupts so that no interrupt can occur before switching to the next process
 	cli();
