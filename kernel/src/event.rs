@@ -20,9 +20,8 @@
 
 use crate::{
 	arch::x86::{idt, idt::IntFrame, pic},
-	crypto::rand,
 	memory::user::UserSlice,
-	process,
+	process, rand,
 	sync::mutex::IntMutex,
 };
 use core::ptr;
