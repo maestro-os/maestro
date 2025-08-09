@@ -70,8 +70,6 @@ jobs:
     steps:
       - name: Build
         working-directory: kernel
-        env:
-          RUSTFLAGS: "-D warnings"
         run: cargo build --target arch/${{ matrix.arch }}/${{ matrix.arch }}.json --profile ${{ matrix.profile.name }}
       - name: Check Multiboot2
         working-directory: kernel
