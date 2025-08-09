@@ -19,18 +19,11 @@
 //! Context switching utilities.
 
 use crate::{
-	arch::{
-		x86,
-		x86::{fxrstor, fxsave, gdt, idt::IntFrame, sti},
-	},
+	arch::x86::{fxrstor, fxsave, gdt, idt::IntFrame, sti},
 	memory::vmem::KERNEL_VMEM,
 	process::{Process, mem_space::MemSpace, scheduler::core_local},
 };
-use core::{
-	arch::{asm, global_asm},
-	mem::offset_of,
-	ptr::NonNull,
-};
+use core::{arch::global_asm, mem::offset_of, ptr::NonNull};
 
 /// Stashes current segment values during execution of `f`, restoring them after.
 pub fn stash_segments<F: FnOnce() -> T, T>(f: F) -> T {
@@ -43,6 +36,7 @@ pub fn stash_segments<F: FnOnce() -> T, T>(f: F) -> T {
 	{
 		use crate::arch::x86;
 		use core::arch::asm;
+
 		// Save MSR (not the kernel's GS since the task might change CPU)
 		let fs_base = x86::rdmsr(x86::IA32_FS_BASE);
 		let kernel_gs_base = x86::rdmsr(x86::IA32_KERNEL_GS_BASE);
@@ -292,6 +286,9 @@ pub unsafe fn init_kthread(stack: NonNull<u8>, entry: KThreadEntry) -> *mut u8 {
 pub fn kthread_setup() {
 	#[cfg(target_arch = "x86_64")]
 	{
+		use crate::arch::x86;
+		use core::arch::asm;
+
 		let gs_base = x86::rdmsr(x86::IA32_GS_BASE);
 		unsafe {
 			asm!(
