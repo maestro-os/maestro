@@ -50,6 +50,7 @@ pub mod boxed;
 pub mod bytes;
 pub mod collections;
 pub mod cpio;
+pub mod crypto;
 pub mod errno;
 pub mod limits;
 pub mod math;

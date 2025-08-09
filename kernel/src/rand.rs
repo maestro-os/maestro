@@ -19,7 +19,6 @@
 //! Randomness engines.
 
 use crate::{
-	crypto::chacha20,
 	memory::{ring_buffer::RingBuffer, user::UserSlice},
 	sync::mutex::IntMutex,
 };
@@ -28,7 +27,10 @@ use core::{
 	ffi::c_uint,
 	num::{NonZeroUsize, Wrapping},
 };
-use utils::errno::{AllocResult, EResult};
+use utils::{
+	crypto::chacha20,
+	errno::{AllocResult, EResult},
+};
 
 /// `getrandom` flag: If set, bytes are drawn from the randomness source instead of `urandom`.
 pub const GRND_RANDOM: u32 = 2;
@@ -163,7 +165,7 @@ pub fn getrandom(buf: UserSlice<u8>, flags: c_uint) -> EResult<usize> {
 }
 
 /// Initializes randomness sources.
-pub(super) fn init() -> AllocResult<()> {
+pub(crate) fn init() -> AllocResult<()> {
 	*ENTROPY_POOL.lock() = Some(EntropyPool::new()?);
 	Ok(())
 }

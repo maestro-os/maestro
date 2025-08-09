@@ -20,14 +20,12 @@
 
 use super::{CharDev, DeviceType, id, register_char};
 use crate::{
-	crypto::{
-		rand,
-		rand::{GRND_RANDOM, getrandom},
-	},
 	device::{DeviceID, tty::TTYDeviceHandle},
 	file::{File, fs::FileOps},
 	logger::LOGGER,
 	memory::user::UserSlice,
+	rand,
+	rand::{GRND_RANDOM, getrandom},
 };
 use core::mem::ManuallyDrop;
 use utils::{collections::path::PathBuf, errno, errno::EResult};

@@ -56,7 +56,6 @@ pub mod acpi;
 pub mod arch;
 mod boot;
 pub mod cmdline;
-pub mod crypto;
 pub mod debug;
 pub mod device;
 pub mod elf;
@@ -73,6 +72,7 @@ pub mod power;
 #[macro_use]
 pub mod print;
 pub mod process;
+pub mod rand;
 pub mod selftest;
 pub mod sync;
 pub mod syscall;
@@ -203,8 +203,7 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	println!("Initializing devices management...");
 	device::init().unwrap_or_else(|e| panic!("Failed to initialize devices management! ({e})"));
 	net::osi::init().unwrap_or_else(|e| panic!("Failed to initialize network! ({e})"));
-	crypto::init()
-		.unwrap_or_else(|_| panic!("Failed to initialize cryptography! (out of memory)"));
+	rand::init().unwrap_or_else(|_| panic!("Failed to initialize cryptography! (out of memory)"));
 
 	let root = args_parser.get_root_dev();
 	println!("Initializing files management...");

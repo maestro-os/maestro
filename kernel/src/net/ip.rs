@@ -19,10 +19,9 @@
 //! This module implements the IP protocol.
 
 use super::{buf::BufList, osi::Layer};
-use crate::crypto::checksum;
 use core::mem::size_of;
 use macros::AnyRepr;
-use utils::{boxed::Box, bytes::as_bytes, errno::EResult};
+use utils::{boxed::Box, bytes::as_bytes, crypto::checksum, errno::EResult};
 
 /// The default TTL value.
 const DEFAULT_TTL: u8 = 128;

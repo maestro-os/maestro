@@ -20,16 +20,13 @@
 //! a successor of MBR.
 
 use super::{Partition, Table};
-use crate::{
-	crypto::checksum::{compute_crc32, compute_crc32_lookuptable},
-	device::BlkDev,
-	memory::cache::FrameOwner,
-};
+use crate::{device::BlkDev, memory::cache::FrameOwner};
 use core::{hint::unlikely, mem::size_of};
 use macros::AnyRepr;
 use utils::{
 	bytes::from_bytes,
 	collections::vec::Vec,
+	crypto::checksum::{compute_crc32, compute_crc32_lookuptable},
 	errno,
 	errno::{CollectResult, EResult},
 	ptr::arc::Arc,
