@@ -21,11 +21,11 @@
 use crate::{
 	arch::{
 		end_of_interrupt,
-		x86::{idt, idt::IntFrame}
+		x86::{idt, idt::IntFrame},
 	},
 	memory::user::UserSlice,
-	rand,
 	process::scheduler::{alter_flow, preempt_check_resched},
+	rand,
 	sync::mutex::IntMutex,
 };
 use core::ptr;
