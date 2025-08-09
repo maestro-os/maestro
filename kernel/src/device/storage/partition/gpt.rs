@@ -26,7 +26,7 @@ use macros::AnyRepr;
 use utils::{
 	bytes::from_bytes,
 	collections::vec::Vec,
-	crypto::checksum::{compute_crc32, compute_crc32_lookuptable},
+	crypto::checksum::{crc32, crc32_lookuptable},
 	errno,
 	errno::{CollectResult, EResult},
 	ptr::arc::Arc,
@@ -212,12 +212,12 @@ impl Gpt {
 		}
 
 		let mut lookup_table = [0; 256];
-		compute_crc32_lookuptable(&mut lookup_table, CHECKSUM_POLYNOM);
+		crc32_lookuptable(&mut lookup_table, CHECKSUM_POLYNOM);
 
 		// Check checksum
 		let mut tmp = self.clone();
 		tmp.checksum = 0;
-		if compute_crc32(utils::bytes::as_bytes(&tmp), &lookup_table) != self.checksum {
+		if crc32(utils::bytes::as_bytes(&tmp), &lookup_table) != self.checksum {
 			return false;
 		}
 
