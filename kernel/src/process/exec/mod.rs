@@ -115,10 +115,9 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 			// Reset segment selector
 			unsafe {
 				asm!(
-				"xor {tmp}, {tmp}",
-				"mov fs, {tmp}",
-				"mov gs, {tmp}",
-				tmp = out(reg) _
+					"mov fs, {r:x}",
+					"mov gs, {r:x}",
+					r = in(reg) 0
 				);
 			}
 			// Reset MSR

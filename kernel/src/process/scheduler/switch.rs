@@ -19,11 +19,18 @@
 //! Context switching utilities.
 
 use crate::{
-	arch::x86::{fxrstor, fxsave, gdt, idt::IntFrame},
+	arch::{
+		x86,
+		x86::{fxrstor, fxsave, gdt, idt::IntFrame, sti},
+	},
 	memory::vmem::KERNEL_VMEM,
 	process::{Process, mem_space::MemSpace, scheduler::core_local},
 };
-use core::{arch::global_asm, mem::offset_of, ptr::NonNull};
+use core::{
+	arch::{asm, global_asm},
+	mem::offset_of,
+	ptr::NonNull,
+};
 
 /// Stashes current segment values during execution of `f`, restoring them after.
 pub fn stash_segments<F: FnOnce() -> T, T>(f: F) -> T {
@@ -266,7 +273,7 @@ pub unsafe fn init_kthread(stack: NonNull<u8>, entry: KThreadEntry) -> *mut u8 {
 	let frame = KThreadInit {
 		pad: [0; 16],
 		rip: entry as *const u8 as _,
-		// this will get written on by the function `stack`
+		// this will get written on by `switch_asm`
 		args: [0; 2],
 	};
 	#[cfg(target_arch = "x86_64")]
@@ -277,4 +284,25 @@ pub unsafe fn init_kthread(stack: NonNull<u8>, entry: KThreadEntry) -> *mut u8 {
 	let stack = stack.cast().sub(1);
 	stack.write(frame);
 	stack.cast().as_ptr()
+}
+
+// FIXME: this function is necessary because kernel threads don't go through `init_ctx`, as such,
+// they inherit their fs and gs from the previously running task. We need a better solution here
+/// Called at the initialization of a kernel thread, to setup registers.
+pub fn kthread_setup() {
+	#[cfg(target_arch = "x86_64")]
+	{
+		let gs_base = x86::rdmsr(x86::IA32_GS_BASE);
+		unsafe {
+			asm!(
+				"mov fs, {r:x}",
+				"mov gs, {r:x}",
+				r = in(reg) 0
+			);
+		}
+		x86::wrmsr(x86::IA32_FS_BASE, 0);
+		x86::wrmsr(x86::IA32_GS_BASE, gs_base);
+		x86::wrmsr(x86::IA32_KERNEL_GS_BASE, 0);
+	}
+	sti(); // FIXME: risky for critical sections?
 }
