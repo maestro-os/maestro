@@ -82,7 +82,7 @@ pub(crate) fn init() -> AllocResult<()> {
 	}
 	// Initialize a known-frequency timer
 	if let Some(hpet) = acpi::get_table::<AcpiHpet>() {
-		hpet::init(hpet);
+		hpet::init(hpet)?;
 		apic::calibrate_hpet()?;
 	} else {
 		// No HPET, we assume the PIT is present

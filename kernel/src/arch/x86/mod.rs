@@ -32,18 +32,13 @@ pub mod tss;
 
 use crate::{
 	acpi,
-	acpi::madt::{IOAPIC, InterruptSourceOverride, Madt, ProcessorLocalApic},
-	arch::x86::{
-		apic::lapic_id,
-		paging::{FLAG_CACHE_DISABLE, FLAG_GLOBAL, FLAG_WRITE, FLAG_WRITE_THROUGH},
-	},
-	memory::{PhysAddr, vmem::KERNEL_VMEM},
+	acpi::madt::{Madt, ProcessorLocalApic},
 	println,
 	process::scheduler::{CPU, Cpu},
 	sync::once::OnceInit,
 };
 use core::arch::asm;
-use utils::{collections::vec::Vec, limits::PAGE_SIZE};
+use utils::collections::vec::Vec;
 
 /// MSR: APIC base
 pub const IA32_APIC_BASE_MSR: u32 = 0x1b;
@@ -309,26 +304,6 @@ pub(crate) fn enumerate_cpus() {
 					apic_flags: e.apic_flags,
 				})
 				.expect("could not insert CPU");
-			});
-		// Map I/O APIC registers
-		madt.entries()
-			.filter(|e| e.entry_type == 1)
-			.map(|e| unsafe { e.body::<IOAPIC>() })
-			.for_each(|e| {
-				let base_addr = PhysAddr(e.ioapic_address as _).down_align_to(PAGE_SIZE);
-				KERNEL_VMEM.lock().map(
-					base_addr,
-					base_addr.kernel_to_virtual().unwrap(),
-					FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH | FLAG_WRITE | FLAG_GLOBAL,
-				);
-			});
-		// Remap legacy interrupts
-		let lapic_id = lapic_id();
-		madt.entries()
-			.filter(|e| e.entry_type == 2)
-			.map(|e| unsafe { e.body::<InterruptSourceOverride>() })
-			.for_each(|e| {
-				apic::redirect_int(e.gsi, lapic_id, 0x20 + e.irq_source);
 			});
 	}
 	// If no CPU is found, just add the current

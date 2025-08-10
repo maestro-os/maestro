@@ -24,11 +24,18 @@
 use super::{IA32_APIC_BASE_MSR, cpuid, rdmsr, wrmsr};
 use crate::{
 	acpi,
-	acpi::madt::{IOAPIC, Madt},
-	arch::x86::paging::{FLAG_CACHE_DISABLE, FLAG_GLOBAL, FLAG_WRITE, FLAG_WRITE_THROUGH},
-	memory::{PhysAddr, VirtAddr, buddy, buddy::ZONE_KERNEL, vmem::KERNEL_VMEM},
+	acpi::{
+		madt,
+		madt::{InterruptSourceOverride, Madt},
+	},
+	memory::{PhysAddr, mmio::Mmio},
+	sync::once::OnceInit,
 };
-use core::{hint, hint::likely, ptr::null_mut};
+use core::{hint, hint::likely, num::NonZeroUsize};
+use utils::{
+	collections::vec::Vec,
+	errno::{AllocResult, CollectResult},
+};
 
 /// APIC register: Local APIC ID
 pub const REG_EOI: usize = 0xb0;
@@ -92,8 +99,18 @@ fn set_base_addr(addr: usize) {
 	wrmsr(IA32_APIC_BASE_MSR, val as _);
 }
 
-/// The pointer to the Local APIC's registers, this initialized in [`init`]
-static mut BASE_ADDR: *mut u32 = null_mut();
+/// An I/O APIC
+struct IoApic {
+	/// I/O APIC's registers map
+	mmio: Mmio,
+	/// First Global System Interrupt handled by the I/O APIC
+	gsi: u32,
+}
+
+/// Local APIC's registers map, this initialized in [`init`]
+static LAPIC_MMIO: OnceInit<Mmio> = unsafe { OnceInit::new() };
+/// The list of I/O APIC on the system, this initialized in [`enumerate_ioapic`]
+static IO_APIC: OnceInit<Vec<IoApic>> = unsafe { OnceInit::new() };
 
 /// Reads a register of the local APIC.
 ///
@@ -102,7 +119,7 @@ static mut BASE_ADDR: *mut u32 = null_mut();
 /// The caller must ensure the APIC is present and `reg` is valid.
 #[inline]
 pub unsafe fn read_reg(reg: usize) -> u32 {
-	BASE_ADDR.byte_add(reg).read_volatile()
+	LAPIC_MMIO.as_ptr::<u32>().byte_add(reg).read_volatile()
 }
 
 /// Writes a register of the local APIC.
@@ -112,7 +129,10 @@ pub unsafe fn read_reg(reg: usize) -> u32 {
 /// The caller must ensure the APIC is present and `reg` is valid.
 #[inline]
 pub unsafe fn write_reg(reg: usize, value: u32) {
-	BASE_ADDR.byte_add(reg).write_volatile(value);
+	LAPIC_MMIO
+		.as_ptr::<u32>()
+		.byte_add(reg)
+		.write_volatile(value);
 }
 
 /// Waits for the delivery of an Inter-Processor Interrupt.
@@ -133,8 +153,7 @@ pub unsafe fn wait_delivery() {
 /// The caller must ensure `base_addr` points to the registers of a valid I/O APIC and `reg` is
 /// valid.
 #[inline]
-pub unsafe fn ioapic_read(base_addr: PhysAddr, reg: u8) -> u32 {
-	let base_addr: *mut u32 = base_addr.kernel_to_virtual().unwrap().as_ptr();
+pub unsafe fn ioapic_read(base_addr: *mut u32, reg: u8) -> u32 {
 	base_addr.write_volatile(reg as _);
 	base_addr.add(4).read_volatile()
 }
@@ -146,8 +165,7 @@ pub unsafe fn ioapic_read(base_addr: PhysAddr, reg: u8) -> u32 {
 /// The caller must ensure `base_addr` points to the registers of a valid I/O APIC and `reg` is
 /// valid.
 #[inline]
-pub unsafe fn ioapic_write(base_addr: PhysAddr, reg: u8, value: u32) {
-	let base_addr: *mut u32 = base_addr.kernel_to_virtual().unwrap().as_ptr();
+pub unsafe fn ioapic_write(base_addr: *mut u32, reg: u8, value: u32) {
 	base_addr.write_volatile(reg as _);
 	base_addr.add(4).write_volatile(value);
 }
@@ -158,44 +176,63 @@ pub unsafe fn ioapic_write(base_addr: PhysAddr, reg: u8, value: u32) {
 ///
 /// The caller must ensure `base_addr` points to the registers of a valid I/O APIC.
 #[inline]
-pub unsafe fn ioapic_redirect_count(base_addr: PhysAddr) -> u8 {
+pub unsafe fn ioapic_redirect_count(base_addr: *mut u32) -> u8 {
 	let val = ioapic_read(base_addr, 0x1);
 	let count = (val >> 16) as u8;
 	count.min(24)
 }
 
 /// Initializes the local APIC.
-pub(crate) fn init() {
-	// Get base address, if not done yet
-	let mut base_addr = VirtAddr::from(unsafe { BASE_ADDR });
-	if base_addr.is_null() {
-		base_addr = PhysAddr(get_base_addr())
-			.kernel_to_virtual()
-			.unwrap_or_else(|| {
-				// The address is too high for kernelspace. Allocate a page to move registers onto
-				// it
-				let phys_addr =
-					buddy::alloc(0, ZONE_KERNEL).expect("not enough memory for APIC registers");
-				phys_addr.kernel_to_virtual().unwrap()
-			});
-		unsafe {
-			BASE_ADDR = base_addr.as_ptr();
-		}
-	}
-	let base_addr_phys = base_addr.kernel_to_physical().unwrap();
-	// Enable APIC
-	set_base_addr(base_addr_phys.0);
+pub(crate) fn init() -> AllocResult<()> {
 	// Map registers
-	KERNEL_VMEM.lock().map(
-		base_addr_phys,
-		base_addr,
-		FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH | FLAG_WRITE | FLAG_GLOBAL,
-	);
+	let phys_addr = get_base_addr();
+	let mmio = Mmio::new(PhysAddr(phys_addr), NonZeroUsize::new(1).unwrap(), false)?;
+	unsafe {
+		OnceInit::init(&LAPIC_MMIO, mmio);
+	}
+	// Enable APIC
+	set_base_addr(phys_addr);
 	// Setup spurious interrupt
 	unsafe {
 		let val = read_reg(REG_SPURIOUS_INTERRUPT_VECTOR);
 		write_reg(REG_SPURIOUS_INTERRUPT_VECTOR, val | 0x1ff);
 	}
+	Ok(())
+}
+
+/// Enumerates I/O APIC(s).
+///
+/// This function must be called only once, at boot.
+pub(crate) fn enumerate_ioapic() -> AllocResult<()> {
+	let Some(madt) = acpi::get_table::<Madt>() else {
+		return Ok(());
+	};
+	let ioapics = madt
+		.entries()
+		.filter(|e| e.entry_type == 1)
+		.map(|e| {
+			let ioapic = unsafe { e.body::<madt::IOAPIC>() };
+			let phys_addr = PhysAddr(ioapic.ioapic_address as _);
+			let mmio = Mmio::new(phys_addr, NonZeroUsize::new(1).unwrap(), false)?;
+			Ok(IoApic {
+				mmio,
+				gsi: ioapic.gsi,
+			})
+		})
+		.collect::<AllocResult<CollectResult<_>>>()?
+		.0?;
+	unsafe {
+		OnceInit::init(&IO_APIC, ioapics);
+	}
+	// Remap legacy interrupts
+	let lapic_id = lapic_id();
+	madt.entries()
+		.filter(|e| e.entry_type == 2)
+		.map(|e| unsafe { e.body::<InterruptSourceOverride>() })
+		.for_each(|e| {
+			redirect_int(e.gsi, lapic_id, 0x20 + e.irq_source);
+		});
+	Ok(())
 }
 
 /// Configures an I/O APIC to redirect `gsi` (Global System Interrupt) to the CPU with the given
@@ -205,27 +242,28 @@ pub(crate) fn init() {
 /// success, it returns `true`.
 pub fn redirect_int(gsi: u32, lapic: u8, int: u8) -> bool {
 	// Find the associated I/O APIC
-	let ioapic = acpi::get_table::<Madt>().and_then(|madt| {
-		madt.entries()
-			.filter(|e| e.entry_type == 1)
-			.map(|e| unsafe { e.body::<IOAPIC>() })
-			.find(|ioapic| {
-				let base_addr = PhysAddr(ioapic.ioapic_address as _);
-				let max_entries = unsafe { ioapic_redirect_count(base_addr) } as u32;
-				(ioapic.gsi..ioapic.gsi + max_entries).contains(&gsi)
-			})
+	let ioapic = IO_APIC.iter().find(|ioapic| {
+		let max_entries = unsafe { ioapic_redirect_count(ioapic.mmio.as_ptr()) } as u32;
+		(ioapic.gsi..ioapic.gsi + max_entries).contains(&gsi)
 	});
 	let Some(ioapic) = ioapic else {
 		return false;
 	};
 	// Configure redirection
-	let base_addr = PhysAddr(ioapic.ioapic_address as _);
 	let i = (gsi - ioapic.gsi) as u8;
 	// TODO flags
 	let val = (int as u64) | ((lapic as u64) << 56);
 	unsafe {
-		ioapic_write(base_addr, IO_APIC_REDIRECTIONS_OFF + i * 2, val as u32);
-		ioapic_write(base_addr, IO_APIC_REDIRECTIONS_OFF + i * 2 + 1, val as u32);
+		ioapic_write(
+			ioapic.mmio.as_ptr(),
+			IO_APIC_REDIRECTIONS_OFF + i * 2,
+			val as u32,
+		);
+		ioapic_write(
+			ioapic.mmio.as_ptr(),
+			IO_APIC_REDIRECTIONS_OFF + i * 2 + 1,
+			val as u32,
+		);
 	}
 	true
 }

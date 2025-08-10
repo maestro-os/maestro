@@ -20,7 +20,7 @@
 //! Direct Access Memory (DMA).
 
 use crate::arch::x86::io::{inb, inl, inw, outb, outl, outw};
-use core::{mem::size_of, num::NonZeroUsize, ptr, ptr::NonNull};
+use core::{mem::size_of, num::NonZeroUsize, ptr};
 
 /// Enumeration of Memory Space BAR types.
 #[derive(Clone, Debug)]
@@ -42,7 +42,7 @@ pub enum BAR {
 		prefetchable: bool,
 
 		/// Pointer to the registers.
-		address: NonNull<u8>,
+		address: *mut u8,
 		/// The size of the address space in bytes.
 		size: NonZeroUsize,
 	},
@@ -90,11 +90,11 @@ impl BAR {
 				..
 			} => match type_ {
 				BARType::Size32 => unsafe {
-					let addr = address.as_ptr().add(off) as *const u32;
+					let addr = address.add(off) as *const u32;
 					ptr::read_volatile(addr).into()
 				},
 				BARType::Size64 => unsafe {
-					let addr = address.as_ptr().add(off) as *const u64;
+					let addr = address.add(off) as *const u64;
 					ptr::read_volatile(addr)
 				},
 			},
@@ -124,11 +124,11 @@ impl BAR {
 				..
 			} => match type_ {
 				BARType::Size32 => unsafe {
-					let addr = address.as_ptr().add(off) as *mut u32;
+					let addr = address.add(off) as *mut u32;
 					ptr::write_volatile(addr, val as _);
 				},
 				BARType::Size64 => unsafe {
-					let addr = address.as_ptr().add(off) as *mut u64;
+					let addr = address.add(off) as *mut u64;
 					ptr::write_volatile(addr, val);
 				},
 			},

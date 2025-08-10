@@ -23,11 +23,11 @@
 use crate::{
 	acpi,
 	acpi::{GenericAddr, TableHdr},
-	arch::x86::paging::{FLAG_CACHE_DISABLE, FLAG_WRITE, FLAG_WRITE_THROUGH},
-	memory::{PhysAddr, vmem::KERNEL_VMEM},
+	memory::{PhysAddr, mmio::Mmio},
 	sync::once::OnceInit,
 };
-use core::ptr;
+use core::num::NonZeroUsize;
+use utils::errno::AllocResult;
 
 /// HPET register: General Capability and ID
 const REG_CAP_ID: usize = 0x0;
@@ -66,25 +66,21 @@ impl acpi::Table for AcpiHpet {
 }
 
 /// Read register at offset `off`.
-unsafe fn reg_read(info: &AcpiHpet, off: usize) -> u64 {
-	let addr = PhysAddr(info.base_address.address as _)
-		.kernel_to_virtual()
-		.unwrap();
-	ptr::read_volatile(addr.as_ptr::<u64>().byte_add(off))
+#[inline]
+unsafe fn reg_read(base_addr: *mut u64, off: usize) -> u64 {
+	base_addr.byte_add(off).read_volatile()
 }
 
 /// Write register at offset `off`.
-unsafe fn reg_write(info: &AcpiHpet, off: usize, val: u64) {
-	let addr = PhysAddr(info.base_address.address as _)
-		.kernel_to_virtual()
-		.unwrap();
-	ptr::write_volatile(addr.as_ptr::<u64>().byte_add(off), val);
+#[inline]
+unsafe fn reg_write(base_addr: *mut u64, off: usize, val: u64) {
+	base_addr.byte_add(off).write_volatile(val);
 }
 
-/// HPET information.
+/// HPET information
 pub struct Hpet {
-	/// The HPET's ACPI information
-	pub acpi_info: &'static AcpiHpet,
+	/// The HPET registers' map
+	pub mmio: Mmio,
 	/// The period of a tick in nanoseconds
 	pub tick_period: u32,
 }
@@ -93,40 +89,37 @@ pub struct Hpet {
 pub static INFO: OnceInit<Hpet> = unsafe { OnceInit::new() };
 
 /// Initializes the HPET.
-pub(crate) fn init(acpi_info: &'static AcpiHpet) {
+pub(crate) fn init(acpi_info: &'static AcpiHpet) -> AllocResult<()> {
 	// Map registers
 	let physaddr = PhysAddr(acpi_info.base_address.address as _);
-	KERNEL_VMEM.lock().map(
-		physaddr,
-		physaddr.kernel_to_virtual().unwrap(),
-		FLAG_WRITE | FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH,
-	);
+	let mmio = Mmio::new(physaddr, NonZeroUsize::new(1).unwrap(), false)?;
 	// Read period
 	let tick_period =
-		unsafe { (reg_read(acpi_info, REG_CAP_ID) >> 32) as u32 }.div_ceil(1_000_000);
+		unsafe { (reg_read(mmio.as_ptr(), REG_CAP_ID) >> 32) as u32 }.div_ceil(1_000_000);
 	let info = Hpet {
-		acpi_info,
+		mmio,
 		tick_period,
 	};
 	unsafe {
 		OnceInit::init(&INFO, info);
 	}
+	Ok(())
 }
 
 /// Enables or disables the HPET.
 pub fn set_enabled(enabled: bool) {
 	unsafe {
-		let mut val = reg_read(INFO.acpi_info, REG_GENERAL_CONFIG);
+		let mut val = reg_read(INFO.mmio.as_ptr(), REG_GENERAL_CONFIG);
 		if enabled {
 			val |= 1;
 		} else {
 			val &= !1;
 		}
-		reg_write(INFO.acpi_info, REG_GENERAL_CONFIG, val);
+		reg_write(INFO.mmio.as_ptr(), REG_GENERAL_CONFIG, val);
 	}
 }
 
 /// Returns the current value of the HPET main counter.
 pub fn read_counter() -> u64 {
-	unsafe { reg_read(INFO.acpi_info, REG_MAIN_COUNTER) }
+	unsafe { reg_read(INFO.mmio.as_ptr(), REG_MAIN_COUNTER) }
 }
