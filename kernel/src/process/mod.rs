@@ -31,7 +31,7 @@ pub mod signal;
 pub mod user_desc;
 
 use crate::{
-	arch::x86::{FxState, gdt, idt, idt::IntFrame},
+	arch::x86::{FxState, gdt, idt, idt::IntFrame, timer::apic},
 	file,
 	file::{
 		File, O_RDWR,
@@ -408,38 +408,41 @@ pub(crate) fn init() -> EResult<()> {
 	mem::forget(int::register_callback(0x10, callback)?);
 	mem::forget(int::register_callback(0x11, callback)?);
 	mem::forget(int::register_callback(0x13, callback)?);
-	let page_fault_callback = |_id: u32, code: u32, frame: &mut IntFrame, ring: u8| {
-		let accessed_addr = VirtAddr(register_get!("cr2"));
-		let pc = frame.get_program_counter();
-		let Some(mem_space) = core_local().mem_space.get() else {
-			return CallbackResult::Panic;
-		};
-		// Check access
-		let sig = mem_space.handle_page_fault(accessed_addr, code);
-		match sig {
-			Ok(true) => {}
-			Ok(false) => {
-				if ring < 3 {
-					// Check if the fault was caused by a user <-> kernel copy
-					if (user::raw_copy as usize..user::copy_fault as usize).contains(&pc) {
-						// Jump to `copy_fault`
-						frame.set_program_counter(user::copy_fault as usize);
+	mem::forget(int::register_callback(
+		0x0e,
+		|_id: u32, code: u32, frame: &mut IntFrame, ring: u8| {
+			let accessed_addr = VirtAddr(register_get!("cr2"));
+			let pc = frame.get_program_counter();
+			let Some(mem_space) = core_local().mem_space.get() else {
+				return CallbackResult::Panic;
+			};
+			// Check access
+			let sig = mem_space.handle_page_fault(accessed_addr, code);
+			match sig {
+				Ok(true) => {}
+				Ok(false) => {
+					if ring < 3 {
+						// Check if the fault was caused by a user <-> kernel copy
+						if (user::raw_copy as usize..user::copy_fault as usize).contains(&pc) {
+							// Jump to `copy_fault`
+							frame.set_program_counter(user::copy_fault as usize);
+						} else {
+							return CallbackResult::Panic;
+						}
 					} else {
-						return CallbackResult::Panic;
+						Process::current().kill(Signal::SIGSEGV);
 					}
-				} else {
-					Process::current().kill(Signal::SIGSEGV);
 				}
+				Err(_) => Process::current().kill(Signal::SIGBUS),
 			}
-			Err(_) => Process::current().kill(Signal::SIGBUS),
-		}
-		CallbackResult::Continue
-	};
-	mem::forget(int::register_callback(0x0e, page_fault_callback)?);
+			CallbackResult::Continue
+		},
+	)?);
 	mem::forget(int::register_callback(0x20, |_, _, _, _| {
 		core_local().preempt_counter.fetch_and(!(1 << 31), Relaxed);
 		CallbackResult::Continue
 	})?);
+	apic::periodic(100_000_000);
 	Ok(())
 }
 

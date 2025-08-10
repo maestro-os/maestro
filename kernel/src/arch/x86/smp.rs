@@ -314,8 +314,9 @@ unsafe extern "C" fn smp_main() -> ! {
 	init_core_local();
 	gdt::flush();
 	tss::init();
-	apic::init().expect("APIC initialization failed");
+	apic::init(false).expect("APIC initialization failed");
 	timer::init(false).expect("timer initialization failed");
+	timer::apic::periodic(100_000_000);
 
 	println!("Started core {}", lapic_id());
 	BOOTED_CORES.fetch_add(1, Acquire);

@@ -24,10 +24,7 @@
 use super::{IA32_APIC_BASE_MSR, cpuid, rdmsr, wrmsr};
 use crate::{
 	acpi,
-	acpi::{
-		madt,
-		madt::{InterruptSourceOverride, Madt},
-	},
+	acpi::{madt, madt::Madt},
 	memory::{PhysAddr, mmio::Mmio},
 	sync::once::OnceInit,
 };
@@ -183,12 +180,16 @@ pub unsafe fn ioapic_redirect_count(base_addr: *mut u32) -> u8 {
 }
 
 /// Initializes the local APIC.
-pub(crate) fn init() -> AllocResult<()> {
+///
+/// `first` tells whether we are on the first CPU to boot.
+pub(crate) fn init(first: bool) -> AllocResult<()> {
 	// Map registers
 	let phys_addr = get_base_addr();
-	let mmio = Mmio::new(PhysAddr(phys_addr), NonZeroUsize::new(1).unwrap(), false)?;
-	unsafe {
-		OnceInit::init(&LAPIC_MMIO, mmio);
+	if first {
+		let mmio = Mmio::new(PhysAddr(phys_addr), NonZeroUsize::new(1).unwrap(), false)?;
+		unsafe {
+			OnceInit::init(&LAPIC_MMIO, mmio);
+		}
 	}
 	// Enable APIC
 	set_base_addr(phys_addr);
@@ -224,14 +225,15 @@ pub(crate) fn enumerate_ioapic() -> AllocResult<()> {
 	unsafe {
 		OnceInit::init(&IO_APIC, ioapics);
 	}
-	// Remap legacy interrupts
+	// TODO: this is necessary to use the PIT
+	/*// Remap legacy interrupts
 	let lapic_id = lapic_id();
 	madt.entries()
 		.filter(|e| e.entry_type == 2)
 		.map(|e| unsafe { e.body::<InterruptSourceOverride>() })
 		.for_each(|e| {
 			redirect_int(e.gsi, lapic_id, 0x20 + e.irq_source);
-		});
+		});*/
 	Ok(())
 }
 

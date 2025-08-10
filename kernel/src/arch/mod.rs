@@ -90,7 +90,7 @@ pub(crate) fn init2() -> AllocResult<()> {
 		if apic {
 			println!("Setup APIC");
 			pic::disable();
-			apic::init()?;
+			apic::init(true)?;
 			apic::enumerate_ioapic()?;
 			println!("Enumerate CPU cores");
 			enumerate_cpus();

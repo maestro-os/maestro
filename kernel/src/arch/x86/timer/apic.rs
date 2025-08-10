@@ -24,8 +24,8 @@ use crate::{
 	arch::x86::{
 		apic,
 		apic::{
-			LVT_MASKED, LVT_ONESHOT, REG_LVT_TIMER, REG_TIMER_CURRENT_COUNT, REG_TIMER_DIVIDE,
-			REG_TIMER_INIT_COUNT,
+			LVT_MASKED, LVT_ONESHOT, LVT_PERIODIC, REG_LVT_TIMER, REG_TIMER_CURRENT_COUNT,
+			REG_TIMER_DIVIDE, REG_TIMER_INIT_COUNT,
 		},
 		timer::hpet,
 	},
@@ -73,7 +73,9 @@ pub(crate) fn calibrate_pit() {
 
 /// Makes the current CPU cores wait for at least `ns` nanoseconds.
 ///
-/// The APIC timer needs to be calibrated before using this function.
+/// This function sets the APIC to oneshot mode, thus disabling periodic mode.
+///
+/// **Note**: the APIC timer needs to be calibrated before using this function.
 pub(super) fn ndelay(ns: u32) {
 	let tick_period = core_local().tick_period.load(Relaxed);
 	let tick_count = ns.div_ceil(tick_period as _);
@@ -85,5 +87,17 @@ pub(super) fn ndelay(ns: u32) {
 		while likely(apic::read_reg(REG_TIMER_CURRENT_COUNT) != 0) {
 			hint::spin_loop();
 		}
+	}
+}
+
+/// Sets the APIC timer to periodic mode, firing interrupts.
+///
+/// **Note**: the APIC timer needs to be calibrated before using this function.
+pub fn periodic(ns: u32) {
+	let tick_period = core_local().tick_period.load(Relaxed);
+	let tick_count = ns.div_ceil(tick_period as _);
+	unsafe {
+		apic::write_reg(REG_TIMER_INIT_COUNT, tick_count);
+		apic::write_reg(REG_LVT_TIMER, LVT_PERIODIC | 0x20);
 	}
 }
