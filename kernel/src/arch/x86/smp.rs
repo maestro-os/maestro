@@ -19,9 +19,11 @@
 //! Symmetric MultiProcessing management.
 
 use super::{
+	apic,
 	apic::{
 		REG_ERROR_STATUS, REG_ICR_HI, REG_ICR_LO, lapic_id, read_reg, wait_delivery, write_reg,
 	},
+	timer,
 	timer::udelay,
 };
 use crate::{
@@ -309,12 +311,15 @@ pub fn init(cpu: &[Cpu]) -> AllocResult<()> {
 #[unsafe(no_mangle)]
 unsafe extern "C" fn smp_main() -> ! {
 	arch::init1(false);
-	// TODO call init2? need to setup APIC? need to calibrate the APIC timer
 	init_core_local();
 	gdt::flush();
 	tss::init();
+	apic::init().expect("APIC initialization failed");
+	timer::init(false).expect("timer initialization failed");
+
 	println!("Started core {}", lapic_id());
 	BOOTED_CORES.fetch_add(1, Acquire);
+
 	// Wait for work
 	unsafe {
 		idle_task();

@@ -107,7 +107,7 @@ pub(crate) fn init2() -> AllocResult<()> {
 
 		println!("Setup timers");
 		sti();
-		timer::init()?;
+		timer::init(true)?;
 	}
 	Ok(())
 }

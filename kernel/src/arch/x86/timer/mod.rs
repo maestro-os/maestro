@@ -74,7 +74,9 @@ pub fn ndelay(ns: u32) {
 }
 
 /// Initializes x86 timers.
-pub(crate) fn init() -> AllocResult<()> {
+///
+/// `first` tells whether we are on the first CPU to boot.
+pub(crate) fn init(first: bool) -> AllocResult<()> {
 	if !x86::apic::is_present() {
 		// We assume the PIT is the only timer present
 		pit::init(10);
@@ -82,11 +84,15 @@ pub(crate) fn init() -> AllocResult<()> {
 	}
 	// Initialize a known-frequency timer
 	if let Some(hpet) = acpi::get_table::<AcpiHpet>() {
-		hpet::init(hpet)?;
+		if first {
+			hpet::init(hpet)?;
+		}
 		apic::calibrate_hpet()?;
 	} else {
 		// No HPET, we assume the PIT is present
-		pit::init(10);
+		if first {
+			pit::init(10);
+		}
 		apic::calibrate_pit();
 	}
 	Ok(())

@@ -30,12 +30,17 @@ use crate::{
 		timer::hpet,
 	},
 	process::scheduler::core_local,
+	sync::mutex::Mutex,
 };
 use core::{hint, hint::likely, sync::atomic::Ordering::Relaxed};
 use utils::errno::AllocResult;
 
+/// Mutex to prevent several cores from trying to calibrate their APIC timers at the same time.
+static CALIBRATION_MUTEX: Mutex<()> = Mutex::new(());
+
 /// Measures and stores the frequency of the APIC timer, using the HPET.
 pub(crate) fn calibrate_hpet() -> AllocResult<()> {
+	let _guard = CALIBRATION_MUTEX.lock();
 	// The amount of ticks over which we calibrate
 	const APIC_TICKS: u32 = 0x10000;
 	// Setup APIC
@@ -62,6 +67,7 @@ pub(crate) fn calibrate_hpet() -> AllocResult<()> {
 
 /// Measures and stores the frequency of the APIC timer, using the PIT.
 pub(crate) fn calibrate_pit() {
+	let _guard = CALIBRATION_MUTEX.lock();
 	todo!()
 }
 
