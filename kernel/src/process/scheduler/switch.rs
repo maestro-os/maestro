@@ -19,7 +19,7 @@
 //! Context switching utilities.
 
 use crate::{
-	arch::x86::{fxrstor, fxsave, gdt, idt::IntFrame, sti},
+	arch::x86::{fxrstor, fxsave, gdt, idt::IntFrame},
 	memory::vmem::KERNEL_VMEM,
 	process::{Process, mem_space::MemSpace, scheduler::core_local},
 };
@@ -103,6 +103,9 @@ unsafe extern "C" {
 	#[allow(improper_ctypes)]
 	fn switch_asm(prev: *const Process, next: *const Process);
 
+	/// Trampoline prepare for launching a new kernel thread.
+	fn kthread_trampoline();
+
 	/// The idle task code.
 	pub fn idle_task() -> !;
 }
@@ -113,8 +116,10 @@ global_asm!(r#"
 
 .global fork_asm
 .global switch_asm
+.global kthread_trampoline
 .type fork_asm, @function
 .type switch_asm, @function
+.type kthread_trampoline, @function
 
 fork_asm:
 	# Save parent context
@@ -153,6 +158,18 @@ switch_asm:
 	mov [esp + 4], eax
 	mov [esp + 8], edx
 	jmp switch_finish
+
+kthread_trampoline:
+	# Remove arguments to switch_asm
+	add esp, 8
+	
+	# Clear segment selectors
+	xor bx, bx
+	mov fs, bx
+	mov gs, bx
+
+	# Jump to entry point
+	ret
 "#, off = const offset_of!(Process, kernel_sp));
 
 #[cfg(target_arch = "x86_64")]
@@ -161,8 +178,10 @@ global_asm!(r#"
 
 .global fork_asm
 .global switch_asm
+.global kthread_trampoline
 .type fork_asm, @function
 .type switch_asm, @function
+.type kthread_trampoline, @function
 
 fork_asm:
 	# Save parent context, to resume in `switch_asm`
@@ -197,6 +216,31 @@ switch_asm:
 	pop rbp
 
 	jmp switch_finish
+
+kthread_trampoline:
+	# Save GS base
+	mov ecx, 0xc0000101
+	rdmsr
+
+	# Clear segment selectors
+	xor bx, bx
+	mov fs, bx
+	mov gs, bx
+
+	# Restore GS base
+	mov ecx, 0xc0000101
+	wrmsr
+
+	# Zero FS base and Kernel GS base
+	xor eax, eax
+	xor edx, edx
+	mov ecx, 0xc0000100
+	wrmsr
+	mov ecx, 0xc0000102
+	wrmsr
+
+	# Jump to entry point
+	ret
 "#, off = const offset_of!(Process, kernel_sp));
 
 /// Finishes switching context from `prev` to `next`, that is restore everything else than
@@ -238,21 +282,25 @@ pub type KThreadEntry = fn() -> !;
 #[cfg(target_arch = "x86")]
 #[repr(C, packed)]
 struct KThreadInit {
-	/// Padding for unused registers pop.
+	/// Padding for unused registers pop
 	pad: [u8; 16],
-	/// Program counter.
-	rip: u32,
-	/// Space for the arguments to [`switch`].
+	/// `kthread_trampoline` address
+	trampoline: u32,
+	/// Space for the arguments to [`switch_asm`]
 	args: [u32; 2],
+	/// The thread's entry point
+	entry: u32,
 }
 
 #[cfg(target_arch = "x86_64")]
 #[repr(C, packed)]
 struct KThreadInit {
-	/// Padding for unused registers pop.
+	/// Padding for unused registers pop
 	pad: [u8; 48],
-	/// Program counter.
-	rip: u64,
+	/// `kthread_trampoline` address
+	trampoline: u64,
+	/// The thread's entry point
+	entry: u64,
 }
 
 /// Writes an initialization frame for a kernel thread on `stack`.
@@ -266,40 +314,18 @@ pub unsafe fn init_kthread(stack: NonNull<u8>, entry: KThreadEntry) -> *mut u8 {
 	#[cfg(target_arch = "x86")]
 	let frame = KThreadInit {
 		pad: [0; 16],
-		rip: entry as *const u8 as _,
+		trampoline: kthread_trampoline as *const () as _,
 		// this will get written on by `switch_asm`
 		args: [0; 2],
+		entry: entry as *const () as _,
 	};
 	#[cfg(target_arch = "x86_64")]
 	let frame = KThreadInit {
 		pad: [0; 48],
-		rip: entry as *const u8 as _,
+		trampoline: kthread_trampoline as *const () as _,
+		entry: entry as *const () as _,
 	};
 	let stack = stack.cast().sub(1);
 	stack.write(frame);
 	stack.cast().as_ptr()
-}
-
-// FIXME: this function is necessary because kernel threads don't go through `init_ctx`, as such,
-// they inherit their fs and gs from the previously running task. We need a better solution here
-/// Called at the initialization of a kernel thread, to setup registers.
-pub fn kthread_setup() {
-	#[cfg(target_arch = "x86_64")]
-	{
-		use crate::arch::x86;
-		use core::arch::asm;
-
-		let gs_base = x86::rdmsr(x86::IA32_GS_BASE);
-		unsafe {
-			asm!(
-				"mov fs, {r:x}",
-				"mov gs, {r:x}",
-				r = in(reg) 0
-			);
-		}
-		x86::wrmsr(x86::IA32_FS_BASE, 0);
-		x86::wrmsr(x86::IA32_GS_BASE, gs_base);
-		x86::wrmsr(x86::IA32_KERNEL_GS_BASE, 0);
-	}
-	sti(); // FIXME: risky for critical sections?
 }

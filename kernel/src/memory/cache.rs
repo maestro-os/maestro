@@ -34,7 +34,6 @@ use crate::{
 		stats::MEM_INFO,
 	},
 	println,
-	process::scheduler::switch::kthread_setup,
 	sync::mutex::IntMutex,
 	time::{
 		clock::{Clock, current_time_ms},
@@ -467,7 +466,6 @@ fn flush_task_inner(cur_ts: Timestamp) {
 
 /// The entry point of the kernel task flushing cached memory back to disk.
 pub(crate) fn flush_task() -> ! {
-	kthread_setup();
 	loop {
 		let cur_ts = current_time_ms(Clock::Boottime);
 		flush_task_inner(cur_ts);
