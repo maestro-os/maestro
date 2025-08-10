@@ -30,7 +30,7 @@ mod scancode;
 use crate::scancode::ScancodeSet;
 use core::any::Any;
 use kernel::{
-	arch::x86::{idt, idt::IntFrame, io},
+	arch::x86::{apic, apic::lapic_id, idt, idt::IntFrame, io},
 	device::{
 		keyboard::{Keyboard, KeyboardAction, KeyboardKey, KeyboardLED, KeyboardManager},
 		manager,
@@ -44,7 +44,7 @@ use kernel::{
 kernel::module!([]);
 
 /// The interrupt number for keyboard input events.
-const KEYBOARD_INTERRUPT_ID: u32 = 0x21;
+const KBD_INT: u8 = 0x21;
 
 /// Register: Data
 const DATA_REGISTER: u16 = 0x60;
@@ -313,7 +313,10 @@ fn init_in() -> Result<(), ()> {
 		CallbackResult::Continue
 	};
 
-	let hook_result = int::register_callback(KEYBOARD_INTERRUPT_ID, callback);
+	if apic::is_present() {
+		apic::redirect_int(0x1, lapic_id(), KBD_INT);
+	}
+	let hook_result = int::register_callback(KBD_INT as _, callback);
 	kbd.keyboard_interrupt_callback_hook = hook_result.map_err(|_| ())?;
 
 	Ok(())
