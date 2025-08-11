@@ -107,31 +107,33 @@ impl CoreLocal {
 
 /// Allocate core-local structures.
 pub(crate) fn alloc_core_local() -> AllocResult<()> {
-	let idle_task = Process::idle_task()?;
 	// Initialize core locales
 	let core_locals = CPU
 		.iter()
-		.map(|cpu| CoreLocal {
-			kernel_stack: AtomicUsize::new(0),
-			user_stack: AtomicUsize::new(0),
+		.map(|cpu| {
+			let idle_task = Process::idle_task()?;
+			Ok(CoreLocal {
+				kernel_stack: AtomicUsize::new(0),
+				user_stack: AtomicUsize::new(0),
 
-			cpu,
-			gdt: Default::default(),
-			tss: Default::default(),
+				cpu,
+				gdt: Default::default(),
+				tss: Default::default(),
 
-			scheduler: Scheduler {
-				queue: IntMutex::new(list!(Process, sched_node)),
-				queue_len: AtomicUsize::new(0),
-				cur_proc: AtomicArc::from(idle_task.clone()),
+				scheduler: Scheduler {
+					queue: IntMutex::new(list!(Process, sched_node)),
+					queue_len: AtomicUsize::new(0),
+					cur_proc: AtomicArc::from(idle_task.clone()),
 
-				idle_task: idle_task.clone(),
-			},
-			tick_period: AtomicU64::new(0),
-			preempt_counter: AtomicU32::new(1 << 31),
+					idle_task: idle_task.clone(),
+				},
+				tick_period: AtomicU64::new(0),
+				preempt_counter: AtomicU32::new(1 << 31),
 
-			mem_space: AtomicOptionalArc::new(),
+				mem_space: AtomicOptionalArc::new(),
+			})
 		})
-		.collect::<CollectResult<Vec<CoreLocal>>>()
+		.collect::<AllocResult<CollectResult<_>>>()?
 		.0?;
 	unsafe {
 		OnceInit::init(&CORE_LOCAL, core_locals);
