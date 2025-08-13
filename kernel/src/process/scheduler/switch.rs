@@ -25,22 +25,18 @@ use crate::{
 };
 use core::{arch::global_asm, mem::offset_of, ptr::NonNull};
 
-/// Stashes current segment values during execution of `f`, restoring them after.
-pub fn stash_segments<F: FnOnce() -> T, T>(f: F) -> T {
+/// Saves the current FS and GS values to `proc`.
+pub fn save_segments(proc: &Process) {
 	#[cfg(not(target_arch = "x86_64"))]
-	{
-		// No need to save segments, this is done when switching to kernelspace
-		f()
-	}
+	let _ = proc;
 	#[cfg(target_arch = "x86_64")]
 	{
 		use crate::arch::x86;
-		use core::arch::asm;
+		use core::{arch::asm, sync::atomic::Ordering::Relaxed};
 
-		// Save MSR (not the kernel's GS since the task might change CPU)
-		let fs_base = x86::rdmsr(x86::IA32_FS_BASE);
-		let kernel_gs_base = x86::rdmsr(x86::IA32_KERNEL_GS_BASE);
-		// Save segment selectors
+		proc.fs_base.store(x86::rdmsr(x86::IA32_FS_BASE), Relaxed);
+		proc.gs_base
+			.store(x86::rdmsr(x86::IA32_KERNEL_GS_BASE), Relaxed);
 		let mut fs: u16;
 		let mut gs: u16;
 		unsafe {
@@ -51,9 +47,25 @@ pub fn stash_segments<F: FnOnce() -> T, T>(f: F) -> T {
 				gs = out(reg) gs
 			);
 		}
-		let res = f();
-		// Restore segment selectors
+		proc.fs_selector.store(fs, Relaxed);
+		proc.gs_selector.store(gs, Relaxed);
+	}
+}
+
+/// Restores the FS and GS values from `proc` to the current context.
+pub fn restore_segments(proc: &Process) {
+	#[cfg(not(target_arch = "x86_64"))]
+	let _ = proc;
+	#[cfg(target_arch = "x86_64")]
+	{
+		use crate::arch::x86;
+		use core::{arch::asm, sync::atomic::Ordering::Relaxed};
+
+		// Stash to prevent zeroing when settings `gs`
 		let gs_base = x86::rdmsr(x86::IA32_GS_BASE);
+		// Restore segment selectors
+		let fs = proc.fs_selector.load(Relaxed);
+		let gs = proc.gs_selector.load(Relaxed);
 		unsafe {
 			asm!(
 				"mov fs, {fs:x}",
@@ -62,23 +74,13 @@ pub fn stash_segments<F: FnOnce() -> T, T>(f: F) -> T {
 				gs = in(reg) gs
 			);
 		}
-		// Restore MSR
-		x86::wrmsr(x86::IA32_FS_BASE, fs_base);
 		x86::wrmsr(x86::IA32_GS_BASE, gs_base);
-		x86::wrmsr(x86::IA32_KERNEL_GS_BASE, kernel_gs_base);
-		res
+		// Restore bases
+		let fs_base = proc.fs_base.load(Relaxed);
+		let gs_base = proc.gs_base.load(Relaxed);
+		x86::wrmsr(x86::IA32_FS_BASE, fs_base);
+		x86::wrmsr(x86::IA32_KERNEL_GS_BASE, gs_base);
 	}
-}
-
-/// Switches context from `prev` to `next`.
-///
-/// After returning, the execution will continue on `next`.
-///
-/// # Safety
-///
-/// The pointers must point to valid processes.
-pub unsafe fn switch(prev: *const Process, next: *const Process) {
-	stash_segments(|| switch_asm(prev, next));
 }
 
 // Note: the functions below are saving only the registers that are not clobbered by the call to
@@ -91,50 +93,35 @@ unsafe extern "C" {
 	///
 	/// The context described by `frame` must be valid.
 	pub fn init_ctx(frame: &IntFrame) -> !;
-	/// Saves state of the current context in `parent`, then switches to the next context described
-	/// by `frame`.
+	/// The idle task code.
+	pub fn idle_task() -> !;
+
+	/// Switches context from `prev` to `next`.
 	///
 	/// # Safety
 	///
-	/// The context described by `frame` must be valid.
+	/// The pointers must point to valid processes.
 	#[allow(improper_ctypes)]
-	pub fn fork_asm(parent: *const Process, child: *const Process, frame: &IntFrame);
+	pub fn switch(prev: *const Process, next: *const Process);
 
-	#[allow(improper_ctypes)]
-	fn switch_asm(prev: *const Process, next: *const Process);
-
+	/// Trampoline for launching a new process after a fork.
+	fn fork_trampoline();
 	/// Trampoline prepare for launching a new kernel thread.
 	fn kthread_trampoline();
-
-	/// The idle task code.
-	pub fn idle_task() -> !;
 }
 
 #[cfg(target_arch = "x86")]
 global_asm!(r#"
 .section .text
 
-.global fork_asm
-.global switch_asm
+.global switch
+.global fork_trampoline
 .global kthread_trampoline
-.type fork_asm, @function
-.type switch_asm, @function
+.type switch, @function
+.type fork_trampoline, @function
 .type kthread_trampoline, @function
 
-fork_asm:
-	# Save parent context
-	push ebp
-	push ebx
-	push esi
-	push edi
-    mov eax, [esp + 20]
-    mov [eax + {off}], esp
-
-	# Set stack at the frame's position (shift by 4 to fake `eip`)
-	add esp, 24
-	jmp init_ctx
-
-switch_asm:
+switch:
 	# Preserve arguments across stack switch
 	mov eax, [esp + 4]
 	mov edx, [esp + 8]
@@ -159,8 +146,14 @@ switch_asm:
 	mov [esp + 8], edx
 	jmp switch_finish
 
+fork_trampoline:
+	# Remove unused arguments to `switch`
+	add esp, 8
+	push esp
+	jmp init_ctx
+	
 kthread_trampoline:
-	# Remove arguments to switch_asm
+	# Remove arguments to switch
 	add esp, 8
 	
 	# Clear segment selectors
@@ -176,27 +169,14 @@ kthread_trampoline:
 global_asm!(r#"
 .section .text
 
-.global fork_asm
-.global switch_asm
+.global switch
+.global fork_trampoline
 .global kthread_trampoline
-.type fork_asm, @function
-.type switch_asm, @function
+.type switch, @function
+.type fork_trampoline, @function
 .type kthread_trampoline, @function
 
-fork_asm:
-	# Save parent context, to resume in `switch_asm`
-	push rbp
-	push rbx
-	push r12
-	push r13
-	push r14
-	push r15
-    mov [rdi + {off}], rsp
-
-	mov rdi, rdx
-	jmp init_ctx
-
-switch_asm:
+switch:
 	push rbp
 	push rbx
 	push r12
@@ -216,6 +196,10 @@ switch_asm:
 	pop rbp
 
 	jmp switch_finish
+
+fork_trampoline:
+	mov rdi, rsp
+	jmp init_ctx
 
 kthread_trampoline:
 	# Save GS base
@@ -249,31 +233,86 @@ kthread_trampoline:
 /// This function is jumped to from [`switch`].
 #[unsafe(export_name = "switch_finish")]
 pub extern "C" fn finish(prev: &Process, next: &Process) {
-	// Bind the memory space
+	// TODO save and restore only if necessary (enable the FPU when the first interruption occurs)
+	// Switch FPU state
+	fxsave(&mut prev.fpu.lock());
+	fxrstor(&next.fpu.lock());
+	// Save segments
+	save_segments(prev);
+	// Restore TLS entries from `next`
+	next.tls
+		.lock()
+		.iter()
+		.enumerate()
+		.for_each(|(i, ent)| unsafe {
+			ent.update_gdt(gdt::TLS_OFFSET + i * size_of::<gdt::Entry>());
+		});
+	// Bind memory space
 	match next.mem_space.as_ref() {
 		Some(mem_space) => MemSpace::bind(mem_space),
 		// No associated memory context: bind the kernel's
 		None => KERNEL_VMEM.lock().bind(),
 	}
+	// Restore segments
+	restore_segments(next);
 	// Update the TSS for the process
 	unsafe {
 		core_local()
 			.tss()
 			.set_kernel_stack(next.kernel_stack.top().as_ptr());
 	}
-	// Update TLS entries in the GDT
-	{
-		let tls = next.tls.lock();
-		for (i, ent) in tls.iter().enumerate() {
-			unsafe {
-				ent.update_gdt(gdt::TLS_OFFSET + i * size_of::<gdt::Entry>());
-			}
-		}
-	}
-	// TODO save and restore only if necessary (enable the FPU when the first interruption occurs)
-	// Save and restore FPU state
-	fxsave(&mut prev.fpu.lock());
-	fxrstor(&next.fpu.lock());
+}
+
+#[cfg(target_arch = "x86")]
+#[repr(C, packed)]
+struct ForkFrame {
+	/// Padding for unused registers pop
+	pad: [u8; 16],
+	/// `fork_trampoline` address
+	trampoline: u32,
+	/// Space for the arguments to [`switch`]
+	args: [u32; 2],
+	/// Initial frame
+	frame: IntFrame,
+}
+
+#[cfg(target_arch = "x86_64")]
+#[repr(C, packed)]
+struct ForkFrame {
+	/// Padding for unused registers pop
+	pad: [u8; 48],
+	/// `fork_trampoline` address
+	trampoline: u64,
+	/// Initial frame
+	frame: IntFrame,
+}
+
+/// Writes a forking frame on `stack`.
+///
+/// `frame` is the register state the process begins with.
+///
+/// The function returns the new stack pointer with the frame on top.
+///
+/// # Safety
+///
+/// `stack` must be the top of a valid stack.
+pub unsafe fn init_fork(stack: NonNull<u8>, frame: IntFrame) -> *mut u8 {
+	#[cfg(target_arch = "x86")]
+	let frame = ForkFrame {
+		pad: [0; 16],
+		trampoline: fork_trampoline as *const () as _,
+		args: [0; 2],
+		frame,
+	};
+	#[cfg(target_arch = "x86_64")]
+	let frame = ForkFrame {
+		pad: [0; 48],
+		trampoline: fork_trampoline as *const () as _,
+		frame,
+	};
+	let stack = stack.cast().sub(1);
+	stack.write(frame);
+	stack.cast().as_ptr()
 }
 
 /// The entry point of a kernel thread.
@@ -286,7 +325,7 @@ struct KThreadInit {
 	pad: [u8; 16],
 	/// `kthread_trampoline` address
 	trampoline: u32,
-	/// Space for the arguments to [`switch_asm`]
+	/// Space for the arguments to [`switch`]
 	args: [u32; 2],
 	/// The thread's entry point
 	entry: u32,
@@ -315,7 +354,6 @@ pub unsafe fn init_kthread(stack: NonNull<u8>, entry: KThreadEntry) -> *mut u8 {
 	let frame = KThreadInit {
 		pad: [0; 16],
 		trampoline: kthread_trampoline as *const () as _,
-		// this will get written on by `switch_asm`
 		args: [0; 2],
 		entry: entry as *const () as _,
 	};

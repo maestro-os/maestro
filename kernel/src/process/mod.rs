@@ -48,24 +48,24 @@ use crate::{
 		rusage::Rusage,
 		scheduler::{
 			Scheduler, core_local, dequeue, enqueue, switch,
-			switch::{KThreadEntry, idle_task},
+			switch::{KThreadEntry, idle_task, save_segments},
 		},
 		signal::{SIGNALS_COUNT, SigSet},
 	},
 	register_get,
-	sync::{mutex::Mutex, rwlock::IntRwLock},
+	sync::{atomic::AtomicU64, mutex::Mutex, rwlock::IntRwLock},
 	syscall::FromSyscallArg,
 	time::timer::TimerManager,
 };
 use core::{
-	ffi::c_int,
+	ffi::{c_int, c_void},
 	fmt,
 	fmt::Formatter,
 	hint::unlikely,
 	mem,
 	ptr::NonNull,
 	sync::atomic::{
-		AtomicBool, AtomicPtr, AtomicU8, AtomicU32,
+		AtomicBool, AtomicPtr, AtomicU8, AtomicU16, AtomicU32,
 		Ordering::{Acquire, Relaxed, Release, SeqCst},
 	},
 };
@@ -337,6 +337,15 @@ pub struct Process {
 	kernel_sp: AtomicPtr<u8>,
 	/// The process's FPU state.
 	fpu: Mutex<FxState>,
+
+	/// FS segment selector
+	fs_selector: AtomicU16,
+	/// GS segment selector
+	gs_selector: AtomicU16,
+	/// FS segment hidden base
+	fs_base: AtomicU64,
+	/// GS segment hidden base
+	gs_base: AtomicU64,
 	/// TLS entries.
 	pub tls: Mutex<[gdt::Entry; TLS_ENTRIES_COUNT]>, // TODO rwlock
 
@@ -498,6 +507,11 @@ impl Process {
 			kernel_stack,
 			kernel_sp: AtomicPtr::new(kernel_sp),
 			fpu: Mutex::new(FxState([0; 512])),
+
+			fs_selector: Default::default(),
+			gs_selector: Default::default(),
+			fs_base: Default::default(),
+			gs_base: Default::default(),
 			tls: Default::default(),
 
 			// Not needed for kernel threads
@@ -565,6 +579,11 @@ impl Process {
 			kernel_stack: KernelStack::new()?,
 			kernel_sp: AtomicPtr::default(),
 			fpu: Mutex::new(FxState([0; 512])),
+
+			fs_selector: Default::default(),
+			gs_selector: Default::default(),
+			fs_base: Default::default(),
+			gs_base: Default::default(),
 			tls: Default::default(),
 
 			mem_space: UnsafeMut::new(None),
@@ -812,19 +831,20 @@ impl Process {
 	/// Forks the current process.
 	///
 	/// Arguments:
-	/// - `this` is the parent process.
-	/// - `fork_options` are the options for the fork operation.
-	///
-	/// On fail, the function returns an error.
-	///
-	/// If the `this` is not running, the behaviour is undefined.
-	pub fn fork(this: Arc<Self>, fork_options: ForkOptions) -> EResult<Arc<Self>> {
-		debug_assert!(matches!(this.get_state(), State::Running));
+	/// - `frame` is the process's userspace frame
+	/// - `stack` is the userspace stack to use. If null, the stack is left untouched
+	/// - `fork_options` are the options for the fork operation
+	pub fn fork(
+		frame: &IntFrame,
+		stack: *mut c_void,
+		fork_options: ForkOptions,
+	) -> EResult<Arc<Self>> {
+		let parent = Process::current();
 		let pid = PidHandle::unique()?;
 		let pid_int = *pid;
 		// Clone memory space
 		let mem_space = {
-			let curr_mem_space = this.mem_space.as_ref().unwrap();
+			let curr_mem_space = parent.mem_space.as_ref().unwrap();
 			if fork_options.share_memory {
 				curr_mem_space.clone()
 			} else {
@@ -833,9 +853,10 @@ impl Process {
 		};
 		// Clone file descriptors
 		let file_descriptors = if fork_options.share_fd {
-			this.file_descriptors.get().clone()
+			parent.file_descriptors.get().clone()
 		} else {
-			this.file_descriptors
+			parent
+				.file_descriptors
 				.as_ref()
 				.map(|fds| -> EResult<_> {
 					let fds = fds.lock();
@@ -846,7 +867,7 @@ impl Process {
 		};
 		// Clone signal handlers
 		let signal_handlers = {
-			let signal_manager = this.signal.lock();
+			let signal_manager = parent.signal.lock();
 			if fork_options.share_sighand {
 				signal_manager.handlers.clone()
 			} else {
@@ -854,12 +875,20 @@ impl Process {
 				Arc::new(Mutex::new(handlers))?
 			}
 		};
-		let group_leader = this
+		let group_leader = parent
 			.links
 			.lock()
 			.group_leader
 			.clone()
-			.unwrap_or_else(|| this.clone());
+			.unwrap_or_else(|| parent.clone());
+		// Init stack
+		let kernel_stack = KernelStack::new()?;
+		let mut frame = frame.clone();
+		frame.rax = 0; // Return value
+		if !stack.is_null() {
+			frame.rsp = stack as _;
+		}
+		let kernel_sp = unsafe { switch::init_fork(kernel_stack.top(), frame) };
 		let proc = Arc::new(Self {
 			pid,
 			tid: pid_int,
@@ -867,26 +896,31 @@ impl Process {
 			state: AtomicU8::new(State::Running as _),
 			vfork_done: AtomicBool::new(false),
 			links: Mutex::new(ProcessLinks {
-				parent: Some(this.clone()),
+				parent: Some(parent.clone()),
 				group_leader: Some(group_leader.clone()),
 				..Default::default()
 			}),
 
 			sched_node: ListNode::default(),
 
-			kernel_stack: KernelStack::new()?,
-			kernel_sp: AtomicPtr::default(),
-			fpu: Mutex::new(this.fpu.lock().clone()),
-			tls: Mutex::new(*this.tls.lock()),
+			kernel_stack,
+			kernel_sp: AtomicPtr::new(kernel_sp),
+			fpu: Mutex::new(parent.fpu.lock().clone()),
+
+			fs_selector: Default::default(),
+			gs_selector: Default::default(),
+			fs_base: Default::default(),
+			gs_base: Default::default(),
+			tls: Mutex::new(*parent.tls.lock()),
 
 			mem_space: UnsafeMut::new(Some(mem_space)),
-			fs: Some(Mutex::new(this.fs().lock().clone())),
+			fs: Some(Mutex::new(parent.fs().lock().clone())),
 			file_descriptors: UnsafeMut::new(file_descriptors),
-			// TODO if creating a thread: timer_manager: this.timer_manager.clone(),
+			// TODO if creating a thread: timer_manager: parent.timer_manager.clone(),
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid_int)?))?,
 			signal: Mutex::new(ProcessSignal {
 				handlers: signal_handlers,
-				sigmask: this.signal.lock().sigmask,
+				sigmask: parent.signal.lock().sigmask,
 				sigpending: Default::default(),
 
 				exit_status: 0,
@@ -896,8 +930,10 @@ impl Process {
 
 			rusage: Default::default(),
 		})?;
+		// Set FS and GS
+		save_segments(&proc);
 		// TODO on failure, must undo
-		this.add_child(pid_int)?;
+		parent.add_child(pid_int)?;
 		{
 			let mut links = group_leader.links.lock();
 			if let Err(i) = links.process_group.binary_search(&pid_int) {
