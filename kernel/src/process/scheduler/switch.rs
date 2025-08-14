@@ -150,7 +150,7 @@ fork_trampoline:
 	# Remove unused arguments to `switch`
 	add esp, 8
 	push esp
-	jmp init_ctx
+	call init_ctx
 	
 kthread_trampoline:
 	# Remove arguments to switch
