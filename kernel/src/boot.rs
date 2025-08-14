@@ -231,6 +231,7 @@ multiboot_entry:
 
 	# Enable LME
 	mov ecx, 0xc0000080 # EFER
+	xor edx, edx
 	rdmsr
 	or eax, 0x901
 	wrmsr

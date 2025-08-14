@@ -70,7 +70,7 @@ smp_trampoline:
 _gdt_table:
 	.long 0, 0
 	.long 0x0000ffff, 0x00cf9a00 # code
-	.long 0x0000ffff, 0x008f9200 # data
+	.long 0x0000ffff, 0x00cf9200 # data
 _gdt:
 	.word _gdt - _gdt_table - 1
 	.long 0x8010
@@ -79,7 +79,7 @@ _gdt:
 
 	xor ax, ax
 	mov ds, ax
-	lgdt [0x8030]
+	lgdt [0x8028]
 	mov eax, cr0
 	or eax, 1
 	mov cr0, eax
@@ -106,23 +106,24 @@ _gdt:
 	mov cr4, eax
 
 	# Enable paging and write protect
+	mov eax, cr0
 	or eax, 0x80010000
 	mov cr0, eax
 
 	# Setup local stack
-	mov esp, [SMP_VAR_ADDR + 8]
-	shl ebx, 3
+	mov esp, [SMP_VAR_ADDR + 4]
+	shl ebx, 2
 	add esp, ebx
 	mov esp, [esp]
 
 	push 0
 	popfd
 
-	jmp smp_main
+	mov eax, offset smp_main
+	jmp eax
 
 .align 8
-smp_trampoline_end:
-"
+smp_trampoline_end:"
 );
 
 #[cfg(target_arch = "x86_64")]
@@ -145,7 +146,7 @@ smp_trampoline:
 _gdt_table:
 	.long 0, 0
 	.long 0x0000ffff, 0x00af9a00 # code 64
-	.long 0x0000ffff, 0x008f9200 # data
+	.long 0x0000ffff, 0x00cf9200 # data
 	.long 0x0000ffff, 0x00cf9a00 # code 32
 _gdt:
 	.word _gdt - _gdt_table - 1
@@ -183,16 +184,19 @@ _gdt:
 
 	# Enable LME
 	mov ecx, 0xc0000080 # EFER
+	xor edx, edx
 	rdmsr
 	or eax, 0x901
 	wrmsr
 
 	# Enable paging and write protect
+	mov eax, cr0
 	or eax, 0x80010000
 	mov cr0, eax
 
-	ljmp 8, 0x80a2
+	ljmp 8, 0x80c0
 
+.align 32
 .code64
 	# Setup local stack
 	mov rsp, [SMP_VAR_ADDR + 8]
@@ -207,8 +211,7 @@ _gdt:
 	jmp rax
 
 .align 8
-smp_trampoline_end:
-"
+smp_trampoline_end:"
 );
 
 unsafe extern "C" {
@@ -240,12 +243,12 @@ pub fn init(cpu: &[Cpu]) -> AllocResult<()> {
 		write_ro(|| {
 			trampoline_ptr.copy_from(smp_trampoline as *const _, trampoline_len);
 			// Pass pointers to the trampoline
-			let ptrs = trampoline_ptr.add(trampoline_len).cast();
+			let ptrs: *mut usize = trampoline_ptr.add(trampoline_len).cast();
 			let vmem_phys = VirtAddr::from(KERNEL_VMEM.lock().inner().as_ptr())
 				.kernel_to_physical()
 				.unwrap();
-			ptr::write_volatile(ptrs, vmem_phys.0 as u64);
-			ptr::write_volatile(ptrs.add(1), stacks.as_ptr() as u64);
+			ptr::write_volatile(ptrs, vmem_phys.0);
+			ptr::write_volatile(ptrs.add(1), stacks.as_ptr() as _);
 		});
 	}
 	// Boot cores
