@@ -28,13 +28,7 @@
 #[cfg(config_debug_qemu)]
 use crate::debug::qemu;
 use crate::power;
-use core::{
-	any::type_name,
-	sync::{atomic, atomic::AtomicBool},
-};
-
-/// Boolean value telling whether selftesting is running.
-static RUNNING: AtomicBool = AtomicBool::new(false);
+use core::any::type_name;
 
 /// Trait for any testable feature.
 pub trait Testable {
@@ -60,18 +54,11 @@ where
 /// possible.
 pub fn runner(tests: &[&dyn Testable]) {
 	crate::println!("Running {} tests", tests.len());
-	RUNNING.store(true, atomic::Ordering::Relaxed);
 	for test in tests {
 		test.run();
 	}
-	RUNNING.store(false, atomic::Ordering::Relaxed);
 	crate::println!("No more tests to run");
 	#[cfg(config_debug_qemu)]
 	qemu::exit(qemu::SUCCESS);
 	power::halt();
-}
-
-/// Tells whether selftesting is running.
-pub fn is_running() -> bool {
-	RUNNING.load(atomic::Ordering::Relaxed)
 }

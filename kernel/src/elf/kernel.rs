@@ -24,7 +24,11 @@ use crate::{
 	multiboot::BOOT_INFO,
 	sync::once::OnceInit,
 };
-use core::ptr;
+use core::{
+	hint::unlikely,
+	ptr,
+	sync::atomic::{AtomicBool, Ordering::Relaxed},
+};
 use utils::{
 	collections::hashmap::HashMap,
 	errno::{AllocResult, CollectResult},
@@ -44,6 +48,8 @@ pub type KernSym = super::ELF32Sym;
 #[cfg(target_arch = "x86_64")]
 pub type KernSym = super::ELF64Sym;
 
+/// Tells whether global variables have been initialized.
+pub(crate) static SYM_INIT: AtomicBool = AtomicBool::new(false);
 /// A reference to the strtab.
 static STRTAB: OnceInit<KernSectionHeader> = unsafe { OnceInit::new() };
 /// Name-to-symbol map for the kernel.
@@ -127,6 +133,10 @@ pub fn get_symbol_name(symbol: &KernSym) -> Option<&'static [u8]> {
 ///
 /// If the name cannot be retrieved, the function returns `None`.
 pub fn get_function_name(inst: VirtAddr) -> Option<&'static [u8]> {
+	// This function might be during a panic, which may happen before symbols are enumerated
+	if unlikely(!SYM_INIT.load(Relaxed)) {
+		return None;
+	}
 	symbols()
 		.find(|sym| {
 			let begin = VirtAddr(sym.st_value as usize);
@@ -165,5 +175,6 @@ pub(crate) fn init() -> AllocResult<()> {
 	unsafe {
 		OnceInit::init(&SYMBOLS, map);
 	}
+	SYM_INIT.store(true, Relaxed);
 	Ok(())
 }

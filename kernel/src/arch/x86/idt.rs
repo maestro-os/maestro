@@ -27,7 +27,7 @@ use crate::{
 	},
 	syscall::syscall_int,
 };
-use core::{arch::asm, ffi::c_void, mem::size_of, ptr::addr_of};
+use core::{arch::asm, ffi::c_void, fmt, fmt::Formatter, mem::size_of, ptr::addr_of};
 use utils::errno::EResult;
 
 /// The IDT vector index for system calls.
@@ -39,7 +39,7 @@ pub const ENTRIES_COUNT: usize = 0x81;
 #[cfg(target_arch = "x86")]
 #[repr(C)]
 #[allow(missing_docs)]
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub struct IntFrame {
 	// Using the prefix `r` to avoid duplicate code
 	pub rax: u32,
@@ -69,7 +69,7 @@ pub struct IntFrame {
 #[cfg(target_arch = "x86_64")]
 #[allow(missing_docs)]
 #[repr(C)]
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub struct IntFrame {
 	pub rax: u64,
 	pub rbx: u64,
@@ -193,6 +193,59 @@ impl IntFrame {
 			ss: (gdt::USER_DS | 3) as _,
 			..Default::default()
 		};
+	}
+}
+
+impl fmt::Display for IntFrame {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		const LEN: usize = size_of::<usize>() * 2;
+		#[cfg(target_arch = "x86")]
+		{
+			f.write_fmt(format_args!("EAX: {:0LEN$x}", self.rax))?;
+			f.write_fmt(format_args!(" EBX: {:0LEN$x}", self.rbx))?;
+			f.write_fmt(format_args!(" ECX: {:0LEN$x}", self.rcx))?;
+			f.write_fmt(format_args!(" EDX: {:0LEN$x}", self.rdx))?;
+			f.write_fmt(format_args!(" ESI: {:0LEN$x}\n", self.rsi))?;
+			f.write_fmt(format_args!("EDI: {:0LEN$x}", self.rdi))?;
+			f.write_fmt(format_args!(" EBP: {:0LEN$x}", self.rbp))?;
+			f.write_fmt(format_args!(" GS:  {:0LEN$x}", self.gs))?;
+			f.write_fmt(format_args!(" FS:  {:0LEN$x}", self.fs))?;
+			f.write_fmt(format_args!(" INT: {:0LEN$x}\n", self.int))?;
+			f.write_fmt(format_args!("CODE: {:0LEN$x}", self.code))?;
+			f.write_fmt(format_args!(" EIP: {:0LEN$x}", self.rip))?;
+			f.write_fmt(format_args!(" CS: {:0LEN$x}", self.cs))?;
+			f.write_fmt(format_args!(" EFL: {:0LEN$x}", self.rflags))?;
+			f.write_fmt(format_args!(" ESP: {:0LEN$x}\n", self.rsp))?;
+			f.write_fmt(format_args!("SS: {:0LEN$x}", self.ss))?;
+		}
+		#[cfg(target_arch = "x86_64")]
+		{
+			f.write_fmt(format_args!("RAX: {:0LEN$x}", self.rax))?;
+			f.write_fmt(format_args!(" RBX: {:0LEN$x}", self.rbx))?;
+			f.write_fmt(format_args!(" RCX: {:0LEN$x}\n", self.rcx))?;
+			f.write_fmt(format_args!("RDX: {:0LEN$x}", self.rdx))?;
+			f.write_fmt(format_args!(" RSI: {:0LEN$x}", self.rsi))?;
+			f.write_fmt(format_args!(" RDI: {:0LEN$x}\n", self.rdi))?;
+			f.write_fmt(format_args!("RBP: {:0LEN$x}", self.rbp))?;
+			f.write_fmt(format_args!(" R8:  {:0LEN$x}", self.r8))?;
+			f.write_fmt(format_args!(" R9:  {:0LEN$x}\n", self.r9))?;
+			f.write_fmt(format_args!("R10: {:0LEN$x}", self.r10))?;
+			f.write_fmt(format_args!(" R11: {:0LEN$x}", self.r11))?;
+			f.write_fmt(format_args!(" R12: {:0LEN$x}\n", self.r12))?;
+			f.write_fmt(format_args!("R13: {:0LEN$x}", self.r13))?;
+			f.write_fmt(format_args!(" R14: {:0LEN$x}", self.r12))?;
+			f.write_fmt(format_args!(" R15: {:0LEN$x}\n", self.r15))?;
+			f.write_fmt(format_args!("GS:  {:0LEN$x}", self.gs))?;
+			f.write_fmt(format_args!(" FS:  {:0LEN$x}", self.fs))?;
+			f.write_fmt(format_args!(" INT: {:0LEN$x}\n", self.int))?;
+			f.write_fmt(format_args!("CODE:   {:0LEN$x}", self.code))?;
+			f.write_fmt(format_args!(" RIP: {:0LEN$x}", self.rip))?;
+			f.write_fmt(format_args!(" CS: {:0LEN$x}\n", self.cs))?;
+			f.write_fmt(format_args!("RFL: {:0LEN$x}", self.rflags))?;
+			f.write_fmt(format_args!(" RSP: {:0LEN$x}", self.rsp))?;
+			f.write_fmt(format_args!(" SS: {:0LEN$x}", self.ss))?;
+		}
+		Ok(())
 	}
 }
 

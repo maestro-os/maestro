@@ -92,7 +92,7 @@ use crate::{
 	sync::mutex::Mutex,
 	tty::TTY,
 };
-use core::{ffi::c_void, hint::unlikely};
+use core::ffi::c_void;
 pub use utils;
 use utils::{
 	collections::{path::Path, string::String, vec::Vec},
@@ -151,10 +151,7 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	println!("Boot {NAME} version {VERSION}");
 
 	// Read multiboot information
-	if unlikely(magic != multiboot::BOOTLOADER_MAGIC || !multiboot_ptr.is_aligned_to(8)) {
-		panic!("Bootloader non compliant with Multiboot2!");
-	}
-	let boot_info = unsafe { multiboot::read(multiboot_ptr) };
+	let boot_info = unsafe { multiboot::read(magic, multiboot_ptr) };
 
 	// Initialize memory management
 	println!("Setup memory management");

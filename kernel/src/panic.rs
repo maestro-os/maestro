@@ -24,65 +24,113 @@
 
 #[cfg(config_debug_qemu)]
 use crate::debug::qemu;
-use crate::{arch::x86::cli, logger, memory::VirtAddr, power, register_get};
-use core::panic::PanicInfo;
+use crate::{
+	arch::x86::{cli, idt::IntFrame},
+	logger::LOGGER,
+	memory::VirtAddr,
+	power, println, register_get,
+};
+use core::{
+	fmt,
+	panic::{Location, PanicInfo},
+};
 
-/// Called on Rust panic.
-#[panic_handler]
-fn panic(panic_info: &PanicInfo) -> ! {
-	cli();
-	logger::LOGGER.lock().silent = false;
-
-	#[cfg(test)]
-	{
-		use crate::selftest;
-		if selftest::is_running() {
-			crate::println!("FAILED\n");
-			crate::println!("Error: {panic_info}\n");
-			#[cfg(config_debug_qemu)]
-			qemu::exit(qemu::FAILURE);
-			power::halt();
-		}
-	}
-
-	crate::println!("--- KERNEL PANIC ---\n");
-	crate::println!("Kernel has been forced to halt due to internal problem, sorry :/");
-	crate::print!("Reason: {}", panic_info.message());
-	if let Some(loc) = panic_info.location() {
-		crate::println!(" (location: {loc})");
-	} else {
-		crate::println!();
-	}
-	crate::println!(
-		"If you believe this is a bug on the kernel side, please feel free to report it."
-	);
-
-	crate::println!("cr2: {:?}\n", VirtAddr(register_get!("cr2")));
-
-	#[cfg(debug_assertions)]
-	{
-		use crate::debug;
-		use core::ptr;
-
-		crate::println!("--- Callstack ---");
-		#[cfg(target_arch = "x86")]
-		let frame = register_get!("ebp");
-		#[cfg(target_arch = "x86_64")]
-		let frame = register_get!("rbp");
-		let ebp = ptr::with_exposed_provenance(frame);
-		let mut callstack: [VirtAddr; 8] = [VirtAddr::default(); 8];
-		unsafe {
-			debug::get_callstack(ebp, &mut callstack);
-		}
-		debug::print_callstack(&callstack);
-	}
+fn halt() -> ! {
 	#[cfg(config_debug_qemu)]
 	qemu::exit(qemu::FAILURE);
 	power::halt();
 }
 
+fn panic_impl(msg: impl fmt::Display, loc: Option<&Location>, frame: Option<&IntFrame>) -> ! {
+	cli();
+	LOGGER.lock().silent = false;
+	// Print panic
+	println!("-- KERNEL PANIC! --");
+	println!("Reason: {msg}");
+	if let Some(loc) = loc {
+		println!("Location: {loc}");
+	}
+	if let Some(frame) = frame {
+		println!("{frame}");
+		#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+		{
+			let cr2 = VirtAddr(register_get!("cr2"));
+			let cr3 = VirtAddr(register_get!("cr3"));
+			println!("CR2: {cr2:?} CR3: {cr3:?}");
+		}
+	}
+	// Print callstack
+	#[cfg(debug_assertions)]
+	{
+		use crate::debug;
+		use core::ptr;
+
+		println!("Callstack:");
+		#[cfg(target_arch = "x86")]
+		let frame = register_get!("ebp");
+		#[cfg(target_arch = "x86_64")]
+		let frame = register_get!("rbp");
+		let frame = ptr::with_exposed_provenance(frame);
+		let mut callstack: [VirtAddr; 8] = [VirtAddr::default(); 8];
+		unsafe {
+			debug::get_callstack(frame, &mut callstack);
+		}
+		debug::print_callstack(&callstack);
+	}
+	println!("-- end trace --");
+	halt();
+}
+
+/// Called on Rust panic.
+#[panic_handler]
+fn panic(panic_info: &PanicInfo) -> ! {
+	panic_impl(panic_info.message(), panic_info.location(), None);
+}
+
+/// The list of interrupt error messages ordered by index of the corresponding
+/// interrupt vector.
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+static INT_REASONS: &[&str] = &[
+	"Divide-by-zero Error",
+	"Debug",
+	"Non-maskable Interrupt",
+	"Breakpoint",
+	"Overflow",
+	"Bound Range Exceeded",
+	"Invalid Opcode",
+	"Device Not Available",
+	"Double Fault",
+	"Coprocessor Segment Overrun",
+	"Invalid TSS",
+	"Segment Not Present",
+	"Stack-Segment Fault",
+	"General Protection Fault",
+	"Page Fault",
+	"Unknown",
+	"x87 Floating-Point Exception",
+	"Alignment Check",
+	"Machine Check",
+	"SIMD Floating-Point Exception",
+	"Virtualization Exception",
+	"Unknown",
+	"Unknown",
+	"Unknown",
+	"Unknown",
+	"Unknown",
+	"Unknown",
+	"Unknown",
+	"Unknown",
+	"Unknown",
+	"Security Exception",
+	"Unknown",
+];
+
+/// Panics with the information of an interrupt frame.
+pub fn with_frame(frame: &IntFrame) -> ! {
+	let error = INT_REASONS.get(frame.int as usize).unwrap_or(&"Unknown");
+	panic_impl(error, None, Some(frame));
+}
+
 // TODO check whether this can be removed since the kernel uses panic=abort
-/// Function that is required to be implemented by the Rust compiler and is used
-/// only when panicking.
 #[lang = "eh_personality"]
 fn eh_personality() {}

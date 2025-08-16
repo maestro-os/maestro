@@ -18,7 +18,7 @@
 
 //! Debugging tools for the kernel.
 
-use crate::{elf, memory, memory::VirtAddr};
+use crate::{elf, memory, memory::VirtAddr, println};
 use core::ptr;
 use utils::DisplayableStr;
 
@@ -54,15 +54,15 @@ pub unsafe fn get_callstack(mut frame: *const usize, stack: &mut [VirtAddr]) {
 /// If the callstack is empty, the function just prints `Empty`.
 pub fn print_callstack(stack: &[VirtAddr]) {
 	if !matches!(stack.first(), Some(p) if !p.is_null()) {
-		crate::println!("Empty");
+		println!();
 		return;
 	}
-	for (i, pc) in stack.iter().enumerate() {
+	for pc in stack.iter() {
 		if pc.is_null() {
 			break;
 		}
 		let name = elf::kernel::get_function_name(*pc).unwrap_or(b"???");
-		crate::println!("{i}: {pc:p} -> {}", DisplayableStr(name));
+		println!(" <{pc:?}>: {}", DisplayableStr(name));
 	}
 }
 

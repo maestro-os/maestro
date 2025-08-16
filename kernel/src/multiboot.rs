@@ -21,7 +21,7 @@
 //! ELF structure of the kernel.
 
 use crate::{memory::PhysAddr, sync::once::OnceInit};
-use core::{ffi::c_void, mem::offset_of, slice};
+use core::{ffi::c_void, hint::unlikely, mem::offset_of, slice};
 
 /// Multiboot2 magic number.
 pub const BOOTLOADER_MAGIC: u32 = 0x36d76289;
@@ -228,12 +228,19 @@ unsafe fn next(tag: *const Tag) -> *const Tag {
 	tag.wrapping_byte_add(((size + 7) & !7) as usize)
 }
 
-/// Reads the multiboot tags from the given `ptr` and returns relevant information.
+/// Reads the multiboot tags.
+///
+/// Arguments:
+/// - `magic` is the magic number
+/// - `ptr` is the pointer to Multiboot tags
 ///
 /// # Safety
 ///
 /// The caller must ensure the given pointer is valid and points to Multiboot tags.
-pub(crate) unsafe fn read(ptr: *const c_void) -> &'static BootInfo {
+pub(crate) unsafe fn read(magic: u32, ptr: *const c_void) -> &'static BootInfo {
+	if unlikely(magic != BOOTLOADER_MAGIC || !ptr.is_aligned_to(8)) {
+		panic!("Bootloader non compliant with Multiboot2!");
+	}
 	let mut boot_info = BootInfo::default();
 	let mut tag = ptr.offset(8) as *const Tag;
 	while (*tag).type_ != TAG_TYPE_END {
