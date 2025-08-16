@@ -36,7 +36,7 @@ use crate::{
 		manager,
 		manager::PhysicalDevice,
 	},
-	memory::{PhysAddr, mmio::MMIO},
+	memory::{PhysAddr, mmio::Mmio},
 };
 use core::{cmp::min, mem::size_of, num::NonZeroUsize};
 use utils::{
@@ -205,7 +205,7 @@ pub struct PCIDevice {
 	/// The list of BARs for the device.
 	bars: Vec<Option<BAR>>,
 	/// The list of MMIOs associated with the device's BARs.
-	mmios: Vec<MMIO>,
+	mmios: Vec<Mmio>,
 }
 
 impl PCIDevice {
@@ -259,7 +259,7 @@ impl PCIDevice {
 	/// to make the BAR accessible.
 	///
 	/// Dropping the MMIO makes using the associated BAR an undefined behaviour.
-	fn load_bar(&self, n: u8) -> EResult<Option<(BAR, Option<MMIO>)>> {
+	fn load_bar(&self, n: u8) -> EResult<Option<(BAR, Option<Mmio>)>> {
 		let Some(bar_off) = self.get_bar_reg_off(n) else {
 			return Ok(None);
 		};
@@ -299,7 +299,7 @@ impl PCIDevice {
 			let prefetchable = value & 0b1000 != 0;
 			// Create MMIO
 			let pages = size.div_ceil(NonZeroUsize::new(PAGE_SIZE).unwrap());
-			let mmio = MMIO::new(PhysAddr(phys_addr as _), pages, prefetchable)?;
+			let mmio = Mmio::new(PhysAddr(phys_addr as _), pages, prefetchable)?;
 			Ok(Some((
 				BAR::MemorySpace {
 					type_,

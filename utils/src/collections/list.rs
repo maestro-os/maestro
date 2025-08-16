@@ -187,6 +187,28 @@ impl<T, const OFF: usize> List<T, OFF> {
 		unsafe { self.head.map(|n| n.as_ref()) }
 	}
 
+	/// Returns a reference to the first element of the list.
+	#[inline]
+	pub fn front(&self) -> Option<Arc<T>> {
+		let node = self.head_node()?;
+		let cursor = Cursor {
+			list: NonNull::from(self),
+			node,
+		};
+		Some(cursor.arc())
+	}
+
+	/// Returns a reference to the last element of the list.
+	#[inline]
+	pub fn back(&self) -> Option<Arc<T>> {
+		let node = self.head_node()?.prev()?;
+		let cursor = Cursor {
+			list: NonNull::from(self),
+			node,
+		};
+		Some(cursor.arc())
+	}
+
 	/// Returns an iterator over the list.
 	pub fn iter(&mut self) -> Iter<'_, T, OFF> {
 		Iter {
@@ -215,6 +237,39 @@ impl<T, const OFF: usize> List<T, OFF> {
 		}
 		// Update head
 		self.head = Some(node);
+	}
+
+	/// Inserts `val` at the last position of the list.
+	pub fn insert_back(&mut self, val: Arc<T>) {
+		let node = Self::get_node(&val);
+		// Keep reference
+		mem::forget(val);
+		if let Some(head) = self.head {
+			// There is already an element in the list
+			unsafe {
+				node.as_ref().insert_before(head);
+			}
+		} else {
+			// The list is empty: make a cycle
+			unsafe {
+				*node.as_ref().prev.get() = Some(node);
+				*node.as_ref().next.get() = Some(node);
+			}
+			// Set as head
+			self.head = Some(node);
+		}
+	}
+
+	/// Rotates the circular list, making the second element the new head, and the old head the new
+	/// tail.
+	pub fn rotate_left(&mut self) {
+		self.head = self.head.and_then(|h| unsafe { *h.as_ref().next.get() });
+	}
+
+	/// Rotates the circular list, making the tail the new head, and the old head the second
+	/// element.
+	pub fn rotate_right(&mut self) {
+		self.head = self.head.and_then(|h| unsafe { *h.as_ref().prev.get() });
 	}
 
 	/// Removes the first element of the list and returns it, if any.
@@ -423,10 +478,13 @@ mod test {
 		init(&mut list);
 
 		let mut iter = list.iter();
+		let mut cnt = 0;
 		for (i, j) in iter.by_ref().rev().enumerate() {
 			assert_eq!(i, j.value().foo);
+			cnt += 1;
 		}
 		assert!(iter.next().is_none());
+		assert_eq!(cnt, 3);
 	}
 
 	#[test]

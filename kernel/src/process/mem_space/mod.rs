@@ -28,13 +28,10 @@ mod mapping;
 mod transaction;
 
 use crate::{
-	arch::x86::{
-		idt,
-		paging::{PAGE_FAULT_INSTRUCTION, PAGE_FAULT_WRITE},
-	},
+	arch::x86::paging::{PAGE_FAULT_INSTRUCTION, PAGE_FAULT_WRITE},
 	file::{File, perm::AccessProfile, vfs},
 	memory::{COMPAT_PROCESS_END, PROCESS_END, VirtAddr, cache::RcFrame, vmem::VMem},
-	process::{mem_space::mapping::MappedFrame, scheduler::core_local},
+	process::{mem_space::mapping::MappedFrame, scheduler, scheduler::core_local},
 	sync::mutex::IntMutex,
 };
 use core::{
@@ -499,18 +496,10 @@ impl MemSpace {
 	///
 	/// After execution, the function restores the previous memory space.
 	///
-	/// The function disables interruptions while executing the closure. This is due
-	/// to the fact that if interruptions were enabled, the scheduler would be able
-	/// to change the running process, and thus when resuming execution, the virtual
-	/// memory context would be changed to the process's context, making the
-	/// behaviour undefined.
-	///
-	/// # Safety
-	///
-	/// The caller must ensure that the stack is accessible in both the current and given virtual
-	/// memory contexts.
-	pub unsafe fn switch<'m, F: FnOnce(&'m Arc<Self>) -> T, T>(this: &'m Arc<Self>, f: F) -> T {
-		idt::wrap_disable_interrupts(|| {
+	/// `f` is executed in a critical section to prevent the temporary memory space from being
+	/// replaced by the scheduler.
+	pub fn switch<'m, F: FnOnce(&'m Arc<Self>) -> T, T>(this: &'m Arc<Self>, f: F) -> T {
+		scheduler::critical(|| {
 			// Bind `this`
 			this.vmem.lock().bind();
 			let old = core_local().mem_space.replace(Some(this.clone()));

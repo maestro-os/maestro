@@ -25,13 +25,7 @@ use crate::{
 	memory::user::UserPtr,
 	process,
 	process::{
-		ForkOptions, Process, State,
-		pid::Pid,
-		rusage::Rusage,
-		scheduler::{
-			SCHEDULER, Scheduler, switch,
-			switch::{fork_asm, stash_segments},
-		},
+		ForkOptions, Process, State, pid::Pid, rusage::Rusage, scheduler::schedule,
 		user_desc::UserDesc,
 	},
 	syscall::Args,
@@ -209,7 +203,7 @@ pub fn set_tid_address(Args(_tidptr): Args<UserPtr<c_int>>, proc: Arc<Process>) 
 /// Wait for the vfork operation to complete.
 fn wait_vfork_done(child_pid: Pid) {
 	loop {
-		// Use a scope to avoid holding references that could be lost, since `tick` could never
+		// Use a scope to avoid holding references that could be lost, since `schedule` could never
 		// return
 		{
 			let proc = Process::current();
@@ -222,15 +216,15 @@ fn wait_vfork_done(child_pid: Pid) {
 				break;
 			}
 			// Sleep until done
-			proc.set_state(State::Sleeping);
+			Process::set_state(&proc, State::Sleeping);
 			// If vfork has completed in between, cancel sleeping
 			if unlikely(child.is_vfork_done()) {
-				proc.set_state(State::Running);
+				Process::set_state(&proc, State::Running);
 				break;
 			}
 		}
 		// Let another process run while we wait
-		Scheduler::tick();
+		schedule();
 	}
 }
 
@@ -243,34 +237,19 @@ pub fn compat_clone(
 		c_ulong,
 		UserPtr<c_int>,
 	)>,
-	proc: Arc<Process>,
 	frame: &mut IntFrame,
 ) -> EResult<usize> {
 	let (child_pid, child_tid) = {
-		// Disable interruptions so that the scheduler does not attempt to start the new process
-		cli();
 		let child = Process::fork(
-			proc.clone(),
+			frame,
+			stack,
 			ForkOptions {
 				share_memory: flags & CLONE_VM != 0,
 				share_fd: flags & CLONE_FILES != 0,
 				share_sighand: flags & CLONE_SIGHAND != 0,
 			},
 		)?;
-		let child_pid = child.get_pid();
-		let child_tid = child.tid;
-		// Switch
-		switch::finish(&proc, &child);
-		SCHEDULER.lock().swap_current_process(child.clone());
-		let mut child_frame = frame.clone();
-		child_frame.rax = 0; // Return value
-		if !stack.is_null() {
-			child_frame.rsp = stack as _;
-		}
-		stash_segments(|| unsafe {
-			fork_asm(Arc::as_ptr(&proc), Arc::as_ptr(&child), &child_frame);
-		});
-		(child_pid, child_tid)
+		(child.get_pid(), child.tid)
 	};
 	if flags & CLONE_VFORK != 0 {
 		wait_vfork_done(child_pid);
@@ -287,25 +266,19 @@ pub fn clone(
 		UserPtr<c_int>,
 		c_ulong,
 	)>,
-	proc: Arc<Process>,
 	frame: &mut IntFrame,
 ) -> EResult<usize> {
-	compat_clone(
-		Args((flags, stack, parent_tid, tls, child_tid)),
-		proc,
-		frame,
-	)
+	compat_clone(Args((flags, stack, parent_tid, tls, child_tid)), frame)
 }
 
-pub fn fork(proc: Arc<Process>, frame: &mut IntFrame) -> EResult<usize> {
+pub fn fork(frame: &mut IntFrame) -> EResult<usize> {
 	clone(
 		Args((0, null_mut(), UserPtr(None), UserPtr(None), 0)),
-		proc,
 		frame,
 	)
 }
 
-pub fn vfork(proc: Arc<Process>, frame: &mut IntFrame) -> EResult<usize> {
+pub fn vfork(frame: &mut IntFrame) -> EResult<usize> {
 	clone(
 		Args((
 			CLONE_VFORK | CLONE_VM,
@@ -314,7 +287,6 @@ pub fn vfork(proc: Arc<Process>, frame: &mut IntFrame) -> EResult<usize> {
 			UserPtr(None),
 			0,
 		)),
-		proc,
 		frame,
 	)
 }
@@ -384,7 +356,8 @@ pub fn arch_prctl(Args((code, addr)): Args<(c_int, usize)>) -> EResult<usize> {
 		}
 		#[cfg(target_arch = "x86_64")]
 		ARCH_GET_GS => {
-			let val = x86::rdmsr(x86::IA32_GS_BASE) as usize;
+			// Use `IA32_KERNEL_GS_BASE` since swapgs is used when entering kernelspace
+			let val = x86::rdmsr(x86::IA32_KERNEL_GS_BASE) as usize;
 			let ptr = UserPtr::<usize>::from_ptr(addr);
 			ptr.copy_to_user(&val)?;
 		}
@@ -460,7 +433,7 @@ pub fn prlimit64(
 }
 
 pub fn sched_yield() -> EResult<usize> {
-	Scheduler::tick();
+	schedule();
 	Ok(0)
 }
 
@@ -476,7 +449,7 @@ pub fn do_exit(status: u32, thread_group: bool) -> ! {
 	cli();
 	{
 		let proc = Process::current();
-		proc.exit(status);
+		Process::exit(&proc, status);
 		let _pid = proc.get_pid();
 		let _tid = proc.tid;
 		if thread_group {
@@ -484,7 +457,7 @@ pub fn do_exit(status: u32, thread_group: bool) -> ! {
 			// process with pid `pid`
 		}
 	}
-	Scheduler::tick();
+	schedule();
 	// Cannot resume since the process is now a zombie
 	unreachable!();
 }

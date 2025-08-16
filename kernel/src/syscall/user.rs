@@ -64,7 +64,7 @@ pub fn getresgid(
 }
 
 pub fn setuid(Args(uid): Args<Uid>, proc: Arc<Process>) -> EResult<usize> {
-	proc.fs.lock().access_profile.set_uid(uid)?;
+	proc.fs().lock().access_profile.set_uid(uid)?;
 	Ok(0)
 }
 
@@ -91,7 +91,7 @@ pub fn setreuid(
 		-1 => ap.euid,
 		i => i as _,
 	};
-	let mut fs = proc.fs.lock();
+	let mut fs = proc.fs().lock();
 	fs.access_profile.uid = new_ruid;
 	fs.access_profile.euid = new_euid;
 	if new_ruid != ap.uid || new_euid != ap.uid {
@@ -116,7 +116,7 @@ pub fn setresuid(
 		}
 	}
 	// Update
-	let mut fs = proc.fs.lock();
+	let mut fs = proc.fs().lock();
 	fs.access_profile.uid = match ruid {
 		-1 => ap.uid,
 		i => i as _,
@@ -133,7 +133,7 @@ pub fn setresuid(
 }
 
 pub fn setgid(Args(gid): Args<Gid>, proc: Arc<Process>) -> EResult<usize> {
-	proc.fs.lock().access_profile.set_gid(gid)?;
+	proc.fs().lock().access_profile.set_gid(gid)?;
 	Ok(0)
 }
 
@@ -161,7 +161,7 @@ pub fn setregid(
 		-1 => ap.egid,
 		i => i as _,
 	};
-	let mut fs = proc.fs.lock();
+	let mut fs = proc.fs().lock();
 	fs.access_profile.gid = new_rgid;
 	fs.access_profile.egid = new_egid;
 	if new_rgid != ap.gid || new_egid != ap.gid {
@@ -186,7 +186,7 @@ pub fn setresgid(
 		}
 	}
 	// Update
-	let mut fs = proc.fs.lock();
+	let mut fs = proc.fs().lock();
 	fs.access_profile.gid = match rgid {
 		-1 => ap.gid,
 		i => i as _,

@@ -19,53 +19,21 @@
 //! Interrupt callback register interface.
 
 use crate::{
-	arch::x86::{idt, idt::IntFrame, pic},
+	arch::{
+		end_of_interrupt,
+		x86::{idt, idt::IntFrame},
+	},
 	memory::user::UserSlice,
-	process, rand,
+	panic,
+	process::scheduler::{alter_flow, preempt_check_resched},
+	rand,
 	sync::mutex::IntMutex,
 };
-use core::ptr;
+use core::{hint::unlikely, ptr};
 use utils::{bytes::as_bytes, collections::vec::Vec, errno::AllocResult};
 
-/// The list of interrupt error messages ordered by index of the corresponding
-/// interrupt vector.
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-static ERROR_MESSAGES: &[&str] = &[
-	"Divide-by-zero Error",
-	"Debug",
-	"Non-maskable Interrupt",
-	"Breakpoint",
-	"Overflow",
-	"Bound Range Exceeded",
-	"Invalid Opcode",
-	"Device Not Available",
-	"Double Fault",
-	"Coprocessor Segment Overrun",
-	"Invalid TSS",
-	"Segment Not Present",
-	"Stack-Segment Fault",
-	"General Protection Fault",
-	"Page Fault",
-	"Unknown",
-	"x87 Floating-Point Exception",
-	"Alignment Check",
-	"Machine Check",
-	"SIMD Floating-Point Exception",
-	"Virtualization Exception",
-	"Unknown",
-	"Unknown",
-	"Unknown",
-	"Unknown",
-	"Unknown",
-	"Unknown",
-	"Unknown",
-	"Unknown",
-	"Unknown",
-	"Security Exception",
-	"Unknown",
-];
-
 /// The action to execute after the interrupt handler has returned.
+#[derive(Eq, PartialEq)]
 pub enum CallbackResult {
 	/// Executes remaining callbacks for the interrupt.
 	///
@@ -171,17 +139,14 @@ extern "C" fn interrupt_handler(frame: &mut IntFrame) {
 		};
 		i += 1;
 		let res = callback(id, code, frame, ring);
-		match res {
-			CallbackResult::Continue => {}
-			CallbackResult::Panic => {
-				let error = ERROR_MESSAGES.get(id as usize).unwrap_or(&"Unknown");
-				panic!("{error}, code: {code:x}");
-			}
+		if unlikely(res == CallbackResult::Panic) {
+			panic::with_frame(frame);
 		}
 	}
 	// If not a hardware exception, send EOI
-	if let Some(irq) = id.checked_sub(ERROR_MESSAGES.len() as u32) {
-		pic::end_of_interrupt(irq as _);
+	if let Some(irq) = id.checked_sub(32) {
+		end_of_interrupt(irq as _);
 	}
-	process::yield_current(ring, frame);
+	alter_flow(ring, frame);
+	preempt_check_resched();
 }

@@ -31,9 +31,7 @@ pub mod signal;
 pub mod user_desc;
 
 use crate::{
-	arch::x86::{FxState, cli, gdt, idt, idt::IntFrame, tss},
-	event,
-	event::CallbackResult,
+	arch::x86::{FxState, gdt, idt, idt::IntFrame, timer::apic},
 	file,
 	file::{
 		File, O_RDWR,
@@ -42,31 +40,32 @@ use crate::{
 		vfs,
 		vfs::ResolutionSettings,
 	},
+	int,
+	int::CallbackResult,
 	memory::{VirtAddr, buddy, buddy::FrameOrder, oom, user, user::UserPtr},
 	process::{
 		pid::{IDLE_PID, INIT_PID, PidHandle},
 		rusage::Rusage,
 		scheduler::{
-			SCHEDULER, Scheduler, core_local, switch,
-			switch::{KThreadEntry, idle_task},
+			Scheduler, core_local, dequeue, enqueue, switch,
+			switch::{KThreadEntry, idle_task, save_segments},
 		},
 		signal::{SIGNALS_COUNT, SigSet},
 	},
 	register_get,
-	sync::mutex::Mutex,
+	sync::{atomic::AtomicU64, mutex::Mutex, rwlock::IntRwLock},
 	syscall::FromSyscallArg,
 	time::timer::TimerManager,
 };
 use core::{
-	ffi::c_int,
+	ffi::{c_int, c_void},
 	fmt,
 	fmt::Formatter,
 	hint::unlikely,
 	mem,
-	mem::ManuallyDrop,
 	ptr::NonNull,
 	sync::atomic::{
-		AtomicBool, AtomicPtr, AtomicU8, AtomicU32,
+		AtomicBool, AtomicPtr, AtomicU8, AtomicU16, AtomicU32,
 		Ordering::{Acquire, Relaxed, Release, SeqCst},
 	},
 };
@@ -75,6 +74,8 @@ use pid::Pid;
 use signal::{Signal, SignalHandler};
 use utils::{
 	collections::{
+		btreemap::BTreeMap,
+		list::ListNode,
 		path::{Path, PathBuf},
 		vec::Vec,
 	},
@@ -208,6 +209,9 @@ impl Drop for KernelStack {
 /// A process's links to other processes.
 #[derive(Default)]
 pub struct ProcessLinks {
+	/// The scheduler the process is enqueued on.
+	sched: Option<&'static Scheduler>,
+
 	/// A pointer to the parent process.
 	parent: Option<Arc<Process>>,
 	/// The list of children processes.
@@ -324,19 +328,31 @@ pub struct Process {
 	/// The links to other processes.
 	pub links: Mutex<ProcessLinks>,
 
+	/// The node in the scheduler's run queue.
+	sched_node: ListNode,
+
 	/// A pointer to the kernelspace stack.
 	kernel_stack: KernelStack,
 	/// Kernel stack pointer of saved context.
 	kernel_sp: AtomicPtr<u8>,
 	/// The process's FPU state.
 	fpu: Mutex<FxState>,
+
+	/// FS segment selector
+	fs_selector: AtomicU16,
+	/// GS segment selector
+	gs_selector: AtomicU16,
+	/// FS segment hidden base
+	fs_base: AtomicU64,
+	/// GS segment hidden base
+	gs_base: AtomicU64,
 	/// TLS entries.
 	pub tls: Mutex<[gdt::Entry; TLS_ENTRIES_COUNT]>, // TODO rwlock
 
 	/// The virtual memory of the process.
 	pub mem_space: UnsafeMut<Option<Arc<MemSpace>>>,
 	/// Filesystem access information.
-	pub fs: Mutex<ProcessFs>, // TODO rwlock
+	fs: Option<Mutex<ProcessFs>>, // TODO rwlock
 	/// The list of open file descriptors with their respective ID.
 	pub file_descriptors: UnsafeMut<Option<Arc<Mutex<FileDescriptorTable>>>>,
 	/// Process's timers, shared between all threads of the same process.
@@ -350,11 +366,13 @@ pub struct Process {
 	pub rusage: Mutex<Rusage>,
 }
 
-/// Initializes processes system. This function must be called only once, at
-/// kernel initialization.
+/// The list of all processes on the system.
+pub static PROCESSES: IntRwLock<BTreeMap<Pid, Arc<Process>>> = IntRwLock::new(BTreeMap::new());
+
+/// Initializes processes management.
+///
+/// This function must be called only once, at kernel initialization.
 pub(crate) fn init() -> EResult<()> {
-	tss::init();
-	scheduler::init()?;
 	// Register interruption callbacks
 	let callback = |id: u32, _code: u32, frame: &mut IntFrame, ring: u8| {
 		if ring < 3 {
@@ -381,7 +399,7 @@ pub(crate) fn init() -> EResult<()> {
 				let opcode = ptr.copy_from_user();
 				// If the instruction is `hlt`, exit
 				if opcode == Ok(Some(HLT_INSTRUCTION)) {
-					proc.exit(frame.get_syscall_id() as _);
+					Process::exit(&proc, frame.get_syscall_id() as _);
 				} else {
 					proc.kill(Signal::SIGSEGV);
 				}
@@ -392,41 +410,48 @@ pub(crate) fn init() -> EResult<()> {
 		}
 		CallbackResult::Continue
 	};
-	let page_fault_callback = |_id: u32, code: u32, frame: &mut IntFrame, ring: u8| {
-		let accessed_addr = VirtAddr(register_get!("cr2"));
-		let pc = frame.get_program_counter();
-		let Some(mem_space) = core_local().mem_space.get() else {
-			return CallbackResult::Panic;
-		};
-		// Check access
-		let sig = mem_space.handle_page_fault(accessed_addr, code);
-		match sig {
-			Ok(true) => {}
-			Ok(false) => {
-				if ring < 3 {
-					// Check if the fault was caused by a user <-> kernel copy
-					if (user::raw_copy as usize..user::copy_fault as usize).contains(&pc) {
-						// Jump to `copy_fault`
-						frame.set_program_counter(user::copy_fault as usize);
+	mem::forget(int::register_callback(0x00, callback)?);
+	mem::forget(int::register_callback(0x03, callback)?);
+	mem::forget(int::register_callback(0x06, callback)?);
+	mem::forget(int::register_callback(0x0d, callback)?);
+	mem::forget(int::register_callback(0x10, callback)?);
+	mem::forget(int::register_callback(0x11, callback)?);
+	mem::forget(int::register_callback(0x13, callback)?);
+	mem::forget(int::register_callback(
+		0x0e,
+		|_id: u32, code: u32, frame: &mut IntFrame, ring: u8| {
+			let accessed_addr = VirtAddr(register_get!("cr2"));
+			let pc = frame.get_program_counter();
+			let Some(mem_space) = core_local().mem_space.get() else {
+				return CallbackResult::Panic;
+			};
+			// Check access
+			let sig = mem_space.handle_page_fault(accessed_addr, code);
+			match sig {
+				Ok(true) => {}
+				Ok(false) => {
+					if ring < 3 {
+						// Check if the fault was caused by a user <-> kernel copy
+						if (user::raw_copy as usize..user::copy_fault as usize).contains(&pc) {
+							// Jump to `copy_fault`
+							frame.set_program_counter(user::copy_fault as usize);
+						} else {
+							return CallbackResult::Panic;
+						}
 					} else {
-						return CallbackResult::Panic;
+						Process::current().kill(Signal::SIGSEGV);
 					}
-				} else {
-					Process::current().kill(Signal::SIGSEGV);
 				}
+				Err(_) => Process::current().kill(Signal::SIGBUS),
 			}
-			Err(_) => Process::current().kill(Signal::SIGBUS),
-		}
+			CallbackResult::Continue
+		},
+	)?);
+	mem::forget(int::register_callback(0x20, |_, _, _, _| {
+		core_local().preempt_counter.fetch_and(!(1 << 31), Relaxed);
 		CallbackResult::Continue
-	};
-	let _ = ManuallyDrop::new(event::register_callback(0x00, callback)?);
-	let _ = ManuallyDrop::new(event::register_callback(0x03, callback)?);
-	let _ = ManuallyDrop::new(event::register_callback(0x06, callback)?);
-	let _ = ManuallyDrop::new(event::register_callback(0x0d, callback)?);
-	let _ = ManuallyDrop::new(event::register_callback(0x0e, page_fault_callback)?);
-	let _ = ManuallyDrop::new(event::register_callback(0x10, callback)?);
-	let _ = ManuallyDrop::new(event::register_callback(0x11, callback)?);
-	let _ = ManuallyDrop::new(event::register_callback(0x13, callback)?);
+	})?);
+	apic::periodic(100_000_000);
 	Ok(())
 }
 
@@ -435,19 +460,20 @@ impl Process {
 	///
 	/// If the process doesn't exist, the function returns `None`.
 	pub fn get_by_pid(pid: Pid) -> Option<Arc<Self>> {
-		SCHEDULER.lock().get_by_pid(pid)
+		PROCESSES.read().get(&pid).cloned()
 	}
 
 	/// Returns the process with TID `tid`.
 	///
 	/// If the process doesn't exist, the function returns `None`.
-	pub fn get_by_tid(tid: Pid) -> Option<Arc<Self>> {
-		SCHEDULER.lock().get_by_tid(tid)
+	pub fn get_by_tid(_tid: Pid) -> Option<Arc<Self>> {
+		todo!()
 	}
 
-	/// Returns the current running process.
+	/// Returns the running process on the current core.
+	#[inline]
 	pub fn current() -> Arc<Self> {
-		SCHEDULER.lock().get_current_process()
+		core_local().scheduler.get_current_process()
 	}
 
 	/// Creates a kernel thread.
@@ -476,19 +502,21 @@ impl Process {
 			vfork_done: AtomicBool::new(false),
 			links: Default::default(),
 
+			sched_node: ListNode::default(),
+
 			kernel_stack,
 			kernel_sp: AtomicPtr::new(kernel_sp),
 			fpu: Mutex::new(FxState([0; 512])),
+
+			fs_selector: Default::default(),
+			gs_selector: Default::default(),
+			fs_base: Default::default(),
+			gs_base: Default::default(),
 			tls: Default::default(),
 
-			// TODO this is not needed. find a way to avoid init
+			// Not needed for kernel threads
 			mem_space: Default::default(),
-			fs: Mutex::new(ProcessFs {
-				access_profile: AccessProfile::KERNEL,
-				umask: Default::default(),
-				cwd: vfs::ROOT.clone(),
-				chroot: vfs::ROOT.clone(),
-			}),
+			fs: None,
 			file_descriptors: Default::default(),
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(0)?))?,
 			signal: Mutex::new(ProcessSignal::new()?),
@@ -497,7 +525,8 @@ impl Process {
 			rusage: Default::default(),
 		})?;
 		if queue {
-			SCHEDULER.lock().add_process(thread.clone())?;
+			PROCESSES.write().insert(*thread.pid, thread.clone())?;
+			enqueue(&thread);
 		}
 		Ok(thread)
 	}
@@ -545,18 +574,25 @@ impl Process {
 			vfork_done: AtomicBool::new(false),
 			links: Mutex::new(ProcessLinks::default()),
 
+			sched_node: ListNode::default(),
+
 			kernel_stack: KernelStack::new()?,
 			kernel_sp: AtomicPtr::default(),
 			fpu: Mutex::new(FxState([0; 512])),
+
+			fs_selector: Default::default(),
+			gs_selector: Default::default(),
+			fs_base: Default::default(),
+			gs_base: Default::default(),
 			tls: Default::default(),
 
 			mem_space: UnsafeMut::new(None),
-			fs: Mutex::new(ProcessFs {
+			fs: Some(Mutex::new(ProcessFs {
 				access_profile: rs.access_profile,
 				umask: AtomicU32::new(DEFAULT_UMASK),
 				cwd: root_dir.clone(),
 				chroot: root_dir,
-			}),
+			})),
 			file_descriptors: UnsafeMut::new(Some(Arc::new(Mutex::new(file_descriptors))?)),
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(INIT_PID)?))?,
 			signal: Mutex::new(ProcessSignal {
@@ -571,7 +607,8 @@ impl Process {
 
 			rusage: Default::default(),
 		})?;
-		SCHEDULER.lock().add_process(proc.clone())?;
+		PROCESSES.write().insert(INIT_PID, proc.clone())?;
+		enqueue(&proc);
 		Ok(proc)
 	}
 
@@ -654,26 +691,6 @@ impl Process {
 		links.children.insert(i, pid)
 	}
 
-	/// Unlinks the process from its parent and group.
-	pub fn unlink(&self) {
-		let (parent, group_leader) = {
-			let mut links = self.links.lock();
-			(links.parent.take(), links.group_leader.take())
-		};
-		if let Some(parent) = parent {
-			let mut links = parent.links.lock();
-			if let Ok(i) = links.children.binary_search(&self.get_pid()) {
-				links.children.remove(i);
-			}
-		}
-		if let Some(group_leader) = group_leader {
-			let mut links = group_leader.links.lock();
-			if let Ok(i) = links.process_group.binary_search(&self.get_pid()) {
-				links.process_group.remove(i);
-			}
-		}
-	}
-
 	/// Returns the process's current state.
 	///
 	/// **Note**: since the process cannot be locked, this function may cause data races. Use with
@@ -688,11 +705,11 @@ impl Process {
 	///
 	/// If the transition from the previous state to `new_state` is invalid, the function does
 	/// nothing.
-	pub fn set_state(&self, new_state: State) {
+	pub fn set_state(this: &Arc<Self>, new_state: State) {
 		// Disable interruptions to ensure the function can finish before the scheduler switches
 		// context (and thus never resume if the new state is `Zombie`)
 		idt::wrap_disable_interrupts(|| {
-			let Ok(old_state) = self.state.fetch_update(Release, Acquire, |old_state| {
+			let Ok(old_state) = this.state.fetch_update(Release, Acquire, |old_state| {
 				let old_state = State::from_id(old_state);
 				let valid = matches!(
 					(old_state, new_state),
@@ -710,30 +727,30 @@ impl Process {
 			#[cfg(feature = "strace")]
 			println!(
 				"[strace {pid}] changed state: {old_state:?} -> {new_state:?}",
-				pid = self.get_pid()
+				pid = this.get_pid()
 			);
-			// Update the number of running processes
+			// Enqueue or dequeue the process
 			if new_state == State::Running {
-				SCHEDULER.lock().increment_running();
+				enqueue(this);
 			} else if old_state == State::Running {
-				SCHEDULER.lock().decrement_running();
+				dequeue(this);
 			}
 			if new_state == State::Zombie {
-				if self.is_init() {
+				if this.is_init() {
 					panic!("Terminated init process!");
 				}
 				// Remove the memory space and file descriptors table to reclaim memory
 				unsafe {
-					//self.mem_space = None; // TODO Handle the case where the memory space is
+					//this.mem_space = None; // TODO Handle the case where the memory space is
 					// bound
-					*self.file_descriptors.get_mut() = None;
+					*this.file_descriptors.get_mut() = None;
 				}
 				// Attach every child to the init process
 				let init_proc = Process::get_by_pid(INIT_PID).unwrap();
-				let children = mem::take(&mut self.links.lock().children);
+				let children = mem::take(&mut this.links.lock().children);
 				for child_pid in children {
 					// Check just in case
-					if child_pid == *self.pid {
+					if child_pid == *this.pid {
 						continue;
 					}
 					// TODO do the same for process group members
@@ -743,11 +760,11 @@ impl Process {
 					}
 				}
 				// Set vfork as done just in case
-				self.vfork_wake();
+				this.vfork_wake();
 			}
 			// Send SIGCHLD
 			if matches!(new_state, State::Running | State::Stopped | State::Zombie) {
-				let links = self.links.lock();
+				let links = this.links.lock();
 				if let Some(parent) = &links.parent {
 					parent.kill(Signal::SIGCHLD);
 				}
@@ -761,23 +778,23 @@ impl Process {
 		signal.sigpending.0 & !signal.sigmask.0 != 0
 	}
 
-	/// Wakes up the process if in [`State::Sleeping`] state.
-	pub fn wake(&self) {
+	/// Wakes up the process if in [`Sleeping`] state.
+	pub fn wake(this: &Arc<Self>) {
 		// TODO make sure the ordering is right
-		let res = self.state.fetch_update(SeqCst, SeqCst, |old_state| {
+		let res = this.state.fetch_update(SeqCst, SeqCst, |old_state| {
 			(old_state == State::Sleeping as _).then_some(State::Running as _)
 		});
+		if res.is_err() {
+			return;
+		}
 		#[cfg(feature = "strace")]
 		println!(
 			"[strace {pid}] changed state: {old_state:?} -> {new_state:?}",
 			old_state = State::Sleeping,
 			new_state = State::Running,
-			pid = self.get_pid()
+			pid = this.get_pid()
 		);
-		// Update the number of running processes
-		if res.is_ok() {
-			SCHEDULER.lock().increment_running();
-		}
+		enqueue(this);
 	}
 
 	/// Signals the parent that the `vfork` operation has completed.
@@ -785,7 +802,7 @@ impl Process {
 		self.vfork_done.store(true, Release);
 		let links = self.links.lock();
 		if let Some(parent) = &links.parent {
-			parent.set_state(State::Running);
+			Process::set_state(parent, State::Running);
 		}
 	}
 
@@ -814,19 +831,20 @@ impl Process {
 	/// Forks the current process.
 	///
 	/// Arguments:
-	/// - `this` is the parent process.
-	/// - `fork_options` are the options for the fork operation.
-	///
-	/// On fail, the function returns an error.
-	///
-	/// If the `this` is not running, the behaviour is undefined.
-	pub fn fork(this: Arc<Self>, fork_options: ForkOptions) -> EResult<Arc<Self>> {
-		debug_assert!(matches!(this.get_state(), State::Running));
+	/// - `frame` is the process's userspace frame
+	/// - `stack` is the userspace stack to use. If null, the stack is left untouched
+	/// - `fork_options` are the options for the fork operation
+	pub fn fork(
+		frame: &IntFrame,
+		stack: *mut c_void,
+		fork_options: ForkOptions,
+	) -> EResult<Arc<Self>> {
+		let parent = Process::current();
 		let pid = PidHandle::unique()?;
 		let pid_int = *pid;
 		// Clone memory space
 		let mem_space = {
-			let curr_mem_space = this.mem_space.as_ref().unwrap();
+			let curr_mem_space = parent.mem_space.as_ref().unwrap();
 			if fork_options.share_memory {
 				curr_mem_space.clone()
 			} else {
@@ -835,9 +853,10 @@ impl Process {
 		};
 		// Clone file descriptors
 		let file_descriptors = if fork_options.share_fd {
-			this.file_descriptors.get().clone()
+			parent.file_descriptors.get().clone()
 		} else {
-			this.file_descriptors
+			parent
+				.file_descriptors
 				.as_ref()
 				.map(|fds| -> EResult<_> {
 					let fds = fds.lock();
@@ -848,7 +867,7 @@ impl Process {
 		};
 		// Clone signal handlers
 		let signal_handlers = {
-			let signal_manager = this.signal.lock();
+			let signal_manager = parent.signal.lock();
 			if fork_options.share_sighand {
 				signal_manager.handlers.clone()
 			} else {
@@ -856,12 +875,20 @@ impl Process {
 				Arc::new(Mutex::new(handlers))?
 			}
 		};
-		let group_leader = this
+		let group_leader = parent
 			.links
 			.lock()
 			.group_leader
 			.clone()
-			.unwrap_or_else(|| this.clone());
+			.unwrap_or_else(|| parent.clone());
+		// Init stack
+		let kernel_stack = KernelStack::new()?;
+		let mut frame = frame.clone();
+		frame.rax = 0; // Return value
+		if !stack.is_null() {
+			frame.rsp = stack as _;
+		}
+		let kernel_sp = unsafe { switch::init_fork(kernel_stack.top(), frame) };
 		let proc = Arc::new(Self {
 			pid,
 			tid: pid_int,
@@ -869,24 +896,31 @@ impl Process {
 			state: AtomicU8::new(State::Running as _),
 			vfork_done: AtomicBool::new(false),
 			links: Mutex::new(ProcessLinks {
-				parent: Some(this.clone()),
+				parent: Some(parent.clone()),
 				group_leader: Some(group_leader.clone()),
 				..Default::default()
 			}),
 
-			kernel_stack: KernelStack::new()?,
-			kernel_sp: AtomicPtr::default(),
-			fpu: Mutex::new(this.fpu.lock().clone()),
-			tls: Mutex::new(*this.tls.lock()),
+			sched_node: ListNode::default(),
+
+			kernel_stack,
+			kernel_sp: AtomicPtr::new(kernel_sp),
+			fpu: Mutex::new(parent.fpu.lock().clone()),
+
+			fs_selector: Default::default(),
+			gs_selector: Default::default(),
+			fs_base: Default::default(),
+			gs_base: Default::default(),
+			tls: Mutex::new(*parent.tls.lock()),
 
 			mem_space: UnsafeMut::new(Some(mem_space)),
-			fs: Mutex::new(this.fs.lock().clone()),
+			fs: Some(Mutex::new(parent.fs().lock().clone())),
 			file_descriptors: UnsafeMut::new(file_descriptors),
-			// TODO if creating a thread: timer_manager: this.timer_manager.clone(),
+			// TODO if creating a thread: timer_manager: parent.timer_manager.clone(),
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid_int)?))?,
 			signal: Mutex::new(ProcessSignal {
 				handlers: signal_handlers,
-				sigmask: this.signal.lock().sigmask,
+				sigmask: parent.signal.lock().sigmask,
 				sigpending: Default::default(),
 
 				exit_status: 0,
@@ -896,16 +930,29 @@ impl Process {
 
 			rusage: Default::default(),
 		})?;
+		// Set FS and GS
+		save_segments(&proc);
 		// TODO on failure, must undo
-		this.add_child(pid_int)?;
+		parent.add_child(pid_int)?;
 		{
 			let mut links = group_leader.links.lock();
 			if let Err(i) = links.process_group.binary_search(&pid_int) {
 				links.process_group.insert(i, pid_int)?;
 			}
 		}
-		SCHEDULER.lock().add_process(proc.clone())?;
+		PROCESSES.write().insert(*proc.pid, proc.clone())?;
+		enqueue(&proc);
 		Ok(proc)
+	}
+
+	/// Returns the process's [`ProcessFs`].
+	///
+	/// If the process is a kernel thread, the function panics.
+	#[inline]
+	pub fn fs(&self) -> &Mutex<ProcessFs> {
+		self.fs
+			.as_ref()
+			.expect("kernel threads don't have ProcessFS structures")
 	}
 
 	/// Kills the process with the given signal `sig`.
@@ -945,14 +992,42 @@ impl Process {
 	/// Exits the process with the given `status`.
 	///
 	/// This function changes the process's status to `Zombie`.
-	pub fn exit(&self, status: u32) {
+	pub fn exit(this: &Arc<Self>, status: u32) {
 		#[cfg(feature = "strace")]
 		println!(
 			"[strace {pid}] exited with status `{status}`",
-			pid = *self.pid
+			pid = *this.pid
 		);
-		self.signal.lock().exit_status = status as ExitStatus;
-		self.set_state(State::Zombie);
+		this.signal.lock().exit_status = status as ExitStatus;
+		Process::set_state(this, State::Zombie);
+	}
+
+	/// Removes all references to the process in order to free the structure.
+	///
+	/// The process is unlinked from:
+	/// - Its parent
+	/// - Its group
+	/// - Its scheduler
+	/// - The processes list
+	pub fn remove(this: Arc<Self>) {
+		let (parent, group_leader) = {
+			let mut links = this.links.lock();
+			(links.parent.take(), links.group_leader.take())
+		};
+		if let Some(parent) = parent {
+			let mut links = parent.links.lock();
+			if let Ok(i) = links.children.binary_search(&this.get_pid()) {
+				links.children.remove(i);
+			}
+		}
+		if let Some(group_leader) = group_leader {
+			let mut links = group_leader.links.lock();
+			if let Ok(i) = links.process_group.binary_search(&this.get_pid()) {
+				links.process_group.remove(i);
+			}
+		}
+		dequeue(&this);
+		PROCESSES.write().remove(&*this.pid);
 	}
 }
 
@@ -970,7 +1045,7 @@ impl AccessProfile {
 			return true;
 		}
 		// if sender's `uid` or `euid` equals receiver's `uid` or `suid`
-		let fs = proc.fs.lock();
+		let fs = proc.fs().lock();
 		self.uid == fs.access_profile.uid
 			|| self.uid == fs.access_profile.suid
 			|| self.euid == fs.access_profile.uid
@@ -983,56 +1058,5 @@ impl Drop for Process {
 		if self.is_init() {
 			panic!("Terminated init process!");
 		}
-	}
-}
-
-/// Returns `true` if the execution shall continue. Else, the execution shall be paused.
-fn yield_current_impl(frame: &mut IntFrame) -> bool {
-	// Disable interruptions to prevent execution from being stopped before the reference to
-	// `Process` is dropped
-	cli();
-	// If the process is not running anymore, stop execution
-	let proc = Process::current();
-	if proc.get_state() != State::Running {
-		return false;
-	}
-	// Get signal handler to execute, if any
-	let (sig, handler) = {
-		let mut signal_manager = proc.signal.lock();
-		let Some(sig) = signal_manager.next_signal() else {
-			return true;
-		};
-		let handler = signal_manager.handlers.lock()[sig as usize].clone();
-		(sig, handler)
-	};
-	// Prepare for execution of signal handler
-	handler.exec(sig, &proc, frame);
-	// If the process is still running, continue execution
-	proc.get_state() == State::Running
-}
-
-/// Before returning to userspace from the current context, this function checks the state of the
-/// current process to potentially alter the execution flow.
-///
-/// Arguments:
-/// - `ring` is the ring the current context is returning to.
-/// - `frame` is the interrupt frame.
-///
-/// The execution flow can be altered by:
-/// - The process is no longer in [`State::Running`] state
-/// - A signal handler has to be executed
-///
-/// This function disables interruptions.
-///
-/// This function never returns in case the process state turns to [`State::Zombie`].
-pub fn yield_current(ring: u8, frame: &mut IntFrame) {
-	// If returning to kernelspace, do nothing
-	if ring < 3 {
-		return;
-	}
-	// Use a separate function to drop everything, since `Scheduler::tick` may never return
-	let cont = yield_current_impl(frame);
-	if !cont {
-		Scheduler::tick();
 	}
 }

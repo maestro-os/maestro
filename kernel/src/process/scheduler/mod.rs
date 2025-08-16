@@ -18,57 +18,49 @@
 
 //! The role of the process scheduler is to interrupt the currently running
 //! process periodically to switch to another process that is in running state.
+//!
+//! Scheduling can be disabled/enabled by entering a **critical section**, with
+//! [`preempt_disable`]/[`preempt_enable`], or with [`critical`].
 
 pub mod switch;
 
 use crate::{
-	arch::x86::{cli, idt::IntFrame, pic},
-	event,
-	event::{CallbackHook, CallbackResult},
-	process::{Process, State, mem_space::MemSpace, pid::Pid, scheduler::switch::switch},
+	arch::{
+		end_of_interrupt,
+		x86::{cli, gdt::Gdt, idt::IntFrame, tss::Tss},
+	},
+	process::{Process, State, mem_space::MemSpace, scheduler::switch::switch},
 	sync::{atomic::AtomicU64, mutex::IntMutex, once::OnceInit},
-	time,
 };
 use core::{
-	mem,
-	sync::{
-		atomic,
-		atomic::{AtomicUsize, Ordering::Release},
+	cell::UnsafeCell,
+	hint::unlikely,
+	ptr,
+	sync::atomic::{
+		AtomicU32, AtomicUsize,
+		Ordering::{Acquire, Relaxed, Release},
 	},
 };
 use utils::{
-	collections::btreemap::{BTreeMap, MapIterator},
-	errno::AllocResult,
-	ptr::arc::{Arc, RelaxedArcCell},
+	collections::vec::Vec,
+	errno::{AllocResult, CollectResult},
+	list, list_type,
+	ptr::arc::{Arc, AtomicArc, AtomicOptionalArc},
 };
 
-/// The process scheduler.
-pub static SCHEDULER: OnceInit<IntMutex<Scheduler>> = unsafe { OnceInit::new() };
-/// Core-local storage.
-static CORE_LOCAL: CoreLocal = CoreLocal {
-	kernel_stack: AtomicUsize::new(0),
-	user_stack: AtomicUsize::new(0),
-
-	mem_space: RelaxedArcCell::new(),
-};
-
-/// Initializes schedulers.
-pub fn init() -> AllocResult<()> {
-	unsafe {
-		OnceInit::init(&SCHEDULER, IntMutex::new(Scheduler::new()?));
-	}
-	// Set GS base on the current core
-	#[cfg(target_arch = "x86_64")]
-	{
-		use crate::arch::x86;
-		use core::ptr::addr_of;
-		// Set to `IA32_GS_BASE` instead of `IA32_KERNEL_GS_BASE` since it will get swapped
-		// when switching to userspace
-		x86::wrmsr(x86::IA32_GS_BASE, addr_of!(CORE_LOCAL) as u64);
-	}
-	Ok(())
+/// Description of a CPU core.
+pub struct Cpu {
+	/// Processor ID
+	pub id: u8,
+	/// Local APIC ID
+	pub apic_id: u8,
+	/// Local APIC flags
+	pub apic_flags: u32,
 }
 
+// TODO somehow allow to declare per-core variables everywhere in the codebase
+
+// This structure is using the C representation because field offsets are important for assembly
 /// Kernel core-local storage.
 #[repr(C)]
 pub struct CoreLocal {
@@ -77,208 +69,331 @@ pub struct CoreLocal {
 	/// The stashed user stack
 	pub user_stack: AtomicUsize,
 
-	/// Attached memory space.
+	/// CPU information
+	pub cpu: &'static Cpu,
+	/// The CPU's GDT
+	pub gdt: Gdt,
+	/// The CPU's TSS
+	tss: UnsafeCell<Tss>,
+
+	/// The core's scheduler.
+	pub scheduler: Scheduler,
+	/// The time in between each tick on the core, in nanoseconds.
+	pub tick_period: AtomicU64,
+	/// Counter for nested critical sections.
+	///
+	/// The highest bit is used to tell whether preemption has been requested by the timer (clear
+	/// = requested, set = not requested).
+	pub preempt_counter: AtomicU32,
+
+	/// Attached memory space
 	///
 	/// The pointer stored by this field is returned by [`Arc::into_raw`].
-	pub mem_space: RelaxedArcCell<MemSpace>,
+	pub mem_space: AtomicOptionalArc<MemSpace>,
 }
 
-/// Returns the core-local structure for the current core.
+impl CoreLocal {
+	/// Returns a mutable reference to the TSS.
+	///
+	/// # Safety
+	///
+	/// Concurrent accesses are undefined.
+	#[inline]
+	#[allow(clippy::mut_from_ref)]
+	pub unsafe fn tss(&self) -> &mut Tss {
+		&mut *self.tss.get()
+	}
+}
+
+/// Allocate core-local structures.
+pub(crate) fn alloc_core_local() -> AllocResult<()> {
+	// Initialize core locales
+	let core_locals = CPU
+		.iter()
+		.map(|cpu| {
+			let idle_task = Process::idle_task()?;
+			Ok(CoreLocal {
+				kernel_stack: AtomicUsize::new(0),
+				user_stack: AtomicUsize::new(0),
+
+				cpu,
+				gdt: Default::default(),
+				tss: Default::default(),
+
+				scheduler: Scheduler {
+					queue: IntMutex::new(list!(Process, sched_node)),
+					queue_len: AtomicUsize::new(0),
+					cur_proc: AtomicArc::from(idle_task.clone()),
+
+					idle_task: idle_task.clone(),
+				},
+				tick_period: AtomicU64::new(0),
+				preempt_counter: AtomicU32::new(1 << 31),
+
+				mem_space: AtomicOptionalArc::new(),
+			})
+		})
+		.collect::<AllocResult<CollectResult<_>>>()?
+		.0?;
+	unsafe {
+		OnceInit::init(&CORE_LOCAL, core_locals);
+	}
+	Ok(())
+}
+
+/// Sets, on the current CPU core, the register to make the associated [`CoreLocal`] structure
+/// available.
+pub(crate) fn init_core_local() {
+	#[cfg(target_arch = "x86_64")]
+	{
+		use crate::arch::{core_id, x86};
+		let local = &CORE_LOCAL[core_id() as usize];
+		// Set to `IA32_GS_BASE` instead of `IA32_KERNEL_GS_BASE` since it will get swapped
+		// when switching to userspace
+		x86::wrmsr(x86::IA32_GS_BASE, local as *const _ as u64);
+	}
+}
+
+/// Returns the CPU-local structure for the current core.
 #[inline]
 pub fn core_local() -> &'static CoreLocal {
-	// TODO use `gs`
-	&CORE_LOCAL
+	#[cfg(target_arch = "x86")]
+	{
+		use crate::arch::core_id;
+		&CORE_LOCAL[core_id() as usize]
+	}
+	#[cfg(target_arch = "x86_64")]
+	{
+		use crate::{arch::x86, memory::VirtAddr};
+		let base = x86::rdmsr(x86::IA32_GS_BASE);
+		unsafe {
+			let ptr = VirtAddr(base as _).as_ptr::<CoreLocal>();
+			&*ptr
+		}
+	}
 }
+
+/// The list of CPU cores on the system.
+pub static CPU: OnceInit<Vec<Cpu>> = unsafe { OnceInit::new() };
+/// The list of core-local structures. There is one per CPU.
+static CORE_LOCAL: OnceInit<Vec<CoreLocal>> = unsafe { OnceInit::new() };
 
 /// A process scheduler.
 ///
 /// Each CPU core has its own scheduler.
 pub struct Scheduler {
-	/// The ticking callback hook, called at a regular interval to make the
-	/// scheduler work.
-	tick_callback_hook: CallbackHook,
-	/// The total number of ticks since the instantiation of the scheduler.
-	total_ticks: AtomicU64,
+	/// Queue of processes to run
+	queue: IntMutex<list_type!(Process, sched_node)>,
+	/// The number of processes in queue
+	queue_len: AtomicUsize,
+	/// The currently running process
+	cur_proc: AtomicArc<Process>,
 
-	/// A binary tree containing all processes registered to the current
-	/// scheduler.
-	processes: BTreeMap<Pid, Arc<Process>>,
-	/// The process currently being executed by the scheduler's core.
-	curr_proc: Arc<Process>,
-	/// The current number of processes in running state.
-	running_procs: usize,
-
-	/// The task used to idle.
+	/// The task used to make the current CPU idle
 	idle_task: Arc<Process>,
 }
 
 impl Scheduler {
-	/// Creates a new instance of scheduler.
-	pub(super) fn new() -> AllocResult<Self> {
-		// Register tick callback
-		let mut clocks = time::hw::CLOCKS.lock();
-		let pit = clocks.get_mut(b"pit".as_slice()).unwrap();
-		let tick_callback_hook = event::register_callback(
-			pit.get_interrupt_vector(),
-			|_: u32, _: u32, _: &mut IntFrame, _: u8| {
-				Scheduler::tick();
-				CallbackResult::Continue
-			},
-		)?
-		.unwrap();
-		let idle_task = Process::idle_task()?;
-		Ok(Self {
-			tick_callback_hook,
-			total_ticks: AtomicU64::new(0),
-
-			processes: BTreeMap::new(),
-			curr_proc: idle_task.clone(),
-			running_procs: 0,
-
-			idle_task,
-		})
-	}
-
-	/// Returns the total number of ticks since the instantiation of the
-	/// scheduler.
-	pub fn get_total_ticks(&self) -> u64 {
-		self.total_ticks.load(atomic::Ordering::Relaxed)
-	}
-
-	/// Returns the current number of processes on the scheduler.
-	#[inline]
-	pub fn processes_count(&self) -> usize {
-		self.processes.len()
-	}
-
-	/// Returns an iterator on the scheduler's processes.
-	pub fn iter_process(&self) -> MapIterator<'_, Pid, Arc<Process>> {
-		self.processes.iter()
-	}
-
-	/// Returns the process with PID `pid`.
-	///
-	/// If the process doesn't exist, the function returns `None`.
-	pub fn get_by_pid(&self, pid: Pid) -> Option<Arc<Process>> {
-		Some(self.processes.get(&pid)?.clone())
-	}
-
-	/// Returns the process with TID `tid`.
-	///
-	/// If the process doesn't exist, the function returns `None`.
-	pub fn get_by_tid(&self, _tid: Pid) -> Option<Arc<Process>> {
-		todo!()
-	}
-
 	/// Returns the current running process.
+	#[inline]
 	pub fn get_current_process(&self) -> Arc<Process> {
-		self.curr_proc.clone()
+		self.cur_proc.get()
 	}
 
 	/// Swaps the current running process for `new`, returning the previous.
-	pub fn swap_current_process(&mut self, new: Arc<Process>) -> Arc<Process> {
+	pub fn swap_current_process(&self, new: Arc<Process>) -> Arc<Process> {
 		core_local()
 			.kernel_stack
 			.store(new.kernel_stack.top().as_ptr() as _, Release);
-		mem::replace(&mut self.curr_proc, new)
-	}
-
-	/// Adds a process to the scheduler.
-	pub fn add_process(&mut self, proc: Arc<Process>) -> AllocResult<()> {
-		if proc.get_state() == State::Running {
-			self.increment_running();
-		}
-		self.processes.insert(*proc.pid, proc)?;
-		Ok(())
-	}
-
-	/// Removes the process with the given pid `pid`.
-	///
-	/// If the process is not attached to this scheduler, the function does nothing.
-	pub fn remove_process(&mut self, pid: Pid) {
-		let proc = self.processes.remove(&pid);
-		if let Some(proc) = proc {
-			if proc.get_state() == State::Running {
-				self.decrement_running();
-			}
-		}
-	}
-
-	/// Returns the current ticking frequency of the scheduler.
-	pub fn get_ticking_frequency(&self) -> u32 {
-		(10 * self.running_procs) as _
-	}
-
-	/// Increments the number of running processes.
-	pub fn increment_running(&mut self) {
-		self.running_procs += 1;
-		let mut clocks = time::hw::CLOCKS.lock();
-		let pit = clocks.get_mut(b"pit".as_slice()).unwrap();
-		if self.running_procs >= 1 {
-			pit.set_frequency(self.get_ticking_frequency());
-			pit.set_enabled(true);
-		}
-	}
-
-	/// Decrements the number of running processes.
-	pub fn decrement_running(&mut self) {
-		self.running_procs -= 1;
-		let mut clocks = time::hw::CLOCKS.lock();
-		let pit = clocks.get_mut(b"pit".as_slice()).unwrap();
-		if self.running_procs == 0 {
-			pit.set_enabled(false);
-		} else {
-			pit.set_frequency(self.get_ticking_frequency());
-		}
+		self.cur_proc.replace(new)
 	}
 
 	/// Returns the next process to run with its PID.
+	///
+	/// If no process is left to run, the function returns `None`.
 	fn get_next_process(&self) -> Option<Arc<Process>> {
-		// Get the current process, or take the first process in the list if no
-		// process is running
-		let curr_pid = self.curr_proc.get_pid();
-		let process_filter =
-			|(_, proc): &(&Pid, &Arc<Process>)| matches!(proc.get_state(), State::Running);
-		self.processes
-			.range((curr_pid + 1)..)
-			.find(process_filter)
-			.or_else(|| {
-				// If no suitable process is found, go back to the beginning to check processes
-				// located before the previous process (looping)
-				self.processes.range(..=curr_pid).find(process_filter)
-			})
-			.map(|(_, proc)| proc.clone())
+		let mut queue = self.queue.lock();
+		let proc = queue.front()?;
+		queue.rotate_left();
+		Some(proc)
 	}
+}
 
-	/// Ticking the scheduler.
-	///
-	/// The function looks for the next process to run, then switches context to it.
-	///
-	/// If no process is ready to run, the scheduler halts the current core until a process becomes
-	/// runnable.
-	pub fn tick() {
-		// Disable interrupts so that no interrupt can occur before switching to the next process
-		cli();
-		let (prev, next) = {
-			let mut sched = SCHEDULER.lock();
-			sched.total_ticks.fetch_add(1, atomic::Ordering::Relaxed);
-			// Find the next process to run
-			let next = sched
-				.get_next_process()
-				.unwrap_or_else(|| sched.idle_task.clone());
-			// If the process to run is the current, do nothing
-			if next.get_pid() == sched.curr_proc.get_pid() {
-				return;
-			}
-			// Swap current running process. We use pointers to avoid cloning the Arc
-			let next_ptr = Arc::as_ptr(&next);
-			let prev = sched.swap_current_process(next);
-			(Arc::as_ptr(&prev), next_ptr)
-		};
-		// Send end of interrupt, so that the next tick can be received
-		pic::end_of_interrupt(0);
-		unsafe {
-			switch(prev, next);
+/// Enqueues `proc` onto a scheduler.
+///
+/// This function attempts to select the scheduler that is the most suitable for the process, in an
+/// attempt to load-balance processes across CPU cores.
+pub fn enqueue(proc: &Arc<Process>) {
+	// If the process already is enqueued, do nothing
+	let mut links = proc.links.lock();
+	if links.sched.is_some() {
+		return;
+	}
+	// Select the scheduler with the least running processes
+	#[allow(unused_variables)]
+	let (lapic_id, sched) = CORE_LOCAL
+		.iter()
+		.map(|cl| (cl.cpu.apic_id, &cl.scheduler))
+		// TODO when selecting the scheduler, take into account power-states, NUMA, process
+		// priority and core affinity
+		.min_by(|(_, s0), (_, s1)| {
+			let count0 = s0.queue_len.load(Acquire);
+			let count1 = s1.queue_len.load(Acquire);
+			count0.cmp(&count1)
+		})
+		.unwrap();
+	// Enqueue
+	#[cfg(feature = "strace")]
+	println!("[strace {}] enqueue on core {lapic_id}", proc.get_pid());
+	let mut queue = sched.queue.lock();
+	queue.insert_back(proc.clone());
+	sched.queue_len.fetch_add(1, Release);
+	links.sched = Some(sched);
+}
+
+/// Removes the process from its scheduler, if any.
+pub fn dequeue(proc: &Arc<Process>) {
+	// If the process is not enqueued, do nothing
+	let mut links = proc.links.lock();
+	let Some(sched) = links.sched else {
+		return;
+	};
+	// Remove from queue
+	#[cfg(feature = "strace")]
+	println!("[strace {}] dequeue", proc.get_pid());
+	let mut queue = sched.queue.lock();
+	unsafe {
+		queue.remove(proc);
+	}
+	sched.queue_len.fetch_sub(1, Release);
+	links.sched = None;
+}
+
+/// Reschedules, switching context to the next process to run on the current core.
+///
+/// If no process is ready to run, the scheduler halts the current core until a process becomes
+/// runnable.
+///
+/// **Note**: calling this function inside a critical section is invalid.
+pub fn schedule() {
+	// Disable interrupts so that no interrupt can occur before switching to the next process
+	cli();
+	// Reset preempt flag
+	core_local().preempt_counter.fetch_or(1 << 31, Relaxed);
+	let sched = &core_local().scheduler;
+	let (prev, next) = {
+		// Find the next process to run
+		let next = sched
+			.get_next_process()
+			.unwrap_or_else(|| sched.idle_task.clone());
+		// If the process to run is the current, do nothing
+		if ptr::eq(next.as_ref(), sched.cur_proc.get().as_ref()) {
+			return;
 		}
+		// Swap current running process. We use pointers to avoid cloning the Arc
+		let next_ptr = Arc::as_ptr(&next);
+		let prev = sched.swap_current_process(next);
+		(Arc::as_ptr(&prev), next_ptr)
+	};
+	// Send end of interrupt, so that the next tick can be received
+	end_of_interrupt(0);
+	unsafe {
+		switch(prev, next);
+	}
+}
+
+/// Enter a critical section, disabling preemption.
+#[inline]
+pub fn preempt_disable() {
+	core_local().preempt_counter.fetch_add(1, Relaxed);
+}
+
+/// Exit a critical section, enabling preemption if the counter reaches zero.
+///
+/// The function may reschedule if the counter has reached zero.
+///
+/// # Safety
+///
+/// Calling this function outside a critical section is undefined.
+pub unsafe fn preempt_enable() {
+	let cnt = core_local().preempt_counter.fetch_sub(1, Relaxed);
+	// If the preemption hasn't been requested yet, the high bit is set, so this condition isn't
+	// fulfilled
+	if unlikely(cnt == 0) {
+		schedule();
+	}
+}
+
+/// Reschedules, if requested by the timer, and we are not in a critical section.
+///
+/// This function may never return in case the process has been turned to a zombie after switching
+/// to another process.
+pub fn preempt_check_resched() {
+	let cnt = core_local().preempt_counter.load(Relaxed);
+	// If the preemption hasn't been requested yet, the high bit is set, so this condition isn't
+	// fulfilled
+	if unlikely(cnt == 0) {
+		schedule();
+	}
+}
+
+/// Executes `f` in a critical section.
+#[inline]
+pub fn critical<F: FnOnce() -> T, T>(f: F) -> T {
+	preempt_disable();
+	let r = f();
+	unsafe {
+		preempt_enable();
+	}
+	r
+}
+
+/// Returns `false` if the execution shall continue. Else, the execution shall be paused.
+fn alter_flow_impl(frame: &mut IntFrame) -> bool {
+	// Disable interruptions to prevent execution from being stopped before the reference to
+	// `Process` is dropped
+	cli();
+	// If the process is not running anymore, stop execution
+	let proc = Process::current();
+	if proc.get_state() != State::Running {
+		return true;
+	}
+	// Get signal handler to execute, if any
+	let (sig, handler) = {
+		let mut signal_manager = proc.signal.lock();
+		let Some(sig) = signal_manager.next_signal() else {
+			return false;
+		};
+		let handler = signal_manager.handlers.lock()[sig as usize].clone();
+		(sig, handler)
+	};
+	// Prepare for execution of signal handler
+	handler.exec(sig, &proc, frame);
+	// If the process is still running, continue execution
+	proc.get_state() != State::Running
+}
+
+/// Before returning to userspace from the current context, this function checks the state of the
+/// current process to potentially alter the execution flow.
+///
+/// Arguments:
+/// - `ring` is the ring the current context is returning to.
+/// - `frame` is the interrupt frame.
+///
+/// The execution flow can be altered by:
+/// - The process is no longer in [`State::Running`] state
+/// - A signal handler has to be executed
+///
+/// This function disables interruptions.
+///
+/// This function never returns in case the process state turns to [`State::Zombie`].
+pub fn alter_flow(ring: u8, frame: &mut IntFrame) {
+	// If returning to kernelspace, do nothing
+	if ring < 3 {
+		return;
+	}
+	// Use a separate function to drop everything, since `schedule` may never return
+	if alter_flow_impl(frame) {
+		schedule();
 	}
 }

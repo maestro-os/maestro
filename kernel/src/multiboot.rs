@@ -21,7 +21,7 @@
 //! ELF structure of the kernel.
 
 use crate::{memory::PhysAddr, sync::once::OnceInit};
-use core::{ffi::c_void, slice};
+use core::{ffi::c_void, hint::unlikely, mem::offset_of, slice};
 
 /// Multiboot2 magic number.
 pub const BOOTLOADER_MAGIC: u32 = 0x36d76289;
@@ -43,6 +43,8 @@ pub const TAG_TYPE_ELF_SECTIONS: u32 = 9;
 
 /// Memory region: available
 pub const MEMORY_AVAILABLE: u32 = 1;
+/// Memory region: reserved
+pub const MEMORY_RESERVED: u32 = 2;
 /// Memory region: ACPI reclaimable
 pub const MEMORY_ACPI_RECLAIMABLE: u32 = 3;
 /// Memory region: ACPI NVS
@@ -112,19 +114,15 @@ struct TagELFSections {
 }
 
 impl MmapEntry {
-	/// Tells if a Multiboot mmap entry is valid.
-	pub fn is_valid(&self) -> bool {
-		(self.addr + self.len) < (1_u64 << (4 * 8))
-	}
-
 	/// Returns the string describing the memory region according to its type.
 	pub fn get_type_string(&self) -> &'static str {
 		match self.type_ {
 			MEMORY_AVAILABLE => "Available",
+			MEMORY_RESERVED => "Reserved",
 			MEMORY_ACPI_RECLAIMABLE => "ACPI",
 			MEMORY_NVS => "Hibernate",
 			MEMORY_BADRAM => "Bad RAM",
-			_ => "Reserved",
+			_ => "Unknown",
 		}
 	}
 }
@@ -209,7 +207,7 @@ fn handle_tag(boot_info: &mut BootInfo, tag: &Tag) {
 		}
 		TAG_TYPE_MMAP => {
 			let t: &TagMmap = unsafe { reinterpret_tag(tag) };
-			boot_info.memory_maps_size = t.size as usize;
+			boot_info.memory_maps_size = t.size as usize - offset_of!(TagMmap, entries);
 			boot_info.memory_maps_entry_size = t.entry_size as usize;
 			boot_info.memory_maps = t.entries.as_ptr();
 		}
@@ -230,12 +228,19 @@ unsafe fn next(tag: *const Tag) -> *const Tag {
 	tag.wrapping_byte_add(((size + 7) & !7) as usize)
 }
 
-/// Reads the multiboot tags from the given `ptr` and returns relevant information.
+/// Reads the multiboot tags.
+///
+/// Arguments:
+/// - `magic` is the magic number
+/// - `ptr` is the pointer to Multiboot tags
 ///
 /// # Safety
 ///
 /// The caller must ensure the given pointer is valid and points to Multiboot tags.
-pub(crate) unsafe fn read(ptr: *const c_void) -> &'static BootInfo {
+pub(crate) unsafe fn read(magic: u32, ptr: *const c_void) -> &'static BootInfo {
+	if unlikely(magic != BOOTLOADER_MAGIC || !ptr.is_aligned_to(8)) {
+		panic!("Bootloader non compliant with Multiboot2!");
+	}
 	let mut boot_info = BootInfo::default();
 	let mut tag = ptr.offset(8) as *const Tag;
 	while (*tag).type_ != TAG_TYPE_END {

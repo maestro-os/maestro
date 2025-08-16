@@ -37,8 +37,7 @@ use utils::errno::AllocResult;
 /// The allocator's mutex.
 static MUTEX: IntMutex<()> = IntMutex::new(());
 
-unsafe fn alloc(n: NonZeroUsize) -> AllocResult<NonNull<u8>> {
-	let _ = MUTEX.lock();
+unsafe fn alloc_impl(n: NonZeroUsize) -> AllocResult<NonNull<u8>> {
 	// Get free chunk
 	let free_chunk = chunk::get_available_chunk(n)?;
 	free_chunk.chunk.split(n.get());
@@ -51,18 +50,24 @@ unsafe fn alloc(n: NonZeroUsize) -> AllocResult<NonNull<u8>> {
 	let ptr = chunk.get_ptr_mut();
 	debug_assert!(ptr.is_aligned_to(chunk::ALIGNMENT));
 	debug_assert!(ptr as usize >= memory::PROCESS_END.0);
+	NonNull::new(ptr).ok_or(AllocError)
+}
+
+unsafe fn alloc(n: NonZeroUsize) -> AllocResult<NonNull<u8>> {
+	let _guard = MUTEX.lock();
+	let ptr = alloc_impl(n)?;
 	#[cfg(feature = "memtrace")]
 	super::trace::sample(
 		"malloc",
 		super::trace::SampleOp::Alloc,
-		ptr as usize,
+		ptr.as_ptr() as usize,
 		n.get(),
 	);
-	NonNull::new(ptr).ok_or(AllocError)
+	Ok(ptr)
 }
 
 unsafe fn realloc(ptr: NonNull<u8>, n: NonZeroUsize) -> AllocResult<NonNull<u8>> {
-	let _ = MUTEX.lock();
+	let _guard = MUTEX.lock();
 	// Get chunk
 	let chunk = Chunk::from_ptr(ptr.as_ptr());
 	assert!(chunk.used);
@@ -77,9 +82,9 @@ unsafe fn realloc(ptr: NonNull<u8>, n: NonZeroUsize) -> AllocResult<NonNull<u8>>
 		Ordering::Greater => {
 			if !chunk.grow(n.get() - chunk_size) {
 				// Allocate new chunk and copy to it
-				let mut new_ptr = alloc(n)?;
+				let mut new_ptr = alloc_impl(n)?;
 				ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_mut(), chunk_size);
-				free(ptr);
+				free_impl(ptr);
 				new_ptr
 			} else {
 				ptr
@@ -97,8 +102,7 @@ unsafe fn realloc(ptr: NonNull<u8>, n: NonZeroUsize) -> AllocResult<NonNull<u8>>
 	Ok(new_ptr)
 }
 
-unsafe fn free(mut ptr: NonNull<u8>) {
-	let _ = MUTEX.lock();
+unsafe fn free_impl(mut ptr: NonNull<u8>) {
 	// Get chunk
 	let chunk = Chunk::from_ptr(ptr.as_mut());
 	assert!(chunk.used);
@@ -116,6 +120,11 @@ unsafe fn free(mut ptr: NonNull<u8>) {
 		let block = Block::from_first_chunk(chunk);
 		drop_in_place(block);
 	}
+}
+
+unsafe fn free(ptr: NonNull<u8>) {
+	let _guard = MUTEX.lock();
+	free_impl(ptr);
 	#[cfg(feature = "memtrace")]
 	super::trace::sample("malloc", super::trace::SampleOp::Free, ptr.as_ptr() as _, 0);
 }

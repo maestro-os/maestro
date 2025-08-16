@@ -42,7 +42,7 @@ impl FileOps for Status {
 				.map(|m| m.exe_info.exe.name.as_bytes())
 				.unwrap_or_default();
 			let state = proc.get_state();
-			let fs = proc.fs.lock();
+			let fs = proc.fs().lock();
 			// TODO Fill every fields with process's data
 			writeln!(
 				f,

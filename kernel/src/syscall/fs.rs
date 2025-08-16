@@ -350,7 +350,7 @@ pub fn do_openat(
 			.map(PathBuf::try_from)
 			.ok_or_else(|| errno!(EFAULT))??;
 		let fds_mutex = proc.file_descriptors.deref().clone().unwrap();
-		let mode = mode & !proc.fs.lock().umask();
+		let mode = mode & !proc.fs().lock().umask();
 		(rs, pathname, fds_mutex, mode)
 	};
 
@@ -603,7 +603,7 @@ pub fn lchown(
 
 pub fn getcwd(Args((buf, size)): Args<(*mut u8, usize)>, proc: Arc<Process>) -> EResult<usize> {
 	let buf = UserSlice::from_user(buf, size)?;
-	let cwd = vfs::Entry::get_path(&proc.fs.lock().cwd)?;
+	let cwd = vfs::Entry::get_path(&proc.fs().lock().cwd)?;
 	if unlikely(size < cwd.len() + 1) {
 		return Err(errno!(ERANGE));
 	}
@@ -630,7 +630,7 @@ pub fn chdir(
 		return Err(errno!(EACCES));
 	}
 	// Set new cwd
-	proc.fs.lock().cwd = dir;
+	proc.fs().lock().cwd = dir;
 	Ok(0)
 }
 
@@ -654,7 +654,7 @@ pub fn chroot(
 	if ent.get_type()? != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
-	proc.fs.lock().chroot = ent;
+	proc.fs().lock().chroot = ent;
 	Ok(0)
 }
 
@@ -679,13 +679,13 @@ pub fn fchdir(
 	if !ap.can_list_directory(&stat) {
 		return Err(errno!(EACCES));
 	}
-	proc.fs.lock().cwd = file;
+	proc.fs().lock().cwd = file;
 	Ok(0)
 }
 
 pub fn umask(Args(mask): Args<file::Mode>, proc: Arc<Process>) -> EResult<usize> {
 	let prev = proc
-		.fs
+		.fs()
 		.lock()
 		.umask
 		.swap(mask & 0o777, atomic::Ordering::Relaxed);

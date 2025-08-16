@@ -139,6 +139,7 @@ IRQ 15
     add rsp, 16
 .endm
 
+.global idt_ignore
 .global init_ctx
 .global syscall_int
 .global syscall
@@ -149,13 +150,29 @@ IRQ 15
 .type idle_task, @function
 
 int_common:
+    # Handle swapgs nesting
+    cmp qword ptr [rsp + 24], 8
+    je 1f
+    swapgs
+1:
+
 STORE_REGS
 	cld
 	mov rdi, rsp
 	call interrupt_handler
 LOAD_REGS
+
+# Handle swapgs nesting
+    cmp qword ptr [rsp + 24], 8
+    je 1f
+    swapgs
+1:
+
 	add rsp, 16
 	iretq
+
+idt_ignore:
+    iretq
 
 init_ctx:
 	# Set user data segment
@@ -213,11 +230,6 @@ LOAD_REGS
     sysretq
 
 idle_task:
-    # Lazy cleanup
-    xor ax, ax
-    mov fs, ax
-    mov gs, ax
-0:
     sti
     hlt
-    jmp 0b
+    jmp idle_task

@@ -17,17 +17,31 @@
  */
 
 //! x86-specific code.
+//!
+//! Documentation for the x86 architecture is available [here](https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html).
 
+pub mod apic;
 pub mod gdt;
-#[macro_use]
 pub mod idt;
 pub mod io;
 pub mod paging;
 pub mod pic;
+pub mod smp;
+pub mod timer;
 pub mod tss;
 
+use crate::{
+	acpi,
+	acpi::madt::{Madt, ProcessorLocalApic},
+	println,
+	process::scheduler::{CPU, Cpu},
+	sync::once::OnceInit,
+};
 use core::arch::asm;
+use utils::collections::vec::Vec;
 
+/// MSR: APIC base
+pub const IA32_APIC_BASE_MSR: u32 = 0x1b;
 /// MSR: FS base
 pub const IA32_FS_BASE: u32 = 0xc0000100;
 /// MSR: GS base
@@ -119,23 +133,23 @@ pub fn cpuid(mut eax: u32, mut ebx: u32, mut ecx: u32, mut edx: u32) -> (u32, u3
 	unsafe {
 		#[cfg(target_arch = "x86")]
 		asm!(
-		"cpuid",
-		inout("eax") eax,
-		inout("ebx") ebx,
-		inout("ecx") ecx,
-		inout("edx") edx,
+			"cpuid",
+			inout("eax") eax,
+			inout("ebx") ebx,
+			inout("ecx") ecx,
+			inout("edx") edx,
 		);
 		#[cfg(target_arch = "x86_64")]
 		asm!(
-		"push rbx",
-		"mov ebx, {rbx:e}",
-		"cpuid",
-		"mov {rbx:e}, ebx",
-		"pop rbx",
-		inout("rax") eax,
-		rbx = inout(reg) ebx,
-		inout("rcx") ecx,
-		inout("rdx") edx,
+			"push rbx",
+			"mov ebx, {rbx:e}",
+			"cpuid",
+			"mov {rbx:e}, ebx",
+			"pop rbx",
+			inout("rax") eax,
+			rbx = inout(reg) ebx,
+			inout("rcx") ecx,
+			inout("rdx") edx,
 		);
 	}
 	(eax, ebx, ecx, edx)
@@ -208,18 +222,22 @@ pub fn supports_supervisor_prot() -> (bool, bool) {
 
 /// Sets whether the kernel can write to read-only pages.
 ///
+/// The function returns the previous state of the flag.
+///
 /// # Safety
 ///
 /// Disabling this feature which makes read-only data writable in kernelspace.
 #[inline]
-pub unsafe fn set_write_protected(lock: bool) {
+pub unsafe fn set_write_protected(lock: bool) -> bool {
 	let mut val = register_get!("cr0");
+	let prev = val & (1 << 16) != 0;
 	if lock {
 		val |= 1 << 16;
 	} else {
 		val &= !(1 << 16);
 	}
 	register_set!("cr0", val);
+	prev
 }
 
 /// Sets or clears the AC flag to disable or enable SMAP.
@@ -263,5 +281,42 @@ pub fn fxsave(fxstate: &mut FxState) {
 pub fn fxrstor(fxstate: &FxState) {
 	unsafe {
 		asm!("fxrstor [{}]", in(reg) fxstate.0.as_ptr());
+	}
+}
+
+/// Enumerates CPUs on the system using ACPI.
+///
+/// This function **must not** be called if there is no APIC on the system.
+pub(crate) fn enumerate_cpus() {
+	let mut cpu = Vec::new();
+	if let Some(madt) = acpi::get_table::<Madt>() {
+		// Register CPU cores
+		madt.entries()
+			.filter(|e| e.entry_type == 0)
+			.map(|e| unsafe { e.body::<ProcessorLocalApic>() })
+			.for_each(|e| {
+				if e.apic_flags & 0b11 == 0 {
+					return;
+				}
+				cpu.push(Cpu {
+					id: e.processor_id,
+					apic_id: e.apic_id,
+					apic_flags: e.apic_flags,
+				})
+				.expect("could not insert CPU");
+			});
+	}
+	// If no CPU is found, just add the current
+	if cpu.is_empty() {
+		cpu.push(Cpu {
+			id: 1,
+			apic_id: 0,
+			apic_flags: 0,
+		})
+		.expect("could not insert CPU");
+	}
+	println!("{} CPU cores found", cpu.len());
+	unsafe {
+		OnceInit::init(&CPU, cpu);
 	}
 }

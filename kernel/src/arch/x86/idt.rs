@@ -23,11 +23,11 @@
 use crate::{
 	arch::{
 		x86,
-		x86::{DEFAULT_FLAGS, cli, gdt, pic, sti},
+		x86::{DEFAULT_FLAGS, cli, gdt, sti},
 	},
 	syscall::syscall_int,
 };
-use core::{arch::asm, ffi::c_void, mem::size_of, ptr::addr_of};
+use core::{arch::asm, ffi::c_void, fmt, fmt::Formatter, mem::size_of, ptr::addr_of};
 use utils::errno::EResult;
 
 /// The IDT vector index for system calls.
@@ -39,7 +39,7 @@ pub const ENTRIES_COUNT: usize = 0x81;
 #[cfg(target_arch = "x86")]
 #[repr(C)]
 #[allow(missing_docs)]
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub struct IntFrame {
 	// Using the prefix `r` to avoid duplicate code
 	pub rax: u32,
@@ -69,7 +69,7 @@ pub struct IntFrame {
 #[cfg(target_arch = "x86_64")]
 #[allow(missing_docs)]
 #[repr(C)]
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub struct IntFrame {
 	pub rax: u64,
 	pub rbx: u64,
@@ -196,6 +196,59 @@ impl IntFrame {
 	}
 }
 
+impl fmt::Display for IntFrame {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		const LEN: usize = size_of::<usize>() * 2;
+		#[cfg(target_arch = "x86")]
+		{
+			f.write_fmt(format_args!("EAX: {:0LEN$x}", self.rax))?;
+			f.write_fmt(format_args!(" EBX: {:0LEN$x}", self.rbx))?;
+			f.write_fmt(format_args!(" ECX: {:0LEN$x}", self.rcx))?;
+			f.write_fmt(format_args!(" EDX: {:0LEN$x}", self.rdx))?;
+			f.write_fmt(format_args!(" ESI: {:0LEN$x}\n", self.rsi))?;
+			f.write_fmt(format_args!("EDI: {:0LEN$x}", self.rdi))?;
+			f.write_fmt(format_args!(" EBP: {:0LEN$x}", self.rbp))?;
+			f.write_fmt(format_args!(" GS:  {:0LEN$x}", self.gs))?;
+			f.write_fmt(format_args!(" FS:  {:0LEN$x}", self.fs))?;
+			f.write_fmt(format_args!(" INT: {:0LEN$x}\n", self.int))?;
+			f.write_fmt(format_args!("CODE: {:0LEN$x}", self.code))?;
+			f.write_fmt(format_args!(" EIP: {:0LEN$x}", self.rip))?;
+			f.write_fmt(format_args!(" CS: {:0LEN$x}", self.cs))?;
+			f.write_fmt(format_args!(" EFL: {:0LEN$x}", self.rflags))?;
+			f.write_fmt(format_args!(" ESP: {:0LEN$x}\n", self.rsp))?;
+			f.write_fmt(format_args!("SS: {:0LEN$x}", self.ss))?;
+		}
+		#[cfg(target_arch = "x86_64")]
+		{
+			f.write_fmt(format_args!("RAX: {:0LEN$x}", self.rax))?;
+			f.write_fmt(format_args!(" RBX: {:0LEN$x}", self.rbx))?;
+			f.write_fmt(format_args!(" RCX: {:0LEN$x}\n", self.rcx))?;
+			f.write_fmt(format_args!("RDX: {:0LEN$x}", self.rdx))?;
+			f.write_fmt(format_args!(" RSI: {:0LEN$x}", self.rsi))?;
+			f.write_fmt(format_args!(" RDI: {:0LEN$x}\n", self.rdi))?;
+			f.write_fmt(format_args!("RBP: {:0LEN$x}", self.rbp))?;
+			f.write_fmt(format_args!(" R8:  {:0LEN$x}", self.r8))?;
+			f.write_fmt(format_args!(" R9:  {:0LEN$x}\n", self.r9))?;
+			f.write_fmt(format_args!("R10: {:0LEN$x}", self.r10))?;
+			f.write_fmt(format_args!(" R11: {:0LEN$x}", self.r11))?;
+			f.write_fmt(format_args!(" R12: {:0LEN$x}\n", self.r12))?;
+			f.write_fmt(format_args!("R13: {:0LEN$x}", self.r13))?;
+			f.write_fmt(format_args!(" R14: {:0LEN$x}", self.r12))?;
+			f.write_fmt(format_args!(" R15: {:0LEN$x}\n", self.r15))?;
+			f.write_fmt(format_args!("GS:  {:0LEN$x}", self.gs))?;
+			f.write_fmt(format_args!(" FS:  {:0LEN$x}", self.fs))?;
+			f.write_fmt(format_args!(" INT: {:0LEN$x}\n", self.int))?;
+			f.write_fmt(format_args!("CODE:   {:0LEN$x}", self.code))?;
+			f.write_fmt(format_args!(" RIP: {:0LEN$x}", self.rip))?;
+			f.write_fmt(format_args!(" CS: {:0LEN$x}\n", self.cs))?;
+			f.write_fmt(format_args!("RFL: {:0LEN$x}", self.rflags))?;
+			f.write_fmt(format_args!(" RSP: {:0LEN$x}", self.rsp))?;
+			f.write_fmt(format_args!(" SS: {:0LEN$x}", self.ss))?;
+		}
+		Ok(())
+	}
+}
+
 /// An IDT header.
 #[repr(C, packed)]
 struct InterruptDescriptorTable {
@@ -254,12 +307,11 @@ impl InterruptDescriptor {
 	///
 	/// Arguments:
 	/// - `address` is the address of the handler.
-	/// - `selector` is the segment selector to be used to handle the interrupt.
 	/// - `flags` is the set of flags for the entry (see Intel documentation).
-	fn new(address: *const c_void, selector: u16, flags: u8) -> Self {
+	fn new(address: *const c_void, flags: u8) -> Self {
 		Self {
 			offset0: (address as usize & 0xffff) as u16,
-			selector,
+			selector: 8, // kernel code segment
 			zero0: 0,
 			flags,
 			offset1: ((address as usize >> 16) & 0xffff) as u16,
@@ -321,6 +373,8 @@ unsafe extern "C" {
 	fn irq13();
 	fn irq14();
 	fn irq15();
+
+	fn idt_ignore();
 }
 
 /// The list of IDT entries.
@@ -345,6 +399,70 @@ pub fn wrap_disable_interrupts<T, F: FnOnce() -> T>(f: F) -> T {
 	res
 }
 
+/// Fills the IDT, which is common to all CPU cores.
+///
+/// This function must be called only once at kernel initialization.
+pub(crate) fn init_table() {
+	// Safe because the current function is called only once at boot
+	unsafe {
+		// Fill with default entries
+		#[allow(static_mut_refs)] // No one else is accessing this
+		IDT_ENTRIES.fill(InterruptDescriptor::new(idt_ignore as _, 0x8e));
+		// Errors
+		IDT_ENTRIES[0x00] = InterruptDescriptor::new(error0 as _, 0x8e);
+		IDT_ENTRIES[0x01] = InterruptDescriptor::new(error1 as _, 0x8e);
+		IDT_ENTRIES[0x02] = InterruptDescriptor::new(error2 as _, 0x8e);
+		IDT_ENTRIES[0x03] = InterruptDescriptor::new(error3 as _, 0x8e);
+		IDT_ENTRIES[0x04] = InterruptDescriptor::new(error4 as _, 0x8e);
+		IDT_ENTRIES[0x05] = InterruptDescriptor::new(error5 as _, 0x8e);
+		IDT_ENTRIES[0x06] = InterruptDescriptor::new(error6 as _, 0x8e);
+		IDT_ENTRIES[0x07] = InterruptDescriptor::new(error7 as _, 0x8e);
+		IDT_ENTRIES[0x08] = InterruptDescriptor::new(error8 as _, 0x8e);
+		IDT_ENTRIES[0x09] = InterruptDescriptor::new(error9 as _, 0x8e);
+		IDT_ENTRIES[0x0a] = InterruptDescriptor::new(error10 as _, 0x8e);
+		IDT_ENTRIES[0x0b] = InterruptDescriptor::new(error11 as _, 0x8e);
+		IDT_ENTRIES[0x0c] = InterruptDescriptor::new(error12 as _, 0x8e);
+		IDT_ENTRIES[0x0d] = InterruptDescriptor::new(error13 as _, 0x8e);
+		IDT_ENTRIES[0x0e] = InterruptDescriptor::new(error14 as _, 0x8e);
+		IDT_ENTRIES[0x0f] = InterruptDescriptor::new(error15 as _, 0x8e);
+		IDT_ENTRIES[0x10] = InterruptDescriptor::new(error16 as _, 0x8e);
+		IDT_ENTRIES[0x11] = InterruptDescriptor::new(error17 as _, 0x8e);
+		IDT_ENTRIES[0x12] = InterruptDescriptor::new(error18 as _, 0x8e);
+		IDT_ENTRIES[0x13] = InterruptDescriptor::new(error19 as _, 0x8e);
+		IDT_ENTRIES[0x14] = InterruptDescriptor::new(error20 as _, 0x8e);
+		IDT_ENTRIES[0x15] = InterruptDescriptor::new(error21 as _, 0x8e);
+		IDT_ENTRIES[0x16] = InterruptDescriptor::new(error22 as _, 0x8e);
+		IDT_ENTRIES[0x17] = InterruptDescriptor::new(error23 as _, 0x8e);
+		IDT_ENTRIES[0x18] = InterruptDescriptor::new(error24 as _, 0x8e);
+		IDT_ENTRIES[0x19] = InterruptDescriptor::new(error25 as _, 0x8e);
+		IDT_ENTRIES[0x1a] = InterruptDescriptor::new(error26 as _, 0x8e);
+		IDT_ENTRIES[0x1b] = InterruptDescriptor::new(error27 as _, 0x8e);
+		IDT_ENTRIES[0x1c] = InterruptDescriptor::new(error28 as _, 0x8e);
+		IDT_ENTRIES[0x1d] = InterruptDescriptor::new(error29 as _, 0x8e);
+		IDT_ENTRIES[0x1e] = InterruptDescriptor::new(error30 as _, 0x8e);
+		IDT_ENTRIES[0x1f] = InterruptDescriptor::new(error31 as _, 0x8e);
+		// IRQ
+		IDT_ENTRIES[0x20] = InterruptDescriptor::new(irq0 as _, 0x8e);
+		IDT_ENTRIES[0x21] = InterruptDescriptor::new(irq1 as _, 0x8e);
+		IDT_ENTRIES[0x22] = InterruptDescriptor::new(irq2 as _, 0x8e);
+		IDT_ENTRIES[0x23] = InterruptDescriptor::new(irq3 as _, 0x8e);
+		IDT_ENTRIES[0x24] = InterruptDescriptor::new(irq4 as _, 0x8e);
+		IDT_ENTRIES[0x25] = InterruptDescriptor::new(irq5 as _, 0x8e);
+		IDT_ENTRIES[0x26] = InterruptDescriptor::new(irq6 as _, 0x8e);
+		IDT_ENTRIES[0x27] = InterruptDescriptor::new(irq7 as _, 0x8e);
+		IDT_ENTRIES[0x28] = InterruptDescriptor::new(irq8 as _, 0x8e);
+		IDT_ENTRIES[0x29] = InterruptDescriptor::new(irq9 as _, 0x8e);
+		IDT_ENTRIES[0x2a] = InterruptDescriptor::new(irq10 as _, 0x8e);
+		IDT_ENTRIES[0x2b] = InterruptDescriptor::new(irq11 as _, 0x8e);
+		IDT_ENTRIES[0x2c] = InterruptDescriptor::new(irq12 as _, 0x8e);
+		IDT_ENTRIES[0x2d] = InterruptDescriptor::new(irq13 as _, 0x8e);
+		IDT_ENTRIES[0x2e] = InterruptDescriptor::new(irq14 as _, 0x8e);
+		IDT_ENTRIES[0x2f] = InterruptDescriptor::new(irq15 as _, 0x8e);
+		// System calls
+		IDT_ENTRIES[SYSCALL_ENTRY] = InterruptDescriptor::new(syscall_int as _, 0xee);
+	}
+}
+
 /// Enables the syscall/sysret instruction pairs if available.
 #[cfg(target_arch = "x86_64")]
 fn enable_syscall_inst() {
@@ -364,69 +482,12 @@ fn enable_syscall_inst() {
 	super::wrmsr(0xc0000084, 0x600);
 }
 
-/// Initializes the IDT.
-///
-/// This function must be called only once at kernel initialization.
+/// Binds the IDT to the current CPU core.
 ///
 /// When returning, maskable interrupts are disabled by default.
-pub fn init() {
-	cli();
-	pic::init(0x20, 0x28);
-	// Safe because the current function is called only once at boot
+pub(crate) fn bind() {
 	unsafe {
-		// Errors
-		IDT_ENTRIES[0x00] = InterruptDescriptor::new(error0 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x01] = InterruptDescriptor::new(error1 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x02] = InterruptDescriptor::new(error2 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x03] = InterruptDescriptor::new(error3 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x04] = InterruptDescriptor::new(error4 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x05] = InterruptDescriptor::new(error5 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x06] = InterruptDescriptor::new(error6 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x07] = InterruptDescriptor::new(error7 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x08] = InterruptDescriptor::new(error8 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x09] = InterruptDescriptor::new(error9 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x0a] = InterruptDescriptor::new(error10 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x0b] = InterruptDescriptor::new(error11 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x0c] = InterruptDescriptor::new(error12 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x0d] = InterruptDescriptor::new(error13 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x0e] = InterruptDescriptor::new(error14 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x0f] = InterruptDescriptor::new(error15 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x10] = InterruptDescriptor::new(error16 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x11] = InterruptDescriptor::new(error17 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x12] = InterruptDescriptor::new(error18 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x13] = InterruptDescriptor::new(error19 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x14] = InterruptDescriptor::new(error20 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x15] = InterruptDescriptor::new(error21 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x16] = InterruptDescriptor::new(error22 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x17] = InterruptDescriptor::new(error23 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x18] = InterruptDescriptor::new(error24 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x19] = InterruptDescriptor::new(error25 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x1a] = InterruptDescriptor::new(error26 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x1b] = InterruptDescriptor::new(error27 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x1c] = InterruptDescriptor::new(error28 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x1d] = InterruptDescriptor::new(error29 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x1e] = InterruptDescriptor::new(error30 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x1f] = InterruptDescriptor::new(error31 as _, 0x8, 0x8e);
-		// IRQ
-		IDT_ENTRIES[0x20] = InterruptDescriptor::new(irq0 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x21] = InterruptDescriptor::new(irq1 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x22] = InterruptDescriptor::new(irq2 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x23] = InterruptDescriptor::new(irq3 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x24] = InterruptDescriptor::new(irq4 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x25] = InterruptDescriptor::new(irq5 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x26] = InterruptDescriptor::new(irq6 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x27] = InterruptDescriptor::new(irq7 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x28] = InterruptDescriptor::new(irq8 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x29] = InterruptDescriptor::new(irq9 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x2a] = InterruptDescriptor::new(irq10 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x2b] = InterruptDescriptor::new(irq11 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x2c] = InterruptDescriptor::new(irq12 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x2d] = InterruptDescriptor::new(irq13 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x2e] = InterruptDescriptor::new(irq14 as _, 0x8, 0x8e);
-		IDT_ENTRIES[0x2f] = InterruptDescriptor::new(irq15 as _, 0x8, 0x8e);
-		// System calls
-		IDT_ENTRIES[SYSCALL_ENTRY] = InterruptDescriptor::new(syscall_int as _, 0x8, 0xee);
-		// Load
+		cli();
 		let idt = InterruptDescriptorTable {
 			size: (size_of::<InterruptDescriptor>() * ENTRIES_COUNT - 1) as u16,
 			offset: addr_of!(IDT_ENTRIES) as _,

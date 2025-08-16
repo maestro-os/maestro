@@ -46,22 +46,33 @@ CPU architectures support
 > - 📅 **Planned** (not currently supported)
 
 The following features are currently implemented (non-exhaustive):
-- Terminal with [VGA text mode](https://en.wikipedia.org/wiki/VGA_text_mode) and [PS/2](https://en.wikipedia.org/wiki/PS/2_port) keyboard (with forward compatibility with USB handled by the motherboard's firmware)
+- Terminal
+    - [VGA text mode](https://en.wikipedia.org/wiki/VGA_text_mode)
+    - [PS/2](https://en.wikipedia.org/wiki/PS/2_port) keyboard (includes forward compatibility with USB keyboards)
     - Partial support of [ANSI escape codes](https://en.wikipedia.org/wiki/ANSI_escape_code)
-- Memory allocation/virtual memory
+- Memory management
     - [Buddy allocator](https://en.wikipedia.org/wiki/Buddy_memory_allocation)
-    - Internal memory allocator, with similarities with **dlmalloc**'s implementation, working on top of the buddy allocator
+    - Internal memory allocator, with similarities with **dlmalloc**'s implementation
+    - Per-process virtual memory
 - Processes and [scheduler](https://en.wikipedia.org/wiki/Scheduling_(computing))
+    - Symmetric MultiProcessing (SMP)
     - POSIX signals
 - [PCI](https://en.wikipedia.org/wiki/Peripheral_Component_Interconnect) devices enumeration
-- Files:
-    - Mountpoints
-    - [IDE/PATA](https://en.wikipedia.org/wiki/Parallel_ATA) driver
+- Unix files
+    - VFS/Mountpoints
+    - [IDE/PATA](https://en.wikipedia.org/wiki/Parallel_ATA)
+    - Page cache
     - Filesystem ([ext2](https://en.wikipedia.org/wiki/Extended_file_system) only for now)
     - Disk partitions ([MBR](https://en.wikipedia.org/wiki/Master_boot_record) and [GPT](https://en.wikipedia.org/wiki/GUID_Partition_Table))
     - Virtual filesystems (`/tmp` and `/proc`)
     - initramfs
-- Time/Clock ([RTC](https://en.wikipedia.org/wiki/Real-time_clock))
+    - Unix pipes and sockets
+    - Device files
+- Time
+    - [PIT](https://en.wikipedia.org/wiki/Programmable_interval_timer)
+    - [RTC](https://en.wikipedia.org/wiki/Real-time_clock)
+    - APIC Timer
+    - [HPET](https://en.wikipedia.org/wiki/High_Precision_Event_Timer)
 - Linux's system calls (roughly 30% are currently implemented)
 - Kernel modules
 - [ELF](https://en.wikipedia.org/wiki/Executable_and_Linkable_Format) programs

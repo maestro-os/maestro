@@ -28,10 +28,10 @@ pub mod elf;
 pub mod vdso;
 
 use crate::{
-	arch::x86::{idt::IntFrame, tss},
+	arch::x86::idt::IntFrame,
 	file::vfs::ResolutionSettings,
 	memory::VirtAddr,
-	process::{Process, mem_space::MemSpace},
+	process::{Process, mem_space::MemSpace, scheduler::core_local},
 	sync::mutex::Mutex,
 };
 use utils::{
@@ -96,33 +96,39 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 	*proc.tls.lock() = Default::default();
 	// Set TSS here for the first process to be executed
 	unsafe {
-		tss::set_kernel_stack(proc.kernel_stack.top().as_ptr());
+		core_local()
+			.tss()
+			.set_kernel_stack(proc.kernel_stack.top().as_ptr());
 	}
 	// Set the process's registers
 	IntFrame::exec(frame, image.entry_point.0, image.user_stack.0, image.compat);
 	#[cfg(target_arch = "x86_64")]
 	{
-		use crate::{arch::x86, process::scheduler::core_local};
+		use crate::{
+			arch::{x86, x86::idt::wrap_disable_interrupts},
+			process::scheduler::{core_local, init_core_local},
+		};
 		use core::{arch::asm, sync::atomic::Ordering::Relaxed};
-		// Preserve GS base
-		let gs_base = x86::rdmsr(x86::IA32_GS_BASE);
-		// Reset segment selector
-		unsafe {
-			asm!(
-				"xor {tmp}, {tmp}",
-				"mov fs, {tmp}",
-				"mov gs, {tmp}",
-				tmp = out(reg) _
-			);
-		}
-		// Reset MSR
-		x86::wrmsr(x86::IA32_FS_BASE, 0);
-		x86::wrmsr(x86::IA32_GS_BASE, gs_base);
-		x86::wrmsr(x86::IA32_KERNEL_GS_BASE, 0);
-		// Update user stack
-		core_local()
-			.user_stack
-			.store(image.user_stack.0 as _, Relaxed);
+
+		// Disable interrupts to prevent data races on `gs`
+		wrap_disable_interrupts(|| {
+			// Reset segment selector
+			unsafe {
+				asm!(
+					"mov fs, {r:x}",
+					"mov gs, {r:x}",
+					r = in(reg) 0
+				);
+			}
+			// Reset MSR
+			x86::wrmsr(x86::IA32_FS_BASE, 0);
+			x86::wrmsr(x86::IA32_KERNEL_GS_BASE, 0);
+			init_core_local();
+			// Update user stack
+			core_local()
+				.user_stack
+				.store(image.user_stack.0 as _, Relaxed);
+		});
 	}
 	Ok(())
 }

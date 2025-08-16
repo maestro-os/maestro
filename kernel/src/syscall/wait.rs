@@ -20,12 +20,7 @@
 
 use crate::{
 	memory::user::UserPtr,
-	process::{
-		Process, State,
-		pid::Pid,
-		rusage::Rusage,
-		scheduler::{SCHEDULER, Scheduler},
-	},
+	process::{Process, State, pid::Pid, rusage::Rusage, scheduler::schedule},
 	syscall::Args,
 };
 use core::{
@@ -107,11 +102,10 @@ fn get_waitable(
 	rusage: UserPtr<Rusage>,
 ) -> EResult<Option<Pid>> {
 	let mut empty = true;
-	let mut sched = SCHEDULER.lock();
 	// Find a waitable process
 	let proc = iter_targets(curr_proc, pid)
 		.inspect(|_| empty = false)
-		.filter_map(|pid| sched.get_by_pid(pid))
+		.filter_map(Process::get_by_pid)
 		// Select a waitable process
 		.find(|proc| {
 			let events = if options & WNOWAIT == 0 {
@@ -138,8 +132,7 @@ fn get_waitable(
 	// Remove zombie process if requested
 	let pid = proc.get_pid();
 	if options & WNOWAIT == 0 && proc.get_state() == State::Zombie {
-		proc.unlink();
-		sched.remove_process(pid);
+		Process::remove(proc);
 	}
 	Ok(Some(pid))
 }
@@ -165,9 +158,9 @@ pub fn do_waitpid(
 			}
 			// When a child process has its state changed by a signal, SIGCHLD is sent to the
 			// current process to wake it up
-			proc.set_state(State::Sleeping);
+			Process::set_state(&proc, State::Sleeping);
 		}
-		Scheduler::tick();
+		schedule();
 	}
 }
 

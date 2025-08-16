@@ -59,8 +59,8 @@ pub mod cmdline;
 pub mod debug;
 pub mod device;
 pub mod elf;
-pub mod event;
 pub mod file;
+pub mod int;
 pub mod logger;
 pub mod memory;
 pub mod module;
@@ -80,19 +80,19 @@ pub mod time;
 pub mod tty;
 
 use crate::{
-	arch::x86::{enable_sse, has_sse, idt, idt::IntFrame},
+	arch::x86::{idt::IntFrame, smp},
 	file::{fs::initramfs, vfs, vfs::ResolutionSettings},
 	logger::LOGGER,
 	memory::{cache, vmem},
 	process::{
 		Process, exec,
 		exec::{ExecInfo, exec},
-		scheduler::{SCHEDULER, switch, switch::idle_task},
+		scheduler::{CPU, core_local, switch, switch::idle_task},
 	},
 	sync::mutex::Mutex,
 	tty::TTY,
 };
-use core::{ffi::c_void, hint::unlikely};
+use core::ffi::c_void;
 pub use utils;
 use utils::{
 	collections::{path::Path, string::String, vec::Vec},
@@ -136,7 +136,7 @@ fn init(init_path: String) -> EResult<IntFrame> {
 		)?;
 		let proc = Process::init()?;
 		exec(&proc, &mut frame, program_image)?;
-		SCHEDULER.lock().swap_current_process(proc);
+		core_local().scheduler.swap_current_process(proc);
 	}
 	Ok(frame)
 }
@@ -145,27 +145,17 @@ fn init(init_path: String) -> EResult<IntFrame> {
 fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	// Initialize TTY
 	TTY.display.lock().show();
-	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-	{
-		// Ensure the CPU has SSE
-		if !has_sse() {
-			panic!("SSE support is required to run this kernel :(");
-		}
-		enable_sse();
-		// Initialize IDT
-		idt::init();
-	}
+	// Architecture-specific initialization, stage 1
+	arch::init1(true);
+
+	println!("Boot {NAME} version {VERSION}");
 
 	// Read multiboot information
-	if unlikely(magic != multiboot::BOOTLOADER_MAGIC || !multiboot_ptr.is_aligned_to(8)) {
-		panic!("Bootloader non compliant with Multiboot2!");
-	}
-	let boot_info = unsafe { multiboot::read(multiboot_ptr) };
+	let boot_info = unsafe { multiboot::read(magic, multiboot_ptr) };
 
 	// Initialize memory management
+	println!("Setup memory management");
 	memory::memmap::init(boot_info);
-	#[cfg(debug_assertions)]
-	memory::memmap::print_entries();
 	memory::alloc::init();
 	vmem::init();
 
@@ -173,8 +163,7 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	// initialized
 
 	// Init kernel symbols map
-	elf::kernel::init()
-		.unwrap_or_else(|_| panic!("Cannot initialize kernel symbols map! (out of memory)"));
+	elf::kernel::init().expect("cannot initialize kernel symbols map");
 
 	// Perform kernel self-tests
 	#[cfg(test)]
@@ -182,50 +171,43 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 
 	// Parse bootloader command line arguments
 	let cmdline = boot_info.cmdline.unwrap_or_default();
-	let args_parser = match cmdline::ArgsParser::parse(cmdline) {
-		Ok(p) => p,
-		Err(e) => {
-			println!("{e}");
-			power::halt();
-		}
-	};
+	let args_parser = cmdline::ArgsParser::parse(cmdline).expect("could not parse command line");
 	LOGGER.lock().silent = args_parser.is_silent();
 
-	println!("Booting Maestro kernel version {VERSION}");
+	println!("Find ACPI structures");
+	acpi::init().expect("ACPI initialization failed");
+	// Architecture-specific initialization, stage 2
+	arch::init2().expect("architecture-specific initialization failed");
 
-	// FIXME
-	//println!("Initializing ACPI...");
-	//acpi::init();
+	println!("Setup time management");
+	time::init().expect("time management initialization failed");
 
-	println!("Initializing time management...");
-	time::init().unwrap_or_else(|e| panic!("Failed to initialize time management! ({e})"));
-
-	println!("Initializing devices management...");
-	device::init().unwrap_or_else(|e| panic!("Failed to initialize devices management! ({e})"));
-	net::osi::init().unwrap_or_else(|e| panic!("Failed to initialize network! ({e})"));
-	rand::init().unwrap_or_else(|_| panic!("Failed to initialize cryptography! (out of memory)"));
+	println!("Setup devices management");
+	device::init().expect("devices management initialization failed");
+	net::osi::init().expect("network initialization failed");
+	rand::init().expect("entropy pool initialization failed");
 
 	let root = args_parser.get_root_dev();
-	println!("Initializing files management...");
-	file::init(root).unwrap_or_else(|e| panic!("Failed to initialize files management! ({e})"));
+	println!("Setup files management");
+	file::init(root).expect("files management initialization failed");
 	if let Some(initramfs) = boot_info.initramfs {
-		println!("Initializing initramfs...");
-		initramfs::load(initramfs)
-			.unwrap_or_else(|e| panic!("Failed to initialize initramfs! ({e})"));
+		println!("Load initramfs");
+		initramfs::load(initramfs).expect("initramfs loading failed");
 	}
-	device::stage2().unwrap_or_else(|e| panic!("Failed to create device files! ({e})"));
+	device::stage2().expect("device files creation failure");
 
-	println!("Initializing processes...");
-	process::init().unwrap_or_else(|e| panic!("Failed to init processes! ({e})"));
-	exec::vdso::init().unwrap_or_else(|e| panic!("Failed to load vDSO! ({e})"));
+	println!("Setup SMP");
+	smp::init(&CPU).expect("SMP setup failed");
+	println!("Setup processes");
+	process::init().expect("processes initialization failed");
+	exec::vdso::init().expect("vDSO loading failed");
 
 	let init_path = args_parser.get_init_path().unwrap_or(INIT_PATH);
 	let init_path = String::try_from(init_path).unwrap();
-	let init_frame =
-		init(init_path).unwrap_or_else(|e| panic!("Cannot execute init process: {e}"));
+	println!("Execute init process ({init_path})");
+	let init_frame = init(init_path).expect("init process execution failed");
 
-	Process::new_kthread(None, cache::flush_task, true)
-		.unwrap_or_else(|e| panic!("Cannot launch the cache flush task: {e}"));
+	Process::new_kthread(None, cache::flush_task, true).expect("cache flush task launch failed");
 
 	unsafe {
 		switch::init_ctx(&init_frame);

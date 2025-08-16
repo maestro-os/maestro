@@ -20,18 +20,22 @@
 //! essential for modern systems.
 
 use crate::{
+	acpi::{RSDP_SCAN_BEGIN, RSDP_SCAN_END},
 	arch::{
 		x86,
-		x86::paging::{
-			FLAG_CACHE_DISABLE, FLAG_GLOBAL, FLAG_USER, FLAG_WRITE, FLAG_WRITE_THROUGH,
+		x86::{
+			paging::{FLAG_CACHE_DISABLE, FLAG_GLOBAL, FLAG_USER, FLAG_WRITE, FLAG_WRITE_THROUGH},
+			smp,
 		},
 	},
-	elf, memory,
-	memory::{KERNELSPACE_SIZE, PhysAddr, VirtAddr, buddy, memmap::PHYS_MAP},
+	elf,
+	elf::SHF_WRITE,
+	memory::{KERNEL_BEGIN, PhysAddr, VirtAddr, buddy, memmap::mmap_iter},
+	multiboot::{MEMORY_ACPI_RECLAIMABLE, MEMORY_AVAILABLE, MEMORY_RESERVED},
 	sync::{mutex::Mutex, once::OnceInit},
 	tty::vga,
 };
-use core::{cmp::min, ptr::NonNull, sync::atomic::Ordering::Release};
+use core::{ptr::NonNull, sync::atomic::Ordering::Release};
 use utils::limits::PAGE_SIZE;
 
 /// A virtual memory context.
@@ -201,12 +205,12 @@ pub fn flush_current() {
 /// This function disables memory protection on the kernel side, which makes
 /// read-only data writable.
 ///
-/// Writing on read-only regions of memory has an undefined behavior.
+/// Writing on some read-only regions (code for example) is dangerous.
 #[inline]
 pub unsafe fn write_ro<F: FnOnce() -> T, T>(f: F) -> T {
-	x86::set_write_protected(false);
+	let prev = x86::set_write_protected(false);
 	let res = f();
-	x86::set_write_protected(true);
+	x86::set_write_protected(prev);
 	res
 }
 
@@ -232,25 +236,37 @@ pub static KERNEL_VMEM: OnceInit<Mutex<VMem>> = unsafe { OnceInit::new() };
 
 /// Initializes virtual memory management.
 pub(crate) fn init() {
-	// Architecture-specific init
-	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-	x86::paging::prepare();
 	// Kernel context init
 	let mut kernel_vmem = unsafe { VMem::new() };
-	// TODO If Meltdown mitigation is enabled, only allow read access to a stub of
-	// the kernel for interrupts
 	// Map kernel
-	let kernelspace_size = min(PHYS_MAP.memory_size, KERNELSPACE_SIZE / PAGE_SIZE);
-	kernel_vmem.map_range(
-		PhysAddr::default(),
-		memory::KERNEL_BEGIN,
-		kernelspace_size,
-		FLAG_WRITE | FLAG_GLOBAL,
-	);
+	for entry in mmap_iter() {
+		if !matches!(
+			entry.type_,
+			MEMORY_AVAILABLE | MEMORY_RESERVED | MEMORY_ACPI_RECLAIMABLE
+		) {
+			continue;
+		}
+		// If the address overflows an usize, the mapping cannot be reached
+		let addr: Option<usize> = (KERNEL_BEGIN.0 as u64)
+			.checked_add(entry.addr)
+			.and_then(|end| end.try_into().ok());
+		let Some(addr) = addr else {
+			continue;
+		};
+		// Compute the maximum size of the mapping fitting an usize
+		let end = (addr as u64).saturating_add(entry.len);
+		let len = (end - addr as u64).min(usize::MAX as u64) as usize;
+		kernel_vmem.map_range(
+			PhysAddr(entry.addr as _),
+			VirtAddr(addr),
+			len.div_ceil(PAGE_SIZE),
+			FLAG_WRITE | FLAG_GLOBAL,
+		);
+	}
 	// Make the kernel's code read-only
 	let iter = elf::kernel::sections().filter(|s| s.sh_addralign as usize == PAGE_SIZE);
 	for section in iter {
-		let write = section.sh_flags as u32 & elf::SHF_WRITE != 0;
+		let write = section.sh_flags as u32 & SHF_WRITE != 0;
 		let user = elf::kernel::get_section_name(&section) == Some(b".user");
 		let mut flags = FLAG_GLOBAL;
 		if write {
@@ -260,21 +276,45 @@ pub(crate) fn init() {
 			flags |= FLAG_USER;
 		}
 		// Map
-		let virt_addr = VirtAddr(section.sh_addr as _);
+		let virt_addr = if section.sh_addr as usize >= KERNEL_BEGIN.0 {
+			VirtAddr(section.sh_addr as _)
+		} else {
+			KERNEL_BEGIN + section.sh_addr as _
+		};
 		let Some(phys_addr) = virt_addr.kernel_to_physical() else {
 			continue;
 		};
 		let pages = section.sh_size.div_ceil(PAGE_SIZE as _) as usize;
 		kernel_vmem.map_range(phys_addr, virt_addr, pages, flags);
 	}
-	// Map VGA buffer
 	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-	kernel_vmem.map_range(
-		vga::BUFFER_PHYS as _,
-		vga::get_buffer_virt().into(),
-		1,
-		FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH | FLAG_WRITE | FLAG_GLOBAL,
-	);
+	{
+		// Map SMP trampoline
+		kernel_vmem.map(
+			smp::TRAMPOLINE_PHYS_ADDR,
+			VirtAddr(smp::TRAMPOLINE_PHYS_ADDR.0),
+			0,
+		);
+		kernel_vmem.map(
+			smp::TRAMPOLINE_PHYS_ADDR,
+			smp::TRAMPOLINE_PHYS_ADDR.kernel_to_virtual().unwrap(),
+			0,
+		);
+		// Map VGA buffer
+		kernel_vmem.map_range(
+			vga::BUFFER_PHYS as _,
+			vga::get_buffer_virt().into(),
+			1,
+			FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH | FLAG_WRITE | FLAG_GLOBAL,
+		);
+		// Ensure ACPI RSDP is mapped
+		kernel_vmem.map_range(
+			PhysAddr(RSDP_SCAN_BEGIN),
+			KERNEL_BEGIN + RSDP_SCAN_BEGIN,
+			(RSDP_SCAN_END + 1 - RSDP_SCAN_BEGIN) / PAGE_SIZE,
+			FLAG_GLOBAL,
+		);
+	}
 	kernel_vmem.bind();
 	unsafe {
 		OnceInit::init(&KERNEL_VMEM, Mutex::new(kernel_vmem));
@@ -284,21 +324,12 @@ pub(crate) fn init() {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::memory::KERNEL_BEGIN;
 
 	#[test_case]
 	fn vmem_basic0() {
 		let vmem = unsafe { VMem::new() };
 		for i in (0..0xc0000000).step_by(PAGE_SIZE) {
 			assert_eq!(vmem.translate(VirtAddr(i)), None);
-		}
-	}
-
-	#[test_case]
-	fn vmem_basic1() {
-		let vmem = unsafe { VMem::new() };
-		for i in (0..PHYS_MAP.memory_size).step_by(PAGE_SIZE) {
-			assert_eq!(vmem.translate(KERNEL_BEGIN + i), Some(PhysAddr(i)));
 		}
 	}
 

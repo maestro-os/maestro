@@ -108,6 +108,18 @@ impl<T> From<NonNull<T>> for VirtAddr {
 	}
 }
 
+impl<T> From<&T> for VirtAddr {
+	fn from(ptr: &T) -> Self {
+		Self::from(ptr as *const T)
+	}
+}
+
+impl<T> From<&mut T> for VirtAddr {
+	fn from(ptr: &mut T) -> Self {
+		Self::from(ptr as *mut T)
+	}
+}
+
 impl FromSyscallArg for VirtAddr {
 	fn from_syscall_arg(ptr: usize, _compat: bool) -> Self {
 		Self(ptr)
@@ -127,6 +139,16 @@ impl VirtAddr {
 	/// Underneath, this function uses [`ptr::with_exposed_provenance_mut`].
 	pub fn as_ptr<T>(self) -> *mut T {
 		ptr::with_exposed_provenance_mut(self.0)
+	}
+
+	/// Returns a reference from the virtual address.
+	///
+	/// # Safety
+	///
+	/// If the address is not properly aligned, or does not point to a valid value, the function
+	/// has an undefined behavior.
+	pub unsafe fn as_ref<T>(self) -> &'static T {
+		&*self.as_ptr()
 	}
 }
 

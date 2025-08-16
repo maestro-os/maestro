@@ -24,6 +24,10 @@
 - [Memory space](./memory/mem_space.md)
 - [Tracing](./memory/tracing.md)
 
+# Time
+
+- [Hardware timers](./hardware_timers.md)
+
 # Process
 
 - [Process](./process.md)

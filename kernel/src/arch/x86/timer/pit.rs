@@ -16,11 +16,12 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module handles the PIT (Programmable Interrupt Timer) which allows to
-//! trigger interruptions at a fixed interval.
+//! PIT (Programmable Interrupt Timer) implementation.
 
-use super::HwClock;
-use crate::arch::x86::{idt, io::outb, pic};
+use crate::arch::{
+	disable_irq, enable_irq,
+	x86::{idt, io::outb},
+};
 
 /// PIT channel number 0.
 const CHANNEL_0: u16 = 0x40;
@@ -46,63 +47,42 @@ const MODE_3: u8 = 0b011 << 1;
 /// The base frequency of the PIT.
 const BASE_FREQUENCY: u32 = 1193182;
 
-// FIXME prevent having several instances at the same time
+/// Interrupt vector for the PIT.
+pub const INTERRUPT_VECTOR: u8 = 0x20;
 
-/// The PIT.
-pub struct PIT {}
+/// Initializes the PIT.
+pub fn init(freq: u32) {
+	idt::wrap_disable_interrupts(|| unsafe {
+		outb(
+			PIT_COMMAND,
+			SELECT_CHANNEL_0 | ACCESS_LOBYTE_HIBYTE | MODE_3,
+		);
+		set_frequency(freq);
+	});
+}
 
-impl PIT {
-	/// Creates a new instance.
-	///
-	/// By default, the timer is disabled and its frequency is undefined.
-	#[allow(clippy::new_without_default)]
-	pub fn new() -> Self {
-		let mut s = Self {};
-		s.set_enabled(false);
-		idt::wrap_disable_interrupts(|| unsafe {
-			outb(
-				PIT_COMMAND,
-				SELECT_CHANNEL_0 | ACCESS_LOBYTE_HIBYTE | MODE_3,
-			);
-			s.set_frequency(1);
-		});
-		s
+/// Enables or disables the PIT.
+pub fn set_enabled(enable: bool) {
+	if enable {
+		enable_irq(0x20);
+	} else {
+		disable_irq(0x20);
 	}
 }
 
-impl HwClock for PIT {
-	fn set_enabled(&mut self, enable: bool) {
-		if enable {
-			pic::enable_irq(0x0);
-		} else {
-			pic::disable_irq(0x0);
-		}
+/// Sets the PIT's frequency.
+pub fn set_frequency(freq: u32) {
+	let mut count = if freq != 0 {
+		(BASE_FREQUENCY / freq) as u16
+	} else {
+		0
+	};
+	if count == 0xffff {
+		count = 0;
 	}
-
-	fn set_frequency(&mut self, frequency: u32) {
-		let mut count = if frequency != 0 {
-			(BASE_FREQUENCY / frequency) as u16
-		} else {
-			0
-		};
-		if count == 0xffff {
-			count = 0;
-		}
-
-		// Update frequency divider's value
-		idt::wrap_disable_interrupts(|| unsafe {
-			outb(CHANNEL_0, (count & 0xff) as u8);
-			outb(CHANNEL_0, ((count >> 8) & 0xff) as u8);
-		});
-	}
-
-	fn get_interrupt_vector(&self) -> u32 {
-		0x20
-	}
-}
-
-impl Drop for PIT {
-	fn drop(&mut self) {
-		self.set_enabled(false);
-	}
+	// Update frequency divider's value
+	idt::wrap_disable_interrupts(|| unsafe {
+		outb(CHANNEL_0, (count & 0xff) as u8);
+		outb(CHANNEL_0, ((count >> 8) & 0xff) as u8);
+	});
 }

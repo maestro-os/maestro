@@ -48,7 +48,12 @@ pub mod wait;
 use crate::{
 	arch::x86::idt::IntFrame,
 	file::{Mode, fd::FileDescriptorTable, perm::AccessProfile, vfs::ResolutionSettings},
-	process::{Process, mem_space::MemSpace, signal::Signal, yield_current},
+	process::{
+		Process,
+		mem_space::MemSpace,
+		scheduler::{alter_flow, preempt_check_resched},
+		signal::Signal,
+	},
 	sync::mutex::Mutex,
 	syscall::{
 		dirent::{getdents, getdents64},
@@ -214,7 +219,7 @@ impl FromSyscall for Arc<Mutex<FileDescriptorTable>> {
 
 impl FromSyscall for AccessProfile {
 	fn from_syscall(_frame: &IntFrame) -> Self {
-		Process::current().fs.lock().access_profile
+		Process::current().fs().lock().access_profile
 	}
 }
 
@@ -229,7 +234,7 @@ pub struct Umask(Mode);
 
 impl FromSyscall for Umask {
 	fn from_syscall(_frame: &IntFrame) -> Self {
-		Self(Process::current().fs.lock().umask())
+		Self(Process::current().fs().lock().umask())
 	}
 }
 
@@ -1018,7 +1023,7 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		// TODO 0x0e9 => syscall!(epoll_ctl, frame),
 		// TODO 0x0ea => syscall!(tgkill, frame),
 		// TODO 0x0eb => syscall!(utimes, frame),
-		// TODO 0x0ec => syscall!(vserve, frame),
+		// TODO 0x0ec => syscall!(vserver, frame),
 		// TODO 0x0ed => syscall!(mbind, frame),
 		// TODO 0x0ee => syscall!(set_mempolicy, frame),
 		// TODO 0x0ef => syscall!(get_mempolicy, frame),
@@ -1178,7 +1183,8 @@ pub extern "C" fn syscall_handler(frame: &mut IntFrame) {
 		proc.kill(Signal::SIGSYS);
 	}
 	// If the process has been killed, handle it
-	yield_current(3, frame);
+	alter_flow(3, frame);
+	preempt_check_resched();
 }
 
 unsafe extern "C" {

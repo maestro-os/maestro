@@ -122,6 +122,7 @@ IRQ 15
     pop fs
 .endm
 
+.global idt_ignore
 .global init_ctx
 .global syscall_int
 .global idle_task
@@ -149,6 +150,9 @@ init_ctx:
 	add esp, 8
 	iretd
 
+idt_ignore:
+    iretd
+
 syscall_int:
 	cld
 	push 0 # code (absent)
@@ -164,11 +168,6 @@ LOAD_REGS
 	iretd
 
 idle_task:
-    # Lazy cleanup
-    xor ax, ax
-    mov fs, ax
-    mov gs, ax
-0:
     sti
     hlt
-    jmp 0b
+    jmp idle_task

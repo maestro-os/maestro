@@ -25,16 +25,19 @@
 //! - Software Clocks, which maintain a timestamp based on hardware clocks.
 
 pub mod clock;
-pub mod hw;
 pub mod timer;
 pub mod unit;
 
 use crate::{
-	event,
-	event::CallbackResult,
+	arch::{
+		core_id,
+		x86::{apic, timer::rtc},
+	},
+	int,
+	int::CallbackResult,
 	process::{
 		Process, State,
-		scheduler::Scheduler,
+		scheduler::schedule,
 		signal::{SIGEV_NONE, SigEvent},
 	},
 	time::{
@@ -45,10 +48,7 @@ use crate::{
 };
 use core::{hint::unlikely, mem::ManuallyDrop};
 use unit::Timestamp;
-use utils::{boxed::Box, errno, errno::EResult};
-
-/// Timer frequency.
-const FREQUENCY: u32 = 1024;
+use utils::{errno, errno::EResult};
 
 /// Makes the current thread sleep for `delay`, in nanoseconds.
 ///
@@ -82,32 +82,28 @@ pub fn sleep_for(clock: Clock, delay: Timestamp, remain: &mut Timestamp) -> ERes
 				*remain = timer.get_time().it_value.to_nano();
 				return Err(errno!(EINTR));
 			}
-			proc.set_state(State::Sleeping);
+			Process::set_state(&proc, State::Sleeping);
 		}
-		Scheduler::tick();
+		schedule();
 	}
 	Ok(())
 }
 
-/// Initializes time management.
+/// Initializes timekeeping
 pub(crate) fn init() -> EResult<()> {
-	// Initialize hardware clocks
-	let mut hw_clocks = hw::CLOCKS.lock();
-	hw_clocks.insert(b"pit".try_into()?, Box::new(hw::pit::PIT::new())?)?;
-	hw_clocks.insert(b"rtc".try_into()?, Box::new(hw::rtc::RTC::new())?)?;
-	// TODO implement HPET
-	// TODO implement APIC timer
-	// Link hardware clock to software clock
-	let rtc = hw_clocks.get_mut(b"rtc".as_slice()).unwrap();
-	rtc.set_frequency(FREQUENCY);
-	let hook = event::register_callback(rtc.get_interrupt_vector(), move |_, _, _, _| {
-		hw::rtc::RTC::reset();
+	const FREQUENCY: u32 = 1024;
+	rtc::set_frequency(FREQUENCY);
+	if apic::is_present() {
+		apic::redirect_int(0x8, core_id(), rtc::INTERRUPT_VECTOR);
+	}
+	let hook = int::register_callback(rtc::INTERRUPT_VECTOR as _, move |_, _, _, _| {
+		rtc::reset();
 		// FIXME: we are loosing precision here
 		clock::update((1_000_000_000 / FREQUENCY) as _);
 		timer::tick();
 		CallbackResult::Continue
 	})?;
 	let _ = ManuallyDrop::new(hook);
-	rtc.set_enabled(true);
+	rtc::set_enabled(true);
 	Ok(())
 }

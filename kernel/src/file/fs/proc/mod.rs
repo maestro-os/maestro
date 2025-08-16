@@ -42,7 +42,7 @@ use crate::{
 		vfs,
 		vfs::node::Node,
 	},
-	process::{Process, pid::Pid, scheduler::SCHEDULER},
+	process::{PROCESSES, Process, pid::Pid},
 };
 use mem_info::MemInfo;
 use proc_dir::{
@@ -62,7 +62,7 @@ use version::Version;
 fn get_proc_owner(pid: Pid) -> (Uid, Gid) {
 	Process::get_by_pid(pid)
 		.map(|proc| {
-			let fs = proc.fs.lock();
+			let fs = proc.fs().lock();
 			(fs.access_profile.euid, fs.access_profile.egid)
 		})
 		.unwrap_or((0, 0))
@@ -256,9 +256,8 @@ impl NodeOps for RootDir {
 		}
 		// Iterate on processes
 		let off = ctx.off as usize - Self::STATIC.entries.len();
-		let sched = SCHEDULER.lock();
-		let proc_iter = sched.iter_process().skip(off);
-		for (pid, _) in proc_iter {
+		let processes = PROCESSES.read();
+		for (pid, _) in processes.iter().skip(off) {
 			let name = format!("{pid}")?;
 			let ent = DirEntry {
 				inode: 0,

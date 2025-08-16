@@ -42,7 +42,7 @@ pub struct Logger {
 	pub silent: bool,
 
 	/// The buffer storing the kernel logs.
-	buff: [u8; LOGS_SIZE],
+	buf: [u8; LOGS_SIZE],
 	/// The buffer's reading head.
 	read_head: usize,
 	/// The buffer's writing head.
@@ -53,33 +53,28 @@ impl Logger {
 	/// Creates a new instance.
 	#[allow(clippy::new_without_default)]
 	pub const fn new() -> Self {
-		Logger {
+		Self {
 			silent: false,
 
-			buff: [0; LOGS_SIZE],
+			buf: [0; LOGS_SIZE],
 			read_head: 0,
 			write_head: 0,
 		}
 	}
 
-	/// Returns the number of bytes used in the buffer.
-	pub fn get_size(&self) -> usize {
-		self.buff.len() - self.available_space()
-	}
-
 	/// Returns the number of available bytes in the buffer.
 	fn available_space(&self) -> usize {
 		match self.write_head.cmp(&self.read_head) {
-			Ordering::Equal => self.buff.len(),
-			Ordering::Greater => self.buff.len() - (self.write_head - self.read_head),
+			Ordering::Equal => self.buf.len(),
+			Ordering::Greater => self.buf.len() - (self.write_head - self.read_head),
 			Ordering::Less => self.read_head - self.write_head - 1,
 		}
 	}
 
 	/// Returns a reference to a slice containing the logs stored into the
-	/// loggers's buffer.
+	/// logger's buffer.
 	pub fn get_content(&self) -> &[u8] {
-		&self.buff
+		&self.buf
 	}
 
 	/// Pushes the given string onto the kernel logs buffer.
@@ -89,12 +84,12 @@ impl Logger {
 		}
 
 		let len = min(self.available_space(), s.len());
-		let end = (self.write_head + len) % self.buff.len();
+		let end = (self.write_head + len) % self.buf.len();
 		if end < self.write_head {
-			self.buff[self.write_head..].copy_from_slice(&s[0..(len - end)]);
-			self.buff[0..end].copy_from_slice(&s[(len - end)..]);
+			self.buf[self.write_head..].copy_from_slice(&s[0..(len - end)]);
+			self.buf[0..end].copy_from_slice(&s[(len - end)..]);
 		} else {
-			self.buff[self.write_head..end].copy_from_slice(&s[0..len]);
+			self.buf[self.write_head..end].copy_from_slice(&s[0..len]);
 		}
 		self.write_head = end;
 	}
@@ -103,22 +98,22 @@ impl Logger {
 	/// characters result in cutting a line, the function shall pop the full
 	/// line.
 	fn pop(&mut self, n: usize) {
-		let read_new = (self.read_head + n) % self.buff.len();
+		let read_new = (self.read_head + n) % self.buf.len();
 		if read_new >= self.write_head && read_new < self.read_head {
 			self.read_head = self.write_head;
 			return;
 		}
 
 		let mut i = 0;
-		while i < self.buff.len() {
-			let off = (read_new + i) % self.buff.len();
-			if off >= self.write_head || self.buff[off] == b'\n' {
+		while i < self.buf.len() {
+			let off = (read_new + i) % self.buf.len();
+			if off >= self.write_head || self.buf[off] == b'\n' {
 				break;
 			}
 			i += 1;
 		}
 
-		self.read_head = (read_new + i) % self.buff.len();
+		self.read_head = (read_new + i) % self.buf.len();
 	}
 }
 

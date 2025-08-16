@@ -22,11 +22,9 @@ use crate::{
 	arch::x86::idt::IntFrame,
 	file::perm::AccessProfile,
 	memory::user::UserPtr,
-	process,
 	process::{
-		Process, State,
-		pid::Pid,
-		scheduler::SCHEDULER,
+		PROCESSES, Process, State,
+		pid::{INIT_PID, Pid},
 		signal::{CompatSigAction, SigAction, SigSet, Signal, SignalHandler, ucontext},
 	},
 	syscall::{Args, FromSyscallArg},
@@ -150,7 +148,7 @@ pub fn rt_sigreturn(frame: &mut IntFrame) -> EResult<usize> {
 /// there is a process that could be killed.
 fn try_kill(pid: Pid, sig: Option<Signal>) -> EResult<()> {
 	let proc = Process::current();
-	let ap = proc.fs.lock().access_profile;
+	let ap = proc.fs().lock().access_profile;
 	// Closure sending the signal
 	let f = |target: &Process| {
 		if matches!(target.get_state(), State::Zombie) {
@@ -206,9 +204,9 @@ pub fn kill(Args((pid, sig)): Args<(c_int, c_int)>) -> EResult<usize> {
 		0 => try_kill_group(0, sig)?,
 		// Kill all processes for which the current process has the permission
 		-1 => {
-			let sched = SCHEDULER.lock();
-			for (pid, _) in sched.iter_process() {
-				if *pid == process::pid::INIT_PID {
+			let processes = PROCESSES.read();
+			for (pid, _) in processes.iter() {
+				if *pid == INIT_PID {
 					continue;
 				}
 				// TODO Check permission
