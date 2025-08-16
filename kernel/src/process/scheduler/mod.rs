@@ -146,8 +146,8 @@ pub(crate) fn alloc_core_local() -> AllocResult<()> {
 pub(crate) fn init_core_local() {
 	#[cfg(target_arch = "x86_64")]
 	{
-		use crate::arch::{x86, x86::apic::lapic_id};
-		let local = &CORE_LOCAL[lapic_id() as usize];
+		use crate::arch::{core_id, x86};
+		let local = &CORE_LOCAL[core_id() as usize];
 		// Set to `IA32_GS_BASE` instead of `IA32_KERNEL_GS_BASE` since it will get swapped
 		// when switching to userspace
 		x86::wrmsr(x86::IA32_GS_BASE, local as *const _ as u64);
@@ -159,14 +159,12 @@ pub(crate) fn init_core_local() {
 pub fn core_local() -> &'static CoreLocal {
 	#[cfg(target_arch = "x86")]
 	{
-		use crate::arch::x86::apic::lapic_id;
-
-		&CORE_LOCAL[lapic_id() as usize]
+		use crate::arch::core_id;
+		&CORE_LOCAL[core_id() as usize]
 	}
 	#[cfg(target_arch = "x86_64")]
 	{
 		use crate::{arch::x86, memory::VirtAddr};
-
 		let base = x86::rdmsr(x86::IA32_GS_BASE);
 		unsafe {
 			let ptr = VirtAddr(base as _).as_ptr::<CoreLocal>();

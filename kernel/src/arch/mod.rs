@@ -19,7 +19,6 @@
 //! Architecture-specific **Hardware Abstraction Layers** (HAL).
 
 use crate::{
-	arch::x86::{apic, enumerate_cpus, gdt, pic, sti, timer, tss},
 	println,
 	process::scheduler::{alloc_core_local, init_core_local},
 };
@@ -82,6 +81,7 @@ pub(crate) fn init1(first: bool) {
 pub(crate) fn init2() -> AllocResult<()> {
 	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	{
+		use x86::*;
 		// Detect APIC
 		let apic = apic::is_present();
 		unsafe {
@@ -110,6 +110,13 @@ pub(crate) fn init2() -> AllocResult<()> {
 		timer::init(true)?;
 	}
 	Ok(())
+}
+
+/// Returns the ID of the current CPU core.
+#[inline]
+pub fn core_id() -> u8 {
+	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+	x86::apic::lapic_id()
 }
 
 /// Enables interruptions on the given IRQ.

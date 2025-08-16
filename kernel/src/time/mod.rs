@@ -29,7 +29,10 @@ pub mod timer;
 pub mod unit;
 
 use crate::{
-	arch::x86::{apic, apic::lapic_id, timer::rtc},
+	arch::{
+		core_id,
+		x86::{apic, timer::rtc},
+	},
 	int,
 	int::CallbackResult,
 	process::{
@@ -91,7 +94,7 @@ pub(crate) fn init() -> EResult<()> {
 	const FREQUENCY: u32 = 1024;
 	rtc::set_frequency(FREQUENCY);
 	if apic::is_present() {
-		apic::redirect_int(0x8, lapic_id(), rtc::INTERRUPT_VECTOR);
+		apic::redirect_int(0x8, core_id(), rtc::INTERRUPT_VECTOR);
 	}
 	let hook = int::register_callback(rtc::INTERRUPT_VECTOR as _, move |_, _, _, _| {
 		rtc::reset();
