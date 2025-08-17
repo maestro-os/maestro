@@ -43,34 +43,31 @@ use core::{
 };
 use utils::{
 	collections::vec::Vec,
-	errno::{AllocResult, CollectResult},
+	errno::AllocResult,
 	list, list_type,
 	ptr::arc::{Arc, AtomicArc, AtomicOptionalArc},
 };
 
-/// Description of a CPU core.
-pub struct Cpu {
-	/// Processor ID
-	pub id: u8,
-	/// Local APIC ID
-	pub apic_id: u8,
-	/// Local APIC flags
-	pub apic_flags: u32,
-}
+// TODO allow to declare per-core variables everywhere in the codebase using a dedicated ELF
+// section
 
-// TODO somehow allow to declare per-core variables everywhere in the codebase
-
-// This structure is using the C representation because field offsets are important for assembly
-/// Kernel core-local storage.
+/// Per-CPU data.
+///
+/// This structure is using `#[repr(C)]` because some field offsets are important for assembly code
 #[repr(C)]
-pub struct CoreLocal {
+pub struct PerCpu {
 	/// The current kernel stack
 	pub kernel_stack: AtomicUsize,
 	/// The stashed user stack
 	pub user_stack: AtomicUsize,
 
-	/// CPU information
-	pub cpu: &'static Cpu,
+	/// Processor ID
+	pub cpu_id: u8,
+	/// Local APIC ID
+	pub apic_id: u8,
+	/// Local APIC flags
+	pub apic_flags: u32,
+
 	/// The CPU's GDT
 	pub gdt: Gdt,
 	/// The CPU's TSS
@@ -92,7 +89,35 @@ pub struct CoreLocal {
 	pub mem_space: AtomicOptionalArc<MemSpace>,
 }
 
-impl CoreLocal {
+impl PerCpu {
+	/// Creates a new instance.
+	pub fn new(cpu_id: u8, apic_id: u8, apic_flags: u32) -> AllocResult<Self> {
+		let idle_task = Process::idle_task()?;
+		Ok(Self {
+			kernel_stack: AtomicUsize::new(0),
+			user_stack: AtomicUsize::new(0),
+
+			cpu_id,
+			apic_id,
+			apic_flags,
+
+			gdt: Default::default(),
+			tss: Default::default(),
+
+			scheduler: Scheduler {
+				queue: IntMutex::new(list!(Process, sched_node)),
+				queue_len: AtomicUsize::new(0),
+				cur_proc: AtomicArc::from(idle_task.clone()),
+
+				idle_task: idle_task.clone(),
+			},
+			tick_period: AtomicU64::new(0),
+			preempt_counter: AtomicU32::new(1 << 31),
+
+			mem_space: AtomicOptionalArc::new(),
+		})
+	}
+
 	/// Returns a mutable reference to the TSS.
 	///
 	/// # Safety
@@ -105,78 +130,40 @@ impl CoreLocal {
 	}
 }
 
-/// Allocate core-local structures.
-pub(crate) fn alloc_core_local() -> AllocResult<()> {
-	// Initialize core locales
-	let core_locals = CPU
-		.iter()
-		.map(|cpu| {
-			let idle_task = Process::idle_task()?;
-			Ok(CoreLocal {
-				kernel_stack: AtomicUsize::new(0),
-				user_stack: AtomicUsize::new(0),
-
-				cpu,
-				gdt: Default::default(),
-				tss: Default::default(),
-
-				scheduler: Scheduler {
-					queue: IntMutex::new(list!(Process, sched_node)),
-					queue_len: AtomicUsize::new(0),
-					cur_proc: AtomicArc::from(idle_task.clone()),
-
-					idle_task: idle_task.clone(),
-				},
-				tick_period: AtomicU64::new(0),
-				preempt_counter: AtomicU32::new(1 << 31),
-
-				mem_space: AtomicOptionalArc::new(),
-			})
-		})
-		.collect::<AllocResult<CollectResult<_>>>()?
-		.0?;
-	unsafe {
-		OnceInit::init(&CORE_LOCAL, core_locals);
-	}
-	Ok(())
-}
-
-/// Sets, on the current CPU core, the register to make the associated [`CoreLocal`] structure
+/// Sets, on the current CPU core, the register to make the associated [`PerCpu`] structure
 /// available.
-pub(crate) fn init_core_local() {
+pub(crate) fn store_per_cpu() {
 	#[cfg(target_arch = "x86_64")]
 	{
 		use crate::arch::{core_id, x86};
-		let local = &CORE_LOCAL[core_id() as usize];
+		let local = &CPU[core_id() as usize];
 		// Set to `IA32_GS_BASE` instead of `IA32_KERNEL_GS_BASE` since it will get swapped
 		// when switching to userspace
 		x86::wrmsr(x86::IA32_GS_BASE, local as *const _ as u64);
 	}
 }
 
-/// Returns the CPU-local structure for the current core.
+/// Returns the per-CPU structure for the current core.
 #[inline]
-pub fn core_local() -> &'static CoreLocal {
+pub fn per_cpu() -> &'static PerCpu {
 	#[cfg(target_arch = "x86")]
 	{
 		use crate::arch::core_id;
-		&CORE_LOCAL[core_id() as usize]
+		&CPU[core_id() as usize]
 	}
 	#[cfg(target_arch = "x86_64")]
 	{
 		use crate::{arch::x86, memory::VirtAddr};
 		let base = x86::rdmsr(x86::IA32_GS_BASE);
 		unsafe {
-			let ptr = VirtAddr(base as _).as_ptr::<CoreLocal>();
+			let ptr = VirtAddr(base as _).as_ptr::<PerCpu>();
 			&*ptr
 		}
 	}
 }
 
-/// The list of CPU cores on the system.
-pub static CPU: OnceInit<Vec<Cpu>> = unsafe { OnceInit::new() };
 /// The list of core-local structures. There is one per CPU.
-static CORE_LOCAL: OnceInit<Vec<CoreLocal>> = unsafe { OnceInit::new() };
+pub static CPU: OnceInit<Vec<PerCpu>> = unsafe { OnceInit::new() };
 
 /// A process scheduler.
 ///
@@ -202,7 +189,7 @@ impl Scheduler {
 
 	/// Swaps the current running process for `new`, returning the previous.
 	pub fn swap_current_process(&self, new: Arc<Process>) -> Arc<Process> {
-		core_local()
+		per_cpu()
 			.kernel_stack
 			.store(new.kernel_stack.top().as_ptr() as _, Release);
 		self.cur_proc.replace(new)
@@ -231,9 +218,9 @@ pub fn enqueue(proc: &Arc<Process>) {
 	}
 	// Select the scheduler with the least running processes
 	#[allow(unused_variables)]
-	let (lapic_id, sched) = CORE_LOCAL
+	let (lapic_id, sched) = CPU
 		.iter()
-		.map(|cl| (cl.cpu.apic_id, &cl.scheduler))
+		.map(|cl| (cl.apic_id, &cl.scheduler))
 		// TODO when selecting the scheduler, take into account power-states, NUMA, process
 		// priority and core affinity
 		.min_by(|(_, s0), (_, s1)| {
@@ -279,8 +266,8 @@ pub fn schedule() {
 	// Disable interrupts so that no interrupt can occur before switching to the next process
 	cli();
 	// Reset preempt flag
-	core_local().preempt_counter.fetch_or(1 << 31, Relaxed);
-	let sched = &core_local().scheduler;
+	per_cpu().preempt_counter.fetch_or(1 << 31, Relaxed);
+	let sched = &per_cpu().scheduler;
 	let (prev, next) = {
 		// Find the next process to run
 		let next = sched
@@ -305,7 +292,7 @@ pub fn schedule() {
 /// Enter a critical section, disabling preemption.
 #[inline]
 pub fn preempt_disable() {
-	core_local().preempt_counter.fetch_add(1, Relaxed);
+	per_cpu().preempt_counter.fetch_add(1, Relaxed);
 }
 
 /// Exit a critical section, enabling preemption if the counter reaches zero.
@@ -316,7 +303,7 @@ pub fn preempt_disable() {
 ///
 /// Calling this function outside a critical section is undefined.
 pub unsafe fn preempt_enable() {
-	let cnt = core_local().preempt_counter.fetch_sub(1, Relaxed);
+	let cnt = per_cpu().preempt_counter.fetch_sub(1, Relaxed);
 	// If the preemption hasn't been requested yet, the high bit is set, so this condition isn't
 	// fulfilled
 	if unlikely(cnt == 0) {
@@ -329,7 +316,7 @@ pub unsafe fn preempt_enable() {
 /// This function may never return in case the process has been turned to a zombie after switching
 /// to another process.
 pub fn preempt_check_resched() {
-	let cnt = core_local().preempt_counter.load(Relaxed);
+	let cnt = per_cpu().preempt_counter.load(Relaxed);
 	// If the preemption hasn't been requested yet, the high bit is set, so this condition isn't
 	// fulfilled
 	if unlikely(cnt == 0) {

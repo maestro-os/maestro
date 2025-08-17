@@ -35,7 +35,7 @@ use crate::{
 		vmem::{KERNEL_VMEM, write_ro},
 	},
 	println,
-	process::scheduler::{Cpu, init_core_local, switch::idle_task},
+	process::scheduler::{CPU, store_per_cpu, switch::idle_task},
 };
 use core::{
 	arch::global_asm,
@@ -224,12 +224,10 @@ static BOOTED_CORES: AtomicUsize = AtomicUsize::new(1);
 
 // TODO: if the CPU is recent enough, we may use delays of 0 and 10 microseconds respectively
 /// Initializes the SMP.
-///
-/// `cpu` is the list of CPU cores on the system.
-pub fn init(cpu: &[Cpu]) -> AllocResult<()> {
+pub fn init() -> AllocResult<()> {
 	let lapic_id = lapic_id();
 	// Allocate stacks list
-	let max_apic_id = cpu
+	let max_apic_id = CPU
 		.iter()
 		.map(|c| c.apic_id as usize + 1)
 		.max()
@@ -252,7 +250,7 @@ pub fn init(cpu: &[Cpu]) -> AllocResult<()> {
 		});
 	}
 	// Boot cores
-	for cpu in cpu {
+	for cpu in CPU.iter() {
 		// Do no attempt to boot the current core
 		if cpu.apic_id == lapic_id {
 			continue;
@@ -304,7 +302,7 @@ pub fn init(cpu: &[Cpu]) -> AllocResult<()> {
 		}
 	}
 	// Wait for all cores to be up before returning
-	while BOOTED_CORES.load(Acquire) < cpu.len() {
+	while BOOTED_CORES.load(Acquire) < CPU.len() {
 		hint::spin_loop();
 	}
 	Ok(())
@@ -314,16 +312,14 @@ pub fn init(cpu: &[Cpu]) -> AllocResult<()> {
 #[unsafe(no_mangle)]
 unsafe extern "C" fn smp_main() -> ! {
 	arch::init1(false);
-	init_core_local();
+	store_per_cpu();
 	gdt::flush();
 	tss::init();
 	apic::init(false).expect("APIC initialization failed");
 	timer::init(false).expect("timer initialization failed");
 	timer::apic::periodic(100_000_000);
-
 	println!("Started core {}", lapic_id());
 	BOOTED_CORES.fetch_add(1, Acquire);
-
 	// Wait for work
 	unsafe {
 		idle_task();

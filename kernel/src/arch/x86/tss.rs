@@ -26,7 +26,7 @@
 //! The structure has to be registered into the GDT into the TSS segment, and must be loaded using
 //! instruction `ltr`.
 
-use crate::{arch::x86::gdt, process::scheduler::core_local};
+use crate::{arch::x86::gdt, process::scheduler::per_cpu};
 use core::{arch::asm, mem};
 
 /// Task State Segment.
@@ -116,7 +116,7 @@ impl Tss {
 pub(crate) fn init() {
 	unsafe {
 		let [gdt_entry_low, gdt_entry_high] = gdt::Entry::new64(
-			core_local().tss() as *const _ as u64,
+			per_cpu().tss() as *const _ as u64,
 			size_of::<Tss>() as u32 - 1,
 			0b10001001,
 			0,

@@ -47,7 +47,7 @@ use crate::{
 		pid::{IDLE_PID, INIT_PID, PidHandle},
 		rusage::Rusage,
 		scheduler::{
-			Scheduler, core_local, dequeue, enqueue, switch,
+			Scheduler, dequeue, enqueue, per_cpu, switch,
 			switch::{KThreadEntry, idle_task, save_segments},
 		},
 		signal::{SIGNALS_COUNT, SigSet},
@@ -422,7 +422,7 @@ pub(crate) fn init() -> EResult<()> {
 		|_id: u32, code: u32, frame: &mut IntFrame, ring: u8| {
 			let accessed_addr = VirtAddr(register_get!("cr2"));
 			let pc = frame.get_program_counter();
-			let Some(mem_space) = core_local().mem_space.get() else {
+			let Some(mem_space) = per_cpu().mem_space.get() else {
 				return CallbackResult::Panic;
 			};
 			// Check access
@@ -448,7 +448,7 @@ pub(crate) fn init() -> EResult<()> {
 		},
 	)?);
 	mem::forget(int::register_callback(0x20, |_, _, _, _| {
-		core_local().preempt_counter.fetch_and(!(1 << 31), Relaxed);
+		per_cpu().preempt_counter.fetch_and(!(1 << 31), Relaxed);
 		CallbackResult::Continue
 	})?);
 	apic::periodic(100_000_000);
@@ -473,7 +473,7 @@ impl Process {
 	/// Returns the running process on the current core.
 	#[inline]
 	pub fn current() -> Arc<Self> {
-		core_local().scheduler.get_current_process()
+		per_cpu().scheduler.get_current_process()
 	}
 
 	/// Creates a kernel thread.

@@ -34,11 +34,11 @@ use crate::{
 	acpi,
 	acpi::madt::{Madt, ProcessorLocalApic},
 	println,
-	process::scheduler::{CPU, Cpu},
+	process::scheduler::{CPU, PerCpu},
 	sync::once::OnceInit,
 };
 use core::arch::asm;
-use utils::collections::vec::Vec;
+use utils::{collections::vec::Vec, errno::AllocResult};
 
 /// MSR: APIC base
 pub const IA32_APIC_BASE_MSR: u32 = 0x1b;
@@ -287,36 +287,26 @@ pub fn fxrstor(fxstate: &FxState) {
 /// Enumerates CPUs on the system using ACPI.
 ///
 /// This function **must not** be called if there is no APIC on the system.
-pub(crate) fn enumerate_cpus() {
+pub(crate) fn enumerate_cpus() -> AllocResult<()> {
 	let mut cpu = Vec::new();
 	if let Some(madt) = acpi::get_table::<Madt>() {
 		// Register CPU cores
-		madt.entries()
+		let iter = madt
+			.entries()
 			.filter(|e| e.entry_type == 0)
 			.map(|e| unsafe { e.body::<ProcessorLocalApic>() })
-			.for_each(|e| {
-				if e.apic_flags & 0b11 == 0 {
-					return;
-				}
-				cpu.push(Cpu {
-					id: e.processor_id,
-					apic_id: e.apic_id,
-					apic_flags: e.apic_flags,
-				})
-				.expect("could not insert CPU");
-			});
+			.filter(|e| e.apic_flags & 0b11 != 0);
+		for e in iter {
+			cpu.push(PerCpu::new(e.processor_id, e.apic_id, e.apic_flags)?)?;
+		}
 	}
 	// If no CPU is found, just add the current
 	if cpu.is_empty() {
-		cpu.push(Cpu {
-			id: 1,
-			apic_id: 0,
-			apic_flags: 0,
-		})
-		.expect("could not insert CPU");
+		cpu.push(PerCpu::new(1, 0, 0)?)?;
 	}
 	println!("{} CPU cores found", cpu.len());
 	unsafe {
 		OnceInit::init(&CPU, cpu);
 	}
+	Ok(())
 }

@@ -22,7 +22,7 @@
 //! It is a deprecated structure that still must be used in order to switch to protected mode,
 //! handle protection rings and load the Task State Segment (TSS).
 
-use crate::{memory::VirtAddr, process::scheduler::core_local};
+use crate::{memory::VirtAddr, process::scheduler::per_cpu};
 use core::{arch::asm, cell::UnsafeCell, fmt};
 
 /// The offset of the kernel code segment.
@@ -150,7 +150,7 @@ impl Entry {
 	///
 	/// Concurrent calls are undefined.
 	pub unsafe fn update_gdt(self, off: usize) {
-		core_local()
+		per_cpu()
 			.gdt
 			.0
 			.get()
@@ -219,7 +219,7 @@ struct GdtDesc {
 pub fn flush() {
 	let hdr = GdtDesc {
 		size: (size_of::<Gdt>() - 1) as _,
-		addr: VirtAddr::from(core_local().gdt.0.get()),
+		addr: VirtAddr::from(per_cpu().gdt.0.get()),
 	};
 	unsafe {
 		asm!("lgdt [{}]", in(reg) &hdr);

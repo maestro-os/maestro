@@ -87,7 +87,7 @@ use crate::{
 	process::{
 		Process, exec,
 		exec::{ExecInfo, exec},
-		scheduler::{CPU, core_local, switch, switch::idle_task},
+		scheduler::{per_cpu, switch, switch::idle_task},
 	},
 	sync::mutex::Mutex,
 	tty::TTY,
@@ -136,7 +136,7 @@ fn init(init_path: String) -> EResult<IntFrame> {
 		)?;
 		let proc = Process::init()?;
 		exec(&proc, &mut frame, program_image)?;
-		core_local().scheduler.swap_current_process(proc);
+		per_cpu().scheduler.swap_current_process(proc);
 	}
 	Ok(frame)
 }
@@ -197,7 +197,7 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	device::stage2().expect("device files creation failure");
 
 	println!("Setup SMP");
-	smp::init(&CPU).expect("SMP setup failed");
+	smp::init().expect("SMP setup failed");
 	println!("Setup processes");
 	process::init().expect("processes initialization failed");
 	exec::vdso::init().expect("vDSO loading failed");

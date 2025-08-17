@@ -21,7 +21,7 @@
 use crate::{
 	arch::x86::{fxrstor, fxsave, gdt, idt::IntFrame},
 	memory::vmem::KERNEL_VMEM,
-	process::{Process, mem_space::MemSpace, scheduler::core_local},
+	process::{Process, mem_space::MemSpace, scheduler::per_cpu},
 };
 use core::{arch::global_asm, mem::offset_of, ptr::NonNull};
 
@@ -257,7 +257,7 @@ pub extern "C" fn finish(prev: &Process, next: &Process) {
 	restore_segments(next);
 	// Update the TSS for the process
 	unsafe {
-		core_local()
+		per_cpu()
 			.tss()
 			.set_kernel_stack(next.kernel_stack.top().as_ptr());
 	}

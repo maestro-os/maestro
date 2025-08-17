@@ -31,7 +31,7 @@ use crate::{
 	arch::x86::paging::{PAGE_FAULT_INSTRUCTION, PAGE_FAULT_WRITE},
 	file::{File, perm::AccessProfile, vfs},
 	memory::{COMPAT_PROCESS_END, PROCESS_END, VirtAddr, cache::RcFrame, vmem::VMem},
-	process::{mem_space::mapping::MappedFrame, scheduler, scheduler::core_local},
+	process::{mem_space::mapping::MappedFrame, scheduler, scheduler::per_cpu},
 	sync::mutex::IntMutex,
 };
 use core::{
@@ -489,7 +489,7 @@ impl MemSpace {
 	/// Binds the memory space to the current kernel.
 	pub fn bind(this: &Arc<Self>) {
 		this.vmem.lock().bind();
-		core_local().mem_space.set(Some(this.clone()));
+		per_cpu().mem_space.set(Some(this.clone()));
 	}
 
 	/// Temporarily switches to `this` to executes the closure `f`.
@@ -502,14 +502,14 @@ impl MemSpace {
 		scheduler::critical(|| {
 			// Bind `this`
 			this.vmem.lock().bind();
-			let old = core_local().mem_space.replace(Some(this.clone()));
+			let old = per_cpu().mem_space.replace(Some(this.clone()));
 			// Execute function
 			let res = f(this);
 			// Restore previous
 			if let Some(old) = &old {
 				old.vmem.lock().bind();
 			}
-			core_local().mem_space.set(old);
+			per_cpu().mem_space.set(old);
 			res
 		})
 	}

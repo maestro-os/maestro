@@ -31,7 +31,7 @@ use crate::{
 	arch::x86::idt::IntFrame,
 	file::vfs::ResolutionSettings,
 	memory::VirtAddr,
-	process::{Process, mem_space::MemSpace, scheduler::core_local},
+	process::{Process, mem_space::MemSpace, scheduler::per_cpu},
 	sync::mutex::Mutex,
 };
 use utils::{
@@ -96,7 +96,7 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 	*proc.tls.lock() = Default::default();
 	// Set TSS here for the first process to be executed
 	unsafe {
-		core_local()
+		per_cpu()
 			.tss()
 			.set_kernel_stack(proc.kernel_stack.top().as_ptr());
 	}
@@ -106,7 +106,7 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 	{
 		use crate::{
 			arch::{x86, x86::idt::wrap_disable_interrupts},
-			process::scheduler::{core_local, init_core_local},
+			process::scheduler::{per_cpu, store_per_cpu},
 		};
 		use core::{arch::asm, sync::atomic::Ordering::Relaxed};
 
@@ -123,11 +123,9 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 			// Reset MSR
 			x86::wrmsr(x86::IA32_FS_BASE, 0);
 			x86::wrmsr(x86::IA32_KERNEL_GS_BASE, 0);
-			init_core_local();
+			store_per_cpu();
 			// Update user stack
-			core_local()
-				.user_stack
-				.store(image.user_stack.0 as _, Relaxed);
+			per_cpu().user_stack.store(image.user_stack.0 as _, Relaxed);
 		});
 	}
 	Ok(())
