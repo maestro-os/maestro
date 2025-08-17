@@ -48,22 +48,29 @@ pub fn halting() -> bool {
 	HALTED_CORES.load(Acquire) > 0
 }
 
+fn notify_halt(log: &str) {
+	let old = HALTED_CORES.fetch_add(1, Release);
+	// If another CPU is notifying everyone, stop here
+	if old > 0 {
+		return;
+	}
+	println!("{log}");
+	// Send IPI to other cores to halt them too
+	if apic::is_present() {
+		let lapic = lapic_id();
+		CPU.iter()
+			.filter(|cpu| cpu.apic_id != lapic)
+			// Non-maskable interrupt
+			.for_each(|cpu| apic::ipi(cpu.apic_id, 4, 0x20)); // TODO use another vector
+	}
+}
+
 /// Halts the kernel until reboot.
 pub fn halt() -> ! {
 	cli();
-	let old = HALTED_CORES.fetch_add(1, Release);
-	if old == 0 {
-		println!("Halting...");
-		// Send IPI to other cores to halt them too
-		if apic::is_present() {
-			let lapic = lapic_id();
-			CPU.iter()
-				.filter(|cpu| cpu.apic_id != lapic)
-				// Non-maskable interrupt
-				.for_each(|cpu| apic::ipi(cpu.apic_id, 4, 0x20)); // TODO use another vector
-		}
-	}
+	notify_halt("Halting...");
 	loop {
+		cli();
 		hlt();
 	}
 }
@@ -71,16 +78,16 @@ pub fn halt() -> ! {
 /// Powers the system down.
 pub fn shutdown() -> ! {
 	cli();
-	println!("Power down...");
+	notify_halt("Power down...");
 	todo!() // use ACPI to power off the system
 }
 
 /// Reboots the system.
 pub fn reboot() -> ! {
 	cli();
-	println!("Rebooting...");
+	notify_halt("Rebooting...");
 	// First try: ACPI
-	// TODO Use ACPI reset to ensure everything reboots
+	// TODO Use ACPI reset
 	// Second try: PS/2
 	loop {
 		let tmp = unsafe { inb(0x64) };
