@@ -25,6 +25,7 @@ use crate::{
 	},
 	memory::user::UserSlice,
 	panic,
+	power::{halt, halting},
 	process::scheduler::{alter_flow, preempt_check_resched},
 	rand,
 	sync::mutex::IntMutex,
@@ -116,6 +117,9 @@ pub fn register_callback(id: u32, callback: Callback) -> AllocResult<Option<Call
 /// `frame` is the stack frame of the interruption, with general purpose registers saved.
 #[unsafe(no_mangle)]
 extern "C" fn interrupt_handler(frame: &mut IntFrame) {
+	if unlikely(halting()) {
+		halt();
+	}
 	// Ignore page faults to avoid a deadlock (might occur when writing entropy to userspace on
 	// non-mapped page)
 	if frame.int != 0xe {

@@ -25,7 +25,10 @@
 #[cfg(config_debug_qemu)]
 use crate::debug::qemu;
 use crate::{
-	arch::x86::{cli, idt::IntFrame},
+	arch::{
+		core_id,
+		x86::{cli, idt::IntFrame},
+	},
 	logger::LOGGER,
 	memory::VirtAddr,
 	power, println, register_get,
@@ -35,20 +38,16 @@ use core::{
 	panic::{Location, PanicInfo},
 };
 
-fn halt() -> ! {
-	#[cfg(config_debug_qemu)]
-	qemu::exit(qemu::FAILURE);
-	power::halt();
-}
-
 fn panic_impl(msg: impl fmt::Display, loc: Option<&Location>, frame: Option<&IntFrame>) -> ! {
 	cli();
 	LOGGER.lock().silent = false;
 	// Print panic
 	println!("-- KERNEL PANIC! --");
-	println!("Reason: {msg}");
+	let cpu = core_id();
 	if let Some(loc) = loc {
-		println!("Location: {loc}");
+		println!("CPU: {cpu} Reason: {msg} Location: {loc}");
+	} else {
+		println!("CPU: {cpu} Reason: {msg}");
 	}
 	if let Some(frame) = frame {
 		println!("{frame}");
@@ -78,7 +77,9 @@ fn panic_impl(msg: impl fmt::Display, loc: Option<&Location>, frame: Option<&Int
 		debug::print_callstack(&callstack);
 	}
 	println!("-- end trace --");
-	halt();
+	#[cfg(config_debug_qemu)]
+	qemu::exit(qemu::FAILURE);
+	power::halt();
 }
 
 /// Called on Rust panic.

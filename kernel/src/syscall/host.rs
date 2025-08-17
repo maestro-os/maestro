@@ -182,18 +182,9 @@ pub fn reboot(
 		}
 	}
 	match cmd {
-		CMD_POWEROFF => {
-			crate::println!("Power down...");
-			power::shutdown();
-		}
-		CMD_REBOOT => {
-			crate::println!("Rebooting...");
-			power::reboot();
-		}
-		CMD_HALT => {
-			crate::println!("Halting...");
-			power::halt();
-		}
+		CMD_POWEROFF => power::shutdown(),
+		CMD_REBOOT => power::reboot(),
+		CMD_HALT => power::halt(),
 		CMD_SUSPEND => {
 			// TODO Use ACPI to suspend the system
 			todo!()

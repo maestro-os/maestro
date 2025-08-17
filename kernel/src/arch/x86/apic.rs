@@ -138,7 +138,7 @@ pub unsafe fn write_reg(reg: usize, value: u32) {
 ///
 /// The caller must ensure the APIC is present.
 pub unsafe fn wait_delivery() {
-	while likely(read_reg(0x300) & (1 << 12) != 0) {
+	while likely(read_reg(REG_ICR_LO) & (1 << 12) != 0) {
 		hint::spin_loop();
 	}
 }
@@ -268,6 +268,29 @@ pub fn redirect_int(gsi: u32, lapic: u8, int: u8) -> bool {
 		);
 	}
 	true
+}
+
+/// Sends an Inter Processor Interrupt to the CPU with ID `apic_id`.
+///
+/// Arguments:
+/// - `delivery_mode` is the delivery mode for the interrupt (see APIC documentation)
+/// - `int` is the interrupt vector ID
+///
+/// The function waits for the interrupt to be delivered before returning.
+pub fn ipi(apic_id: u8, delivery_mode: u8, int: u8) {
+	unsafe {
+		write_reg(
+			REG_ICR_HI,
+			(read_reg(REG_ICR_HI) & 0x00ffffff) | ((apic_id as u32) << 24),
+		);
+		write_reg(
+			REG_ICR_LO,
+			(read_reg(REG_ICR_LO) & 0xfff00000)
+				| ((delivery_mode as u32 & 0b111) << 8)
+				| int as u32,
+		);
+		wait_delivery();
+	}
 }
 
 /// Sends an end of interrupt message to the APIC.

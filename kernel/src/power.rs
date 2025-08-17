@@ -18,30 +18,67 @@
 
 //! This module handles system power.
 
-use crate::arch::x86::{
-	cli, hlt,
-	io::{inb, outb},
+use crate::{
+	arch::x86::{
+		apic,
+		apic::lapic_id,
+		cli, hlt,
+		io::{inb, outb},
+	},
+	println,
+	process::scheduler::CPU,
 };
-use core::arch::asm;
+use core::{
+	arch::asm,
+	sync::atomic::{
+		AtomicUsize,
+		Ordering::{Acquire, Release},
+	},
+};
+
+/// The number of halted cores.
+///
+/// When this value is greater than zero, all other CPU cores should halt and increment this
+/// counter.
+static HALTED_CORES: AtomicUsize = AtomicUsize::new(0);
+
+/// Tells whether the system is currently halting.
+#[inline]
+pub fn halting() -> bool {
+	HALTED_CORES.load(Acquire) > 0
+}
 
 /// Halts the kernel until reboot.
 pub fn halt() -> ! {
-	// TODO Send a signal to all other cores to stop them
+	cli();
+	let old = HALTED_CORES.fetch_add(1, Release);
+	if old == 0 {
+		println!("Halting...");
+		// Send IPI to other cores to halt them too
+		if apic::is_present() {
+			let lapic = lapic_id();
+			CPU.iter()
+				.filter(|cpu| cpu.apic_id != lapic)
+				// Non-maskable interrupt
+				.for_each(|cpu| apic::ipi(cpu.apic_id, 4, 0x20)); // TODO use another vector
+		}
+	}
 	loop {
-		cli();
 		hlt();
 	}
 }
 
 /// Powers the system down.
 pub fn shutdown() -> ! {
-	// TODO Use ACPI to power off the system
-	todo!()
+	cli();
+	println!("Power down...");
+	todo!() // use ACPI to power off the system
 }
 
 /// Reboots the system.
 pub fn reboot() -> ! {
 	cli();
+	println!("Rebooting...");
 	// First try: ACPI
 	// TODO Use ACPI reset to ensure everything reboots
 	// Second try: PS/2
