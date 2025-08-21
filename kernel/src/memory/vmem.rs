@@ -36,8 +36,10 @@ use crate::{
 	sync::{mutex::Mutex, once::OnceInit},
 	tty::vga,
 };
-use core::{ptr::NonNull, sync::atomic::Ordering::Release};
-use core::sync::atomic::Ordering::{Acquire};
+use core::{
+	ptr::NonNull,
+	sync::atomic::Ordering::{Acquire, Release},
+};
 use utils::limits::PAGE_SIZE;
 
 /// A virtual memory context.
@@ -216,7 +218,8 @@ pub fn flush() {
 	x86::paging::flush();
 }
 
-// TODO shootdown only cores that are sharing the same memory space, unless we are invalidation kernel mappings (in which case we shall shootdown everyone)
+// TODO shootdown only cores that are sharing the same memory space, unless we are invalidation
+// kernel mappings (in which case we shall shootdown everyone)
 
 /// Invalidate the page at `addr` on all CPUs.
 pub fn shootdown_page(addr: VirtAddr) {

@@ -45,10 +45,9 @@ use core::{
 	ptr::null_mut,
 	sync::atomic::{
 		AtomicUsize,
-		Ordering::{Acquire},
+		Ordering::{Acquire, Release},
 	},
 };
-use core::sync::atomic::Ordering::Release;
 use utils::{collections::vec::Vec, errno::AllocResult, limits::PAGE_SIZE, vec};
 
 /// The SMP trampoline's physical address in memory.
