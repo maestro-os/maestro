@@ -37,14 +37,14 @@ use core::{
 		Ordering::{Acquire, Relaxed, Release},
 	},
 };
+use utils::{boxed::Box, errno::AllocResult};
 
-// TODO implement async calls
-
-struct DeferredCall {
-	/// The function to be called
-	func: NonNull<dyn Fn()>,
-	/// Set to `true` once the function returned
-	done: NonNull<AtomicBool>,
+enum DeferredCall {
+	Sync {
+		func: NonNull<dyn Fn()>,
+		done: NonNull<AtomicBool>,
+	},
+	Async(Box<dyn Fn()>),
 }
 
 struct Slot {
@@ -123,15 +123,33 @@ pub fn synchronous<F: 'static + Fn()>(cpu: u8, func: F) {
 	// Wrap to add a flag notifying when the function has returned
 	// Push on queue
 	let done = AtomicBool::new(false);
-	let call = DeferredCall {
+	let call = DeferredCall::Sync {
 		func: NonNull::from_ref(&func),
 		done: NonNull::from_ref(&done),
 	};
 	cpu.deferred_calls.insert(call);
 	// Wait for the function to return
-	while done.load(Acquire) {
+	while !done.load(Acquire) {
 		hint::spin_loop();
 	}
+}
+
+/// Defers a call to `func` on the CPU `cpu`.
+pub fn asynchronous<F: 'static + Fn()>(cpu: u8, func: F) -> AllocResult<()> {
+	// If this is the current core, execute immediately
+	if cpu == core_id() {
+		func();
+		return Ok(());
+	}
+	// Get CPU
+	let Some(cpu) = CPU.get(cpu as usize) else {
+		return Ok(());
+	};
+	// Push on queue
+	let func = Box::new(func)?;
+	let call = DeferredCall::Async(func);
+	cpu.deferred_calls.insert(call);
+	Ok(())
 }
 
 /// Makes deferred calls in the current CPU's queue, if any
@@ -150,8 +168,16 @@ pub(super) fn consume() {
 		// Perform call
 		unsafe {
 			let call = slot.call.get().read();
-			call.func.as_ref()();
-			call.done.as_ref().store(true, Release);
+			match call {
+				DeferredCall::Sync {
+					func,
+					done,
+				} => {
+					func.as_ref()();
+					done.as_ref().store(true, Release);
+				}
+				DeferredCall::Async(func) => func.as_ref()(),
+			}
 		}
 		// Update tail and count
 		tail = (tail + 1) % queue.buf.len();
