@@ -59,7 +59,8 @@ fn notify_halt(log: &str) {
 	if apic::is_present() {
 		let lapic = lapic_id();
 		CPU.iter()
-			.filter(|cpu| cpu.apic_id != lapic)
+			// Exclude current and offline cores
+			.filter(|cpu| cpu.apic_id != lapic && cpu.online.load(Acquire))
 			// Non-maskable interrupt
 			.for_each(|cpu| apic::ipi(cpu.apic_id, 4, 0x20)); // TODO use another vector
 	}

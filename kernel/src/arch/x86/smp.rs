@@ -35,7 +35,7 @@ use crate::{
 		vmem::{KERNEL_VMEM, write_ro},
 	},
 	println,
-	process::scheduler::{CPU, store_per_cpu, switch::idle_task},
+	process::scheduler::{CPU, per_cpu, store_per_cpu, switch::idle_task},
 };
 use core::{
 	arch::global_asm,
@@ -43,8 +43,12 @@ use core::{
 	num::NonZeroUsize,
 	ptr,
 	ptr::null_mut,
-	sync::atomic::{AtomicUsize, Ordering::Acquire},
+	sync::atomic::{
+		AtomicUsize,
+		Ordering::{Acquire},
+	},
 };
+use core::sync::atomic::Ordering::Release;
 use utils::{collections::vec::Vec, errno::AllocResult, limits::PAGE_SIZE, vec};
 
 /// The SMP trampoline's physical address in memory.
@@ -318,7 +322,9 @@ unsafe extern "C" fn smp_main() -> ! {
 	apic::init(false).expect("APIC initialization failed");
 	timer::init(false).expect("timer initialization failed");
 	timer::apic::periodic(100_000_000);
+	// Notify that the CPU is up
 	println!("Started core {}", lapic_id());
+	per_cpu().online.store(true, Release);
 	BOOTED_CORES.fetch_add(1, Acquire);
 	// Wait for work
 	unsafe {

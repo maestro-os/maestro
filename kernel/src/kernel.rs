@@ -36,6 +36,7 @@
 #![feature(lang_items)]
 #![feature(likely_unlikely)]
 #![feature(negative_impls)]
+#![feature(non_null_from_ref)]
 #![feature(offset_of_enum)]
 #![feature(once_cell_try)]
 #![feature(pointer_is_aligned_to)]

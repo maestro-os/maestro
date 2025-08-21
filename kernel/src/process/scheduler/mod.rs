@@ -22,6 +22,7 @@
 //! Scheduling can be disabled/enabled by entering a **critical section**, with
 //! [`preempt_disable`]/[`preempt_enable`], or with [`critical`].
 
+pub mod defer;
 pub mod switch;
 
 use crate::{
@@ -29,7 +30,11 @@ use crate::{
 		end_of_interrupt,
 		x86::{cli, gdt::Gdt, idt::IntFrame, tss::Tss},
 	},
-	process::{Process, State, mem_space::MemSpace, scheduler::switch::switch},
+	process::{
+		Process, State,
+		mem_space::MemSpace,
+		scheduler::{defer::DeferredCallQueue, switch::switch},
+	},
 	sync::{atomic::AtomicU64, mutex::IntMutex, once::OnceInit},
 };
 use core::{
@@ -37,7 +42,7 @@ use core::{
 	hint::unlikely,
 	ptr,
 	sync::atomic::{
-		AtomicU32, AtomicUsize,
+		AtomicBool, AtomicU32, AtomicUsize,
 		Ordering::{Acquire, Relaxed, Release},
 	},
 };
@@ -68,25 +73,31 @@ pub struct PerCpu {
 	/// Local APIC flags
 	pub apic_flags: u32,
 
+	/// Tells whether the CPU core has booted.
+	pub online: AtomicBool,
+
 	/// The CPU's GDT
 	pub gdt: Gdt,
 	/// The CPU's TSS
 	tss: UnsafeCell<Tss>,
 
-	/// The core's scheduler.
+	/// The core's scheduler
 	pub scheduler: Scheduler,
-	/// The time in between each tick on the core, in nanoseconds.
+	/// The time in between each tick on the core, in nanoseconds
 	pub tick_period: AtomicU64,
-	/// Counter for nested critical sections.
+	/// Counter for nested critical sections
 	///
 	/// The highest bit is used to tell whether preemption has been requested by the timer (clear
-	/// = requested, set = not requested).
+	/// = requested, set = not requested)
 	pub preempt_counter: AtomicU32,
 
 	/// Attached memory space
 	///
-	/// The pointer stored by this field is returned by [`Arc::into_raw`].
+	/// The pointer stored by this field is returned by [`Arc::into_raw`]
 	pub mem_space: AtomicOptionalArc<MemSpace>,
+
+	/// Queue of deferred calls to be executed on this core
+	deferred_calls: DeferredCallQueue,
 }
 
 impl PerCpu {
@@ -100,6 +111,8 @@ impl PerCpu {
 			cpu_id,
 			apic_id,
 			apic_flags,
+
+			online: AtomicBool::new(false),
 
 			gdt: Default::default(),
 			tss: Default::default(),
@@ -115,6 +128,8 @@ impl PerCpu {
 			preempt_counter: AtomicU32::new(1 << 31),
 
 			mem_space: AtomicOptionalArc::new(),
+
+			deferred_calls: DeferredCallQueue::new(),
 		})
 	}
 
@@ -267,6 +282,8 @@ pub fn schedule() {
 	cli();
 	// Reset preempt flag
 	per_cpu().preempt_counter.fetch_or(1 << 31, Relaxed);
+	// Make deferred calls
+	defer::consume();
 	let sched = &per_cpu().scheduler;
 	let (prev, next) = {
 		// Find the next process to run

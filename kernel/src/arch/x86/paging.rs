@@ -397,7 +397,6 @@ pub fn is_bound(page_dir: NonNull<Table>) -> bool {
 }
 
 /// Invalidate the page from the TLB at the given address on the current CPU.
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[inline]
 pub fn invlpg(addr: VirtAddr) {
 	unsafe {
@@ -406,7 +405,8 @@ pub fn invlpg(addr: VirtAddr) {
 }
 
 /// Flush the Translation Lookaside Buffer (TLB) on the current CPU.
-pub fn flush_current() {
+#[inline]
+pub fn flush() {
 	unsafe {
 		asm!(
 			"mov {tmp}, cr3",

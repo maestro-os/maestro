@@ -20,7 +20,10 @@
 
 use core::{
 	hint,
-	sync::{atomic, atomic::AtomicBool},
+	sync::atomic::{
+		AtomicBool,
+		Ordering::{Acquire, Release},
+	},
 };
 
 /// Locking primitive spinning until the resource can be acquired.
@@ -41,15 +44,15 @@ impl Spinlock {
 
 	/// Locks the spinlock.
 	#[inline(always)]
-	pub fn lock(&mut self) {
-		while self.0.swap(true, atomic::Ordering::Acquire) {
+	pub fn lock(&self) {
+		while self.0.swap(true, Acquire) {
 			hint::spin_loop();
 		}
 	}
 
 	/// Unlocks the spinlock.
 	#[inline(always)]
-	pub fn unlock(&mut self) {
-		self.0.store(false, atomic::Ordering::Release);
+	pub fn unlock(&self) {
+		self.0.store(false, Release);
 	}
 }
