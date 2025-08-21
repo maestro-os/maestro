@@ -16,8 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! The `Box` structure allows to hold an object on the heap and handles its
-//! memory properly.
+//! `Box` holds an object on the heap and handles its memory.
 
 use crate::{__alloc, __dealloc, AllocError, TryClone, errno::AllocResult};
 use core::{
@@ -27,19 +26,13 @@ use core::{
 	marker::Unsize,
 	mem,
 	mem::ManuallyDrop,
-	ops::{CoerceUnsized, Deref, DerefMut, DispatchFromDyn},
-	ptr::{NonNull, drop_in_place},
+	ops::{CoerceUnsized, Deref, DerefMut, DerefPure, DispatchFromDyn},
+	ptr::{Unique, drop_in_place},
 };
 
-/// A `Box` allows to store an object on the heap.
-///
-/// The object is owned by the Box and will be freed whenever it is dropped.
-///
-/// Box uses the `malloc` allocator.
-pub struct Box<T: ?Sized> {
-	/// Pointer to the allocated memory
-	ptr: NonNull<T>,
-}
+/// A pointer type that uniquely owns a heap allocation of type `T`.
+#[repr(transparent)]
+pub struct Box<T: ?Sized>(Unique<T>);
 
 impl<T> Box<T> {
 	/// Creates a new instance and places the given value `value` into it.
@@ -47,28 +40,25 @@ impl<T> Box<T> {
 	/// If the allocation fails, the function shall return an error.
 	pub fn new(value: T) -> AllocResult<Box<T>> {
 		let layout = Layout::for_value(&value);
-		let ptr = if layout.size() > 0 {
+		if layout.size() != 0 {
 			unsafe {
 				let ptr = __alloc(layout)?.cast();
 				ptr.write(value);
-				ptr
+				Ok(Self(Unique::from_non_null(ptr)))
 			}
 		} else {
 			// Prevent double drop
 			mem::forget(value);
-			NonNull::dangling()
-		};
-		Ok(Self {
-			ptr,
-		})
+			Ok(Self(Unique::dangling()))
+		}
 	}
 
-	/// Returns the value owned by the `Box`, taking its ownership.
-	pub fn take(self) -> T {
+	/// Consumes the `Box`, returning the wrapped value.
+	pub fn into_inner(self) -> T {
 		let layout = Layout::for_value(&*self);
 		unsafe {
-			let t = self.ptr.read();
-			__dealloc(self.ptr.cast(), layout);
+			let t = self.0.as_ptr().read();
+			__dealloc(self.0.as_non_null_ptr().cast(), layout);
 			mem::forget(self);
 			t
 		}
@@ -85,12 +75,10 @@ impl<T: ?Sized> Box<T> {
 	/// The given pointer must be valid and must point to an address to a region of memory
 	/// allocated with the memory allocator since `Box` will use the allocator to free it.
 	pub unsafe fn from_raw(ptr: *mut T) -> Self {
-		Self {
-			ptr: NonNull::new(ptr).unwrap(),
-		}
+		Self(Unique::new_unchecked(ptr))
 	}
 
-	/// Returns the raw pointer inside of the `Box`.
+	/// Returns the raw pointer inside the `Box`.
 	///
 	/// # Safety
 	///
@@ -101,24 +89,24 @@ impl<T: ?Sized> Box<T> {
 
 	/// Returns a pointer to the data wrapped into the `Box`.
 	pub fn as_ptr(&self) -> *const T {
-		self.ptr.as_ptr()
+		self.0.as_ptr()
 	}
 
 	/// Returns a mutable pointer to the data wrapped into the `Box`.
 	pub fn as_mut_ptr(&mut self) -> *mut T {
-		self.ptr.as_ptr()
+		self.0.as_ptr()
 	}
 }
 
 impl<T: ?Sized> AsRef<T> for Box<T> {
 	fn as_ref(&self) -> &T {
-		unsafe { &*self.ptr.as_ptr() }
+		unsafe { &*self.0.as_ptr() }
 	}
 }
 
 impl<T: ?Sized> AsMut<T> for Box<T> {
 	fn as_mut(&mut self) -> &mut T {
-		unsafe { &mut *self.ptr.as_ptr() }
+		unsafe { &mut *self.0.as_ptr() }
 	}
 }
 
@@ -148,12 +136,14 @@ impl<T: ?Sized> DerefMut for Box<T> {
 	}
 }
 
+unsafe impl<T: ?Sized> DerefPure for Box<T> {}
+
 impl<T: TryClone<Error = E>, E: From<AllocError>> TryClone for Box<T> {
 	type Error = E;
 
 	fn try_clone(&self) -> Result<Self, Self::Error> {
-		let obj = unsafe { &*self.ptr.as_ptr() };
-		Ok(Box::new(obj.try_clone()?)?)
+		let new = self.as_ref().try_clone()?;
+		Ok(Box::new(new)?)
 	}
 }
 
@@ -163,26 +153,23 @@ impl<T: ?Sized + Unsize<U>, U: ?Sized> DispatchFromDyn<Box<U>> for Box<T> {}
 
 impl<T: ?Sized + fmt::Display> fmt::Display for Box<T> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "{}", self.as_ref())
+		fmt::Display::fmt(&**self, f)
 	}
 }
 
 impl<T: ?Sized + fmt::Debug> fmt::Debug for Box<T> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "{:?}", self.as_ref())
+		fmt::Debug::fmt(&**self, f)
 	}
 }
 
 impl<T: ?Sized> Drop for Box<T> {
 	fn drop(&mut self) {
-		let ptr = self.ptr.cast::<()>().as_ptr();
-		// If the pointer is not dangling
-		if (ptr as usize) >= 4096 {
-			unsafe {
-				let inner = self.ptr.as_mut();
-				let layout = Layout::for_value(inner);
-				drop_in_place(inner);
-				__dealloc(self.ptr.cast(), layout);
+		unsafe {
+			let layout = Layout::for_value_raw(self.0.as_ptr());
+			if layout.size() != 0 {
+				drop_in_place(self.as_mut());
+				__dealloc(self.0.as_non_null_ptr().cast(), layout);
 			}
 		}
 	}

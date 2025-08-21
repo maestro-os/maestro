@@ -26,7 +26,7 @@ pub struct UnsafeMut<T>(UnsafeCell<T>);
 
 impl<T> UnsafeMut<T> {
 	/// Creates a new instance.
-	pub fn new(val: T) -> Self {
+	pub const fn new(val: T) -> Self {
 		Self(UnsafeCell::new(val))
 	}
 
