@@ -28,7 +28,9 @@ use crate::{
 };
 use core::{
 	cell::UnsafeCell,
-	hint, mem,
+	hint,
+	hint::likely,
+	mem,
 	ptr::NonNull,
 	sync::atomic::{
 		AtomicBool, AtomicUsize,
@@ -39,7 +41,9 @@ use core::{
 // TODO implement async calls
 
 struct DeferredCall {
+	/// The function to be called
 	func: NonNull<dyn Fn()>,
+	/// Set to `true` once the function returned
 	done: NonNull<AtomicBool>,
 }
 
@@ -53,8 +57,11 @@ struct Slot {
 pub struct DeferredCallQueue {
 	buf: [Slot; 64],
 
+	/// Limits the number of elements to avoid buffer overflow
 	count: AtomicUsize,
+	/// Read head
 	head: AtomicUsize,
+	/// Used only by the consumer. This is atomic only for interior mutability
 	tail: AtomicUsize,
 }
 
@@ -74,19 +81,29 @@ impl DeferredCallQueue {
 
 	/// Inserts a call on the queue
 	fn insert(&self, call: DeferredCall) {
-		let count = self.count.fetch_add(1, Acquire);
-		// If the queue is full, wait
-		if count > self.buf.len() {
-			// TODO
+		// Try to increment the elements count, waiting if the queue is full
+		loop {
+			let count = self.count.fetch_add(1, Release);
+			if likely(count < self.buf.len()) {
+				break;
+			}
+			// The queue is full, decrement to avoid starving if others are trying to spam too
+			self.count.fetch_sub(1, Release);
+			// Wait
+			hint::spin_loop();
 		}
 		// Allocate a slot
-		let head = self.head.fetch_add(1, Acquire);
-		let slot = &self.buf[head % self.buf.len()];
+		let head = self
+			.head
+			.fetch_update(Release, Acquire, |head| Some((head + 1) % self.buf.len()))
+			// Cannot fail
+			.unwrap();
+		let slot = &self.buf[head];
 		// Store in slot (use volatile to prevent any reordering)
 		unsafe {
 			slot.call.get().write_volatile(call);
 		}
-		self.buf[head % self.buf.len()].ready.store(true, Release);
+		slot.ready.store(true, Release);
 	}
 }
 
