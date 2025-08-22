@@ -270,14 +270,30 @@ pub fn redirect_int(gsi: u32, lapic: u8, int: u8) -> bool {
 	true
 }
 
+/// IPI delivery modes
+#[repr(u8)]
+pub enum IpiDeliveryMode {
+	/// Delivers an interrupt on the specified vector
+	Fixed = 0b000,
+	/// Delivers a System Management Interrupt
+	Smi = 0b010,
+	/// Delivers a Non-Maskable Interrupt
+	Nmi = 0b100,
+	/// Delivers an INIT request
+	Init = 0b101,
+	/// Causes the processor to respond to the interrupt as if the interrupt originated in an
+	/// externally connected (8259A-compatible) interrupt controller
+	ExtInt = 0b111,
+}
+
 /// Sends an Inter Processor Interrupt to the CPU with ID `apic_id`.
 ///
 /// Arguments:
-/// - `delivery_mode` is the delivery mode for the interrupt (see APIC documentation)
+/// - `delivery_mode` is the delivery mode for the interrupt
 /// - `int` is the interrupt vector ID
 ///
 /// The function waits for the interrupt to be delivered before returning.
-pub fn ipi(apic_id: u8, delivery_mode: u8, int: u8) {
+pub fn ipi(apic_id: u8, delivery_mode: IpiDeliveryMode, int: u8) {
 	unsafe {
 		write_reg(
 			REG_ICR_HI,

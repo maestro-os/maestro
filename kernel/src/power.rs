@@ -21,12 +21,12 @@
 use crate::{
 	arch::x86::{
 		apic,
-		apic::lapic_id,
+		apic::{IpiDeliveryMode, lapic_id},
 		cli, hlt,
 		io::{inb, outb},
 	},
 	println,
-	process::scheduler::{CPU, per_cpu},
+	process::scheduler::{CPU, defer, per_cpu},
 };
 use core::{
 	arch::asm,
@@ -62,7 +62,7 @@ fn notify_halt(log: &str) {
 			// Exclude current and offline cores
 			.filter(|cpu| cpu.apic_id != lapic && cpu.online.load(Acquire))
 			// Non-maskable interrupt
-			.for_each(|cpu| apic::ipi(cpu.apic_id, 4, 0x20)); // TODO use another vector
+			.for_each(|cpu| apic::ipi(cpu.apic_id, IpiDeliveryMode::Nmi, defer::INT));
 	}
 	// Mark the current CPU as offline
 	per_cpu().online.store(false, Release);

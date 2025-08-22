@@ -23,7 +23,10 @@
 //! - enter a critical section
 
 use crate::{
-	arch::core_id,
+	arch::{
+		core_id,
+		x86::{apic, apic::IpiDeliveryMode},
+	},
 	process::scheduler::{CPU, per_cpu},
 };
 use core::{
@@ -38,6 +41,9 @@ use core::{
 	},
 };
 use utils::{boxed::Box, errno::AllocResult};
+
+/// Interrupt vector for deferred calls
+pub const INT: u8 = 0x20; // TODO use another vector
 
 enum DeferredCall {
 	Sync {
@@ -111,6 +117,11 @@ impl DeferredCallQueue {
 	}
 }
 
+/// Sends an IPI to `cpu` to notify it there is a deferred call.
+pub fn ipi(cpu: u8) {
+	apic::ipi(cpu, IpiDeliveryMode::Nmi, INT);
+}
+
 /// Defers a call to `func` on the CPU `cpu`.
 ///
 /// The function waits until the function has been executed before returning.
@@ -121,15 +132,16 @@ pub fn synchronous<F: 'static + Fn() + Send>(cpu: u8, func: F) {
 		return;
 	}
 	// Get CPU
-	let Some(cpu) = CPU.get(cpu as usize) else {
+	let Some(per_cpu) = CPU.get(cpu as usize) else {
 		return;
 	};
 	// Push on queue
 	let done = AtomicBool::new(false);
-	cpu.deferred_calls.insert(DeferredCall::Sync {
+	per_cpu.deferred_calls.insert(DeferredCall::Sync {
 		func: NonNull::from_ref(&func),
 		done: NonNull::from_ref(&done),
 	});
+	ipi(cpu);
 	// Wait for the function to return
 	while !done.load(Acquire) {
 		hint::spin_loop();
@@ -151,14 +163,15 @@ pub fn synchronous_multiple<F: 'static + Fn() + Send>(cpus: impl Iterator<Item =
 			continue;
 		}
 		// Get CPU
-		let Some(cpu) = CPU.get(cpu as usize) else {
+		let Some(per_cpu) = CPU.get(cpu as usize) else {
 			continue;
 		};
 		// Push on queue
-		cpu.deferred_calls.insert(DeferredCall::SyncMultiple {
+		per_cpu.deferred_calls.insert(DeferredCall::SyncMultiple {
 			func: NonNull::from_ref(&func),
 			done: NonNull::from_ref(&done),
 		});
+		ipi(cpu);
 		count += 1;
 	}
 	// Wait for the function to return on all cores
@@ -175,13 +188,14 @@ pub fn asynchronous<F: 'static + Fn() + Send>(cpu: u8, func: F) -> AllocResult<(
 		return Ok(());
 	}
 	// Get CPU
-	let Some(cpu) = CPU.get(cpu as usize) else {
+	let Some(per_cpu) = CPU.get(cpu as usize) else {
 		return Ok(());
 	};
 	// Push on queue
-	let func = Box::new(func)?;
-	let call = DeferredCall::Async(func);
-	cpu.deferred_calls.insert(call);
+	per_cpu
+		.deferred_calls
+		.insert(DeferredCall::Async(Box::new(func)?));
+	ipi(cpu);
 	Ok(())
 }
 
