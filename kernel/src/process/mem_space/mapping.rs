@@ -32,7 +32,7 @@ use crate::{
 		vmem::{VMem, write_ro},
 	},
 	process::mem_space::{
-		COPY_BUFFER, MAP_ANONYMOUS, MAP_PRIVATE, MAP_SHARED, PROT_EXEC, PROT_WRITE, Page,
+		COPY_BUFFER, MAP_ANONYMOUS, MAP_PRIVATE, MAP_SHARED, MemSpace, PROT_EXEC, PROT_WRITE, Page,
 	},
 	time::clock::{Clock, current_time_ms},
 };
@@ -211,7 +211,7 @@ impl MemMapping {
 		})
 	}
 
-	/// Maps the page at the offset `offset` of the mapping, onto `vmem`.
+	/// Maps the page at the offset `offset` of the mapping, onto `mem_space`.
 	///
 	/// `write` tells whether the page has to be mapped for writing.
 	///
@@ -224,8 +224,9 @@ impl MemMapping {
 	///
 	/// Upon allocation failure, or failure to read a page from the disk, the function returns an
 	/// error.
-	pub fn map(&mut self, offset: usize, vmem: &mut VMem, write: bool) -> EResult<()> {
+	pub fn map(&mut self, mem_space: &MemSpace, offset: usize, write: bool) -> EResult<()> {
 		let virtaddr = self.addr + offset * PAGE_SIZE;
+		let mut vmem = mem_space.vmem.lock();
 		if let Some(page) = &self.pages[offset] {
 			// A page is already present, use it
 			let mut phys_addr = page.phys_addr();
@@ -233,7 +234,7 @@ impl MemMapping {
 			if pending_cow {
 				// The page cannot be shared: we need our own copy (regardless of whether we are
 				// reading or writing)
-				let page = init_page(vmem, self.prot, Some(page), virtaddr)?;
+				let page = init_page(&mut vmem, self.prot, Some(page), virtaddr)?;
 				phys_addr = page.phys_addr();
 				self.pages[offset] = Some(MappedFrame::new(page));
 			}
@@ -247,7 +248,7 @@ impl MemMapping {
 			// Anonymous mapping
 			None => {
 				let phys_addr = if write {
-					let page = init_page(vmem, self.prot, None, virtaddr)?;
+					let page = init_page(&mut vmem, self.prot, None, virtaddr)?;
 					let phys_addr = page.phys_addr();
 					self.pages[offset] = Some(MappedFrame::new(page));
 					phys_addr
@@ -267,7 +268,7 @@ impl MemMapping {
 				let mut page = node.node_ops.read_page(node, file_off)?;
 				// If the mapping is private, we need our own copy
 				if self.flags & MAP_PRIVATE != 0 {
-					page = init_page(vmem, self.prot, Some(&page), virtaddr)?;
+					page = init_page(&mut vmem, self.prot, Some(&page), virtaddr)?;
 				}
 				let phys_addr = page.phys_addr();
 				self.pages[offset] = Some(MappedFrame::new(page));
@@ -276,6 +277,7 @@ impl MemMapping {
 				vmem.map(phys_addr, virtaddr, flags);
 			}
 		}
+		mem_space.shootdown_page(virtaddr);
 		Ok(())
 	}
 

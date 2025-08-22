@@ -299,7 +299,13 @@ impl MemSpace {
 		self.state.lock().vmem_usage
 	}
 
-	/// Invalidate the range of `count` pages starting at `addr` on all CPUs.
+	/// Invalidate the page at `addr` on all CPUs binding the memory space
+	fn shootdown_page(&self, addr: VirtAddr) {
+		defer::synchronous_multiple(self.bound_cpus(), move || vmem::invalidate_page(addr));
+	}
+
+	/// Invalidate the range of `count` pages starting at `addr` on all CPUs binding the memory
+	/// space
 	fn shootdown_range(&self, addr: VirtAddr, count: usize) {
 		defer::synchronous_multiple(self.bound_cpus(), move || {
 			vmem::invalidate_range(addr, count)
@@ -737,7 +743,6 @@ impl MemSpace {
 	/// If the process should continue, the function returns `true`, else `false`.
 	pub fn handle_page_fault(&self, addr: VirtAddr, code: u32) -> EResult<bool> {
 		let mut state = self.state.lock();
-		let mut vmem = self.vmem.lock();
 		let Some(mapping) = state.get_mut_mapping_for_addr(addr) else {
 			return Ok(false);
 		};
@@ -751,7 +756,7 @@ impl MemSpace {
 		}
 		// Map the accessed page
 		let page_offset = (addr.0 - mapping.addr.0) / PAGE_SIZE;
-		mapping.map(page_offset, &mut vmem, write)?;
+		mapping.map(self, page_offset, write)?;
 		Ok(true)
 	}
 }

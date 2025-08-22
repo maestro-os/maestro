@@ -90,6 +90,9 @@ fn insert<K: Clone + Ord + Hash, V>(
 /// avoid inconsistent states.
 #[must_use = "A transaction must be committed, or its result is discarded"]
 pub(super) struct MemSpaceTransaction<'m> {
+	/// The memory space on which the transaction is done
+	mem_space: &'m MemSpace,
+
 	// It is important that `vmem` is placed before `state` since they are dropped according to
 	// the order of declaration. This is important for interrupt masking
 	/// The virtual memory context
@@ -118,6 +121,8 @@ impl<'m> MemSpaceTransaction<'m> {
 		let vmem = mem_space.vmem.lock();
 		let vmem_usage = state.vmem_usage;
 		Self {
+			mem_space,
+
 			vmem,
 			state,
 
@@ -181,6 +186,8 @@ impl<'m> MemSpaceTransaction<'m> {
 			mapping.sync(&self.vmem, true)?;
 			// Apply to vmem. No rollback is required since this would be corrected by a page fault
 			self.vmem.unmap_range(mapping.addr, mapping.size.get());
+			self.mem_space
+				.shootdown_range(mapping.addr, mapping.size.get());
 			// Update usage
 			self.vmem_usage -= mapping.size.get();
 		}
