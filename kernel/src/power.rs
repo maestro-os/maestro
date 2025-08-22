@@ -26,7 +26,10 @@ use crate::{
 		io::{inb, outb},
 	},
 	println,
-	process::scheduler::CPU,
+	process::{
+		mem_space::MemSpace,
+		scheduler::{CPU, per_cpu},
+	},
 };
 use core::{
 	arch::asm,
@@ -64,6 +67,8 @@ fn notify_halt(log: &str) {
 			// Non-maskable interrupt
 			.for_each(|cpu| apic::ipi(cpu.apic_id, 4, 0x20)); // TODO use another vector
 	}
+	// Mark the current CPU as offline
+	per_cpu().online.store(false, Release);
 }
 
 /// Halts the kernel until reboot.

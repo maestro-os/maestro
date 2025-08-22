@@ -41,10 +41,14 @@ use utils::{boxed::Box, errno::AllocResult};
 
 enum DeferredCall {
 	Sync {
-		func: NonNull<dyn Fn()>,
+		func: NonNull<dyn Fn() + Send>,
 		done: NonNull<AtomicBool>,
 	},
-	Async(Box<dyn Fn()>),
+	SyncMultiple {
+		func: NonNull<dyn Fn() + Send>,
+		done: NonNull<AtomicUsize>,
+	},
+	Async(Box<dyn Fn() + Send>),
 }
 
 struct Slot {
@@ -110,7 +114,7 @@ impl DeferredCallQueue {
 /// Defers a call to `func` on the CPU `cpu`.
 ///
 /// The function waits until the function has been executed before returning.
-pub fn synchronous<F: 'static + Fn()>(cpu: u8, func: F) {
+pub fn synchronous<F: 'static + Fn() + Send>(cpu: u8, func: F) {
 	// If this is the current core, execute immediately
 	if cpu == core_id() {
 		func();
@@ -120,22 +124,51 @@ pub fn synchronous<F: 'static + Fn()>(cpu: u8, func: F) {
 	let Some(cpu) = CPU.get(cpu as usize) else {
 		return;
 	};
-	// Wrap to add a flag notifying when the function has returned
 	// Push on queue
 	let done = AtomicBool::new(false);
-	let call = DeferredCall::Sync {
+	cpu.deferred_calls.insert(DeferredCall::Sync {
 		func: NonNull::from_ref(&func),
 		done: NonNull::from_ref(&done),
-	};
-	cpu.deferred_calls.insert(call);
+	});
 	// Wait for the function to return
 	while !done.load(Acquire) {
 		hint::spin_loop();
 	}
 }
 
+/// Defers a call to `func` to several CPUs.
+///
+/// The function waits until the function has been executed on all the specified CPUs before
+/// returning.
+pub fn synchronous_multiple<F: 'static + Fn() + Send>(cpus: impl Iterator<Item = u8>, func: F) {
+	let mut count = 0;
+	let done = AtomicUsize::new(0);
+	// Queue on cores
+	for cpu in cpus {
+		// If this is the current core, execute immediately
+		if cpu == core_id() {
+			func();
+			continue;
+		}
+		// Get CPU
+		let Some(cpu) = CPU.get(cpu as usize) else {
+			continue;
+		};
+		// Push on queue
+		cpu.deferred_calls.insert(DeferredCall::SyncMultiple {
+			func: NonNull::from_ref(&func),
+			done: NonNull::from_ref(&done),
+		});
+		count += 1;
+	}
+	// Wait for the function to return on all cores
+	while done.load(Acquire) < count {
+		hint::spin_loop();
+	}
+}
+
 /// Defers a call to `func` on the CPU `cpu`.
-pub fn asynchronous<F: 'static + Fn()>(cpu: u8, func: F) -> AllocResult<()> {
+pub fn asynchronous<F: 'static + Fn() + Send>(cpu: u8, func: F) -> AllocResult<()> {
 	// If this is the current core, execute immediately
 	if cpu == core_id() {
 		func();
@@ -175,6 +208,13 @@ pub(super) fn consume() {
 				} => {
 					func.as_ref()();
 					done.as_ref().store(true, Release);
+				}
+				DeferredCall::SyncMultiple {
+					func,
+					done,
+				} => {
+					func.as_ref()();
+					done.as_ref().fetch_add(1, Release);
 				}
 				DeferredCall::Async(func) => func.as_ref()(),
 			}

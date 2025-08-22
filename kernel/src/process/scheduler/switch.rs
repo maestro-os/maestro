@@ -20,7 +20,6 @@
 
 use crate::{
 	arch::x86::{fxrstor, fxsave, gdt, idt::IntFrame},
-	memory::vmem::KERNEL_VMEM,
 	process::{Process, mem_space::MemSpace, scheduler::per_cpu},
 };
 use core::{arch::global_asm, mem::offset_of, ptr::NonNull};
@@ -250,8 +249,7 @@ pub extern "C" fn finish(prev: &Process, next: &Process) {
 	// Bind memory space
 	match next.mem_space.as_ref() {
 		Some(mem_space) => MemSpace::bind(mem_space),
-		// No associated memory context: bind the kernel's
-		None => KERNEL_VMEM.lock().bind(),
+		None => MemSpace::unbind(),
 	}
 	// Restore segments
 	restore_segments(next);

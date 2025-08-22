@@ -28,14 +28,35 @@ mod mapping;
 mod transaction;
 
 use crate::{
-	arch::x86::paging::{PAGE_FAULT_INSTRUCTION, PAGE_FAULT_WRITE},
+	arch::{
+		core_id,
+		x86::paging::{PAGE_FAULT_INSTRUCTION, PAGE_FAULT_WRITE},
+	},
 	file::{File, perm::AccessProfile, vfs},
-	memory::{COMPAT_PROCESS_END, PROCESS_END, VirtAddr, cache::RcFrame, vmem::VMem},
-	process::{mem_space::mapping::MappedFrame, scheduler, scheduler::per_cpu},
+	memory::{
+		COMPAT_PROCESS_END, PROCESS_END, VirtAddr,
+		cache::RcFrame,
+		vmem,
+		vmem::{KERNEL_VMEM, VMem},
+	},
+	process::{
+		mem_space::mapping::MappedFrame,
+		scheduler::{CPU, critical, defer, per_cpu},
+	},
 	sync::mutex::IntMutex,
 };
 use core::{
-	alloc::AllocError, cmp::min, ffi::c_void, fmt, hint::unlikely, mem, num::NonZeroUsize,
+	alloc::AllocError,
+	cmp::min,
+	ffi::c_void,
+	fmt,
+	hint::unlikely,
+	mem,
+	num::NonZeroUsize,
+	sync::atomic::{
+		AtomicUsize,
+		Ordering::{Acquire, Release},
+	},
 };
 use gap::MemGap;
 use mapping::MemMapping;
@@ -77,6 +98,15 @@ pub type Page = [u8; PAGE_SIZE];
 /// Tells whether the address is in bound of the userspace.
 pub fn bound_check(addr: usize, n: usize) -> bool {
 	addr >= PAGE_SIZE && addr.saturating_add(n) <= COPY_BUFFER.0
+}
+
+/// Allocates the `bound_cpus` bitmap.
+fn init_bound_cpu_bitmap() -> AllocResult<Vec<AtomicUsize>> {
+	let len = CPU.len().div_ceil(usize::BITS as usize);
+	(0..len)
+		.map(|_| AtomicUsize::new(0))
+		.collect::<CollectResult<_>>()
+		.0
 }
 
 /// Removes gaps in `on` in the given range, using `transaction`.
@@ -205,16 +235,19 @@ pub struct ExeInfo {
 
 /// A virtual memory space.
 pub struct MemSpace {
-	/// The memory space's structure, used as a model for `vmem`.
+	/// The memory space's structure, used as a model for `vmem`
 	state: IntMutex<MemSpaceState>,
-	/// Architecture-specific virtual memory context handler.
+	/// Architecture-specific virtual memory context handler
 	///
 	/// We use it as a cache which can be invalidated by unmapping. When a page fault occurs, this
 	/// field is corrected by the [`MemSpace`].
 	vmem: IntMutex<VMem>,
 
-	/// Executable program information.
+	/// Executable program information
 	pub exe_info: ExeInfo,
+
+	/// Bitmap of CPUs currently binding the memory space
+	bound_cpus: Vec<AtomicUsize>,
 }
 
 impl MemSpace {
@@ -241,6 +274,8 @@ impl MemSpace {
 				envp_begin: Default::default(),
 				envp_end: Default::default(),
 			},
+
+			bound_cpus: init_bound_cpu_bitmap()?,
 		};
 		// Allocation begin and end addresses
 		let begin = VirtAddr(PAGE_SIZE);
@@ -262,6 +297,13 @@ impl MemSpace {
 	#[inline]
 	pub fn get_vmem_usage(&self) -> usize {
 		self.state.lock().vmem_usage
+	}
+
+	/// Invalidate the range of `count` pages starting at `addr` on all CPUs.
+	fn shootdown_range(&self, addr: VirtAddr, count: usize) {
+		defer::synchronous_multiple(self.bound_cpus(), move || {
+			vmem::invalidate_range(addr, count)
+		});
 	}
 
 	fn map_impl(
@@ -486,10 +528,50 @@ impl MemSpace {
 		Ok(())
 	}
 
-	/// Binds the memory space to the current kernel.
+	/// Binds the memory space to the current CPU.
 	pub fn bind(this: &Arc<Self>) {
-		this.vmem.lock().bind();
-		per_cpu().mem_space.set(Some(this.clone()));
+		critical(|| {
+			// Mark the memory space as bound
+			let prev = per_cpu().mem_space.replace(Some(this.clone()));
+			// Update new bitmap
+			let core_id = core_id() as usize;
+			let unit = core_id / usize::BITS as usize;
+			let bit = core_id % usize::BITS as usize;
+			this.bound_cpus[unit].fetch_or(1 << bit, Release);
+			// Do actual bind
+			this.vmem.lock().bind();
+			// Update old bitmap if any
+			if let Some(prev) = prev {
+				prev.bound_cpus[unit].fetch_and(!(1 << bit), Release);
+			}
+		});
+	}
+
+	/// Unbinds the current memory space, binding the kernel's virtual memory context instead.
+	pub fn unbind() {
+		critical(|| {
+			// Update per-CPU structure
+			let prev = per_cpu().mem_space.replace(None);
+			// Bind the kernel's vmem
+			KERNEL_VMEM.lock().bind();
+			// Update old bitmap if any
+			if let Some(prev) = prev {
+				let core_id = core_id() as usize;
+				let unit = core_id / usize::BITS as usize;
+				let bit = core_id % usize::BITS as usize;
+				prev.bound_cpus[unit].fetch_and(!(1 << bit), Release);
+			}
+		});
+	}
+
+	/// Returns an iterator over the IDs of CPUs bounding the memory space.
+	pub fn bound_cpus(&self) -> impl Iterator<Item = u8> {
+		self.bound_cpus.iter().enumerate().flat_map(|(i, a)| {
+			let unit = a.load(Acquire);
+			(0..usize::BITS as usize)
+				.filter(move |j| unit & (1 << *j) != 0)
+				.map(move |j| (i * usize::BITS as usize + j) as u8)
+		})
 	}
 
 	/// Temporarily switches to `this` to executes the closure `f`.
@@ -499,7 +581,7 @@ impl MemSpace {
 	/// `f` is executed in a critical section to prevent the temporary memory space from being
 	/// replaced by the scheduler.
 	pub fn switch<'m, F: FnOnce(&'m Arc<Self>) -> T, T>(this: &'m Arc<Self>, f: F) -> T {
-		scheduler::critical(|| {
+		critical(|| {
 			// Bind `this`
 			this.vmem.lock().bind();
 			let old = per_cpu().mem_space.replace(Some(this.clone()));
@@ -515,7 +597,9 @@ impl MemSpace {
 	}
 
 	/// Clones the current memory space for process forking.
-	pub fn fork(&self) -> EResult<MemSpace> {
+	pub fn fork(&self) -> AllocResult<MemSpace> {
+		let bound_cpus = init_bound_cpu_bitmap()?;
+		// Lock
 		let state = self.state.lock();
 		let mut vmem = self.vmem.lock();
 		// Clone first to mark as shared
@@ -537,6 +621,8 @@ impl MemSpace {
 			vmem: IntMutex::new(unsafe { VMem::new() }),
 
 			exe_info: self.exe_info.clone(),
+
+			bound_cpus,
 		})
 	}
 

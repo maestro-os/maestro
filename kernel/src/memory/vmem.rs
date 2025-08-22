@@ -32,15 +32,16 @@ use crate::{
 	elf::SHF_WRITE,
 	memory::{KERNEL_BEGIN, PhysAddr, VirtAddr, buddy, memmap::mmap_iter},
 	multiboot::{MEMORY_ACPI_RECLAIMABLE, MEMORY_AVAILABLE, MEMORY_RESERVED},
-	process::scheduler::{CPU, defer},
 	sync::{mutex::Mutex, once::OnceInit},
 	tty::vga,
 };
-use core::{
-	ptr::NonNull,
-	sync::atomic::Ordering::{Acquire, Release},
-};
+use core::{ptr::NonNull, sync::atomic::Ordering::Release};
 use utils::limits::PAGE_SIZE;
+
+// TODO should be configurable
+/// The number of invalidated pages in range above which the whole virtual memory is flushed, to
+/// save time
+const TLB_FLUSH_THRESHOLD: usize = 32;
 
 /// A virtual memory context.
 ///
@@ -100,7 +101,9 @@ impl VMem {
 		unsafe {
 			x86::paging::map(self.inner_mut(), physaddr, virtaddr, flags);
 		}
-		invalidate_page(virtaddr);
+		if self.is_bound() {
+			invalidate_page(virtaddr);
+		}
 	}
 
 	/// Like [`Self::map`] but on a range of several pages.
@@ -121,7 +124,9 @@ impl VMem {
 				x86::paging::map(self.inner_mut(), physaddr, virtaddr, flags);
 			}
 		}
-		invalidate_range(virtaddr, pages);
+		if self.is_bound() {
+			invalidate_range(virtaddr, pages);
+		}
 	}
 
 	/// Unmaps a single page of virtual memory at `virtaddr`.
@@ -131,7 +136,9 @@ impl VMem {
 		unsafe {
 			x86::paging::unmap(self.inner_mut(), virtaddr);
 		}
-		invalidate_page(virtaddr);
+		if self.is_bound() {
+			invalidate_page(virtaddr);
+		}
 	}
 
 	/// Like [`Self::unmap`] but on a range of several pages.
@@ -145,7 +152,9 @@ impl VMem {
 				x86::paging::unmap(self.inner_mut(), virtaddr);
 			}
 		}
-		invalidate_range(virtaddr, pages);
+		if self.is_bound() {
+			invalidate_range(virtaddr, pages);
+		}
 	}
 
 	/// Polls the dirty flags on the range of `pages` pages starting at `addr`, clearing them
@@ -174,6 +183,7 @@ impl VMem {
 	}
 
 	/// Tells whether the context is bound to the current CPU.
+	#[inline]
 	pub fn is_bound(&self) -> bool {
 		#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 		x86::paging::is_bound(self.table)
@@ -201,6 +211,10 @@ pub fn invalidate_page(addr: VirtAddr) {
 
 /// Invalidate the range of `count` pages starting at `addr` on the current CPU.
 pub fn invalidate_range(addr: VirtAddr, count: usize) {
+	if count > TLB_FLUSH_THRESHOLD {
+		flush();
+		return;
+	}
 	for i in 0..count {
 		invalidate_page(addr + i * PAGE_SIZE);
 	}
@@ -216,23 +230,6 @@ pub fn invalidate_range(addr: VirtAddr, count: usize) {
 pub fn flush() {
 	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	x86::paging::flush();
-}
-
-// TODO shootdown only cores that are sharing the same memory space, unless we are invalidation
-// kernel mappings (in which case we shall shootdown everyone)
-
-/// Invalidate the page at `addr` on all CPUs.
-pub fn shootdown_page(addr: VirtAddr) {
-	CPU.iter()
-		.filter(|cpu| cpu.online.load(Acquire))
-		.for_each(|cpu| defer::synchronous(cpu.apic_id, move || invalidate_page(addr)));
-}
-
-/// Invalidate the range of `count` pages starting at `addr` on all CPUs.
-pub fn shootdown_range(addr: VirtAddr, count: usize) {
-	CPU.iter()
-		.filter(|cpu| cpu.online.load(Acquire))
-		.for_each(|cpu| defer::synchronous(cpu.apic_id, move || invalidate_range(addr, count)));
 }
 
 /// Executes the closure while allowing the kernel to write on read-only pages.
