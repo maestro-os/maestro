@@ -83,7 +83,7 @@ impl<T: ?Sized> Box<T> {
 	/// # Safety
 	///
 	/// It is the caller's responsibility to ensure the memory is freed.
-	pub unsafe fn into_raw(b: Box<T>) -> *mut T {
+	pub fn into_raw(b: Box<T>) -> *mut T {
 		ManuallyDrop::new(b).as_mut_ptr()
 	}
 

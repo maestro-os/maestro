@@ -31,7 +31,7 @@ pub mod signal;
 pub mod user_desc;
 
 use crate::{
-	arch::x86::{FxState, gdt, idt, idt::IntFrame, timer::apic},
+	arch::x86::{FxState, gdt, idt, idt::IntFrame},
 	file,
 	file::{
 		File, O_RDWR,
@@ -451,7 +451,6 @@ pub(crate) fn init() -> EResult<()> {
 		per_cpu().preempt_counter.fetch_and(!(1 << 31), Relaxed);
 		CallbackResult::Continue
 	})?);
-	apic::periodic(100_000_000);
 	Ok(())
 }
 

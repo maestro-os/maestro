@@ -18,7 +18,12 @@
 
 //! Architecture-specific **Hardware Abstraction Layers** (HAL).
 
-use crate::{println, process::scheduler::store_per_cpu};
+use crate::{
+	arch::x86::cpu::enumerate_cpus,
+	println,
+	process::scheduler::{per_cpu, store_per_cpu},
+	sync::once::OnceInit,
+};
 use utils::errno::AllocResult;
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -36,10 +41,6 @@ pub const ARCH: &str = {
 		"x86_64"
 	}
 };
-
-/// Tells whether the APIC is present or not.
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-static mut APIC: bool = false;
 
 /// Architecture-specific initialization, stage 1.
 ///
@@ -75,42 +76,46 @@ pub(crate) fn init1(first: bool) {
 }
 
 /// Architecture-specific initialization, stage 2.
-pub(crate) fn init2() -> AllocResult<()> {
+pub(crate) fn init2(first: bool) -> AllocResult<()> {
 	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	{
 		use x86::*;
-		// Detect APIC
-		let apic = apic::is_present();
-		unsafe {
-			APIC = apic;
-		}
-		if apic {
-			println!("Setup APIC");
-			pic::disable();
-			apic::init(true)?;
-			apic::enumerate_ioapic()?;
-			println!("Enumerate CPU cores");
-			enumerate_cpus()?;
+		if first {
+			if apic::is_present() {
+				println!("Setup APIC");
+				pic::disable();
+				apic::init(true)?;
+				apic::enumerate_ioapic()?;
+				println!("Enumerate CPU cores");
+				enumerate_cpus()?;
+			} else {
+				println!("No APIC found. Fallback to the PIC");
+				pic::enable(0x20, 0x28);
+			}
 		} else {
-			println!("No APIC found. Fallback to the PIC");
-			pic::enable(0x20, 0x28);
+			apic::init(false)?;
 		}
-
 		// Init core-local
 		store_per_cpu();
+		unsafe {
+			OnceInit::init(&per_cpu().vendor, cpuid::vendor());
+		}
 		gdt::flush();
 		tss::init();
-
-		println!("Setup timers");
-		sti();
-		timer::init(true)?;
+		// Setup timer
+		timer::init(first)?;
+		if apic::is_present() {
+			timer::apic::periodic(100_000_000);
+		} else {
+			todo!() // fallback to PIT
+		}
 	}
 	Ok(())
 }
 
 /// Returns the ID of the current CPU core.
 #[inline]
-pub fn core_id() -> u8 {
+pub fn core_id() -> u32 {
 	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	x86::apic::lapic_id()
 }
@@ -120,7 +125,7 @@ pub fn enable_irq(irq: u8) {
 	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	{
 		use x86::*;
-		if unsafe { APIC } {
+		if apic::is_present() {
 			// TODO enable in I/O APIC
 		} else {
 			pic::enable_irq(irq);
@@ -133,7 +138,7 @@ pub fn disable_irq(irq: u8) {
 	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	{
 		use x86::*;
-		if unsafe { APIC } {
+		if apic::is_present() {
 			// TODO disable in I/O APIC
 		} else {
 			pic::disable_irq(irq);
@@ -146,7 +151,7 @@ pub fn end_of_interrupt(irq: u8) {
 	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	{
 		use x86::*;
-		if unsafe { APIC } {
+		if apic::is_present() {
 			apic::end_of_interrupt();
 		} else {
 			pic::end_of_interrupt(irq);

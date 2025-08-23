@@ -118,14 +118,14 @@ impl DeferredCallQueue {
 }
 
 /// Sends an IPI to `cpu` to notify it there is a deferred call.
-pub fn ipi(cpu: u8) {
+pub fn ipi(cpu: u32) {
 	apic::ipi(cpu, IpiDeliveryMode::Nmi, INT);
 }
 
 /// Defers a call to `func` on the CPU `cpu`.
 ///
 /// The function waits until the function has been executed before returning.
-pub fn synchronous<F: 'static + Fn() + Send>(cpu: u8, func: F) {
+pub fn synchronous<F: 'static + Fn() + Send>(cpu: u32, func: F) {
 	// If this is the current core, execute immediately
 	if cpu == core_id() {
 		func();
@@ -152,7 +152,7 @@ pub fn synchronous<F: 'static + Fn() + Send>(cpu: u8, func: F) {
 ///
 /// The function waits until the function has been executed on all the specified CPUs before
 /// returning.
-pub fn synchronous_multiple<F: 'static + Fn() + Send>(cpus: impl Iterator<Item = u8>, func: F) {
+pub fn synchronous_multiple<F: 'static + Fn() + Send>(cpus: impl Iterator<Item = u32>, func: F) {
 	let mut count = 0;
 	let done = AtomicUsize::new(0);
 	// Queue on cores
@@ -181,7 +181,7 @@ pub fn synchronous_multiple<F: 'static + Fn() + Send>(cpus: impl Iterator<Item =
 }
 
 /// Defers a call to `func` on the CPU `cpu`.
-pub fn asynchronous<F: 'static + Fn() + Send>(cpu: u8, func: F) -> AllocResult<()> {
+pub fn asynchronous<F: 'static + Fn() + Send>(cpu: u32, func: F) -> AllocResult<()> {
 	// If this is the current core, execute immediately
 	if cpu == core_id() {
 		func();

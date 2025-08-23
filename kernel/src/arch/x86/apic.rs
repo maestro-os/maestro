@@ -21,7 +21,7 @@
 
 // TODO implement x2APIC
 
-use super::{IA32_APIC_BASE_MSR, cpuid, rdmsr, wrmsr};
+use super::{IA32_APIC_BASE_MSR, cpuid::cpuid, rdmsr, wrmsr};
 use crate::{
 	acpi,
 	acpi::{madt, madt::Madt},
@@ -68,7 +68,7 @@ pub const IO_APIC_REDIRECTIONS_OFF: u8 = 0x10;
 /// Tells whether the APIC is present or not.
 #[inline]
 pub fn is_present() -> bool {
-	let edx = cpuid(1, 0, 0, 0).3;
+	let edx = cpuid(1, 0).3;
 	edx & (1 << 9) != 0
 }
 
@@ -76,9 +76,9 @@ pub fn is_present() -> bool {
 ///
 /// The returned value is valid only if [`is_present`] returns `true`.
 #[inline]
-pub fn lapic_id() -> u8 {
-	let ebx = cpuid(1, 0, 0, 0).1;
-	(ebx >> 24) as u8
+pub fn lapic_id() -> u32 {
+	let ebx = cpuid(1, 0).1;
+	((ebx >> 24) & 0xff) as _
 }
 
 /// Returns the physical base address of local APIC registers.
@@ -242,7 +242,7 @@ pub(crate) fn enumerate_ioapic() -> AllocResult<()> {
 ///
 /// If no I/O APIC is available for `gsi`, the function does nothing and returns `false`. On
 /// success, it returns `true`.
-pub fn redirect_int(gsi: u32, lapic: u8, int: u8) -> bool {
+pub fn redirect_int(gsi: u32, lapic: u32, int: u8) -> bool {
 	// Find the associated I/O APIC
 	let ioapic = IO_APIC.iter().find(|ioapic| {
 		let max_entries = unsafe { ioapic_redirect_count(ioapic.mmio.as_ptr()) } as u32;
@@ -293,11 +293,11 @@ pub enum IpiDeliveryMode {
 /// - `int` is the interrupt vector ID
 ///
 /// The function waits for the interrupt to be delivered before returning.
-pub fn ipi(apic_id: u8, delivery_mode: IpiDeliveryMode, int: u8) {
+pub fn ipi(apic_id: u32, delivery_mode: IpiDeliveryMode, int: u8) {
 	unsafe {
 		write_reg(
 			REG_ICR_HI,
-			(read_reg(REG_ICR_HI) & 0x00ffffff) | ((apic_id as u32) << 24),
+			(read_reg(REG_ICR_HI) & 0x00ffffff) | (apic_id << 24),
 		);
 		write_reg(
 			REG_ICR_LO,

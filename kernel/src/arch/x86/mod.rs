@@ -21,6 +21,8 @@
 //! Documentation for the x86 architecture is available [here](https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html).
 
 pub mod apic;
+pub(crate) mod cpu;
+pub mod cpuid;
 pub mod gdt;
 pub mod idt;
 pub mod io;
@@ -30,15 +32,8 @@ pub mod smp;
 pub mod timer;
 pub mod tss;
 
-use crate::{
-	acpi,
-	acpi::madt::{Madt, ProcessorLocalApic},
-	println,
-	process::scheduler::{CPU, PerCpu},
-	sync::once::OnceInit,
-};
 use core::arch::asm;
-use utils::{collections::vec::Vec, errno::AllocResult};
+use cpuid::cpuid;
 
 /// MSR: APIC base
 pub const IA32_APIC_BASE_MSR: u32 = 0x1b;
@@ -127,34 +122,6 @@ pub fn hlt() {
 	}
 }
 
-/// Calls the CPUID instruction.
-#[inline]
-pub fn cpuid(mut eax: u32, mut ebx: u32, mut ecx: u32, mut edx: u32) -> (u32, u32, u32, u32) {
-	unsafe {
-		#[cfg(target_arch = "x86")]
-		asm!(
-			"cpuid",
-			inout("eax") eax,
-			inout("ebx") ebx,
-			inout("ecx") ecx,
-			inout("edx") edx,
-		);
-		#[cfg(target_arch = "x86_64")]
-		asm!(
-			"push rbx",
-			"mov ebx, {rbx:e}",
-			"cpuid",
-			"mov {rbx:e}, ebx",
-			"pop rbx",
-			inout("rax") eax,
-			rbx = inout(reg) ebx,
-			inout("rcx") ecx,
-			inout("rdx") edx,
-		);
-	}
-	(eax, ebx, ecx, edx)
-}
-
 /// Read value from a Model Specific Register.
 #[inline]
 pub fn rdmsr(msr: u32) -> u64 {
@@ -191,7 +158,7 @@ pub fn wrmsr(msr: u32, val: u64) {
 /// Returns HWCAP bitmask for ELF.
 #[inline]
 pub fn get_hwcap() -> u32 {
-	cpuid(1, 0, 0, 0).3
+	cpuid(1, 0).3
 }
 
 /// Tells whether the CPU supports SSE.
@@ -214,7 +181,7 @@ pub fn enable_sse() {
 /// Tells whether SMEP and SMAP are supported (in that order).
 #[inline]
 pub fn supports_supervisor_prot() -> (bool, bool) {
-	let (_, flags, ..) = cpuid(7, 0, 0, 0);
+	let (_, flags, ..) = cpuid(7, 0);
 	let smep = flags & (1 << 7) != 0;
 	let smap = flags & (1 << 20) != 0;
 	(smep, smap)
@@ -282,31 +249,4 @@ pub fn fxrstor(fxstate: &FxState) {
 	unsafe {
 		asm!("fxrstor [{}]", in(reg) fxstate.0.as_ptr());
 	}
-}
-
-/// Enumerates CPUs on the system using ACPI.
-///
-/// This function **must not** be called if there is no APIC on the system.
-pub(crate) fn enumerate_cpus() -> AllocResult<()> {
-	let mut cpu = Vec::new();
-	if let Some(madt) = acpi::get_table::<Madt>() {
-		// Register CPU cores
-		let iter = madt
-			.entries()
-			.filter(|e| e.entry_type == 0)
-			.map(|e| unsafe { e.body::<ProcessorLocalApic>() })
-			.filter(|e| e.apic_flags & 0b11 != 0);
-		for e in iter {
-			cpu.push(PerCpu::new(e.processor_id, e.apic_id, e.apic_flags)?)?;
-		}
-	}
-	// If no CPU is found, just add the current
-	if cpu.is_empty() {
-		cpu.push(PerCpu::new(1, 0, 0)?)?;
-	}
-	println!("{} CPU cores found", cpu.len());
-	unsafe {
-		OnceInit::init(&CPU, cpu);
-	}
-	Ok(())
 }

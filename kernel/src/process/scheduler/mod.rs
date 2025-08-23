@@ -35,7 +35,11 @@ use crate::{
 		mem_space::MemSpace,
 		scheduler::{defer::DeferredCallQueue, switch::switch},
 	},
-	sync::{atomic::AtomicU64, mutex::IntMutex, once::OnceInit},
+	sync::{
+		atomic::AtomicU64,
+		mutex::{IntMutex, Mutex},
+		once::OnceInit,
+	},
 };
 use core::{
 	cell::UnsafeCell,
@@ -47,6 +51,7 @@ use core::{
 	},
 };
 use utils::{
+	boxed::Box,
 	collections::vec::Vec,
 	errno::AllocResult,
 	list, list_type,
@@ -69,12 +74,14 @@ pub struct PerCpu {
 	/// Processor ID
 	pub cpu_id: u8,
 	/// Local APIC ID
-	pub apic_id: u8,
+	pub apic_id: u32,
 	/// Local APIC flags
 	pub apic_flags: u32,
 
 	/// Tells whether the CPU core has booted.
 	pub online: AtomicBool,
+	/// CPU's vendor ID
+	pub vendor: OnceInit<[u8; 12]>,
 
 	/// The CPU's GDT
 	pub gdt: Gdt,
@@ -102,7 +109,7 @@ pub struct PerCpu {
 
 impl PerCpu {
 	/// Creates a new instance.
-	pub fn new(cpu_id: u8, apic_id: u8, apic_flags: u32) -> AllocResult<Self> {
+	pub fn new(cpu_id: u8, apic_id: u32, apic_flags: u32) -> AllocResult<Self> {
 		let idle_task = Process::idle_task()?;
 		Ok(Self {
 			kernel_stack: AtomicUsize::new(0),
@@ -113,6 +120,7 @@ impl PerCpu {
 			apic_flags,
 
 			online: AtomicBool::new(false),
+			vendor: unsafe { OnceInit::new() },
 
 			gdt: Default::default(),
 			tss: Default::default(),
@@ -179,6 +187,79 @@ pub fn per_cpu() -> &'static PerCpu {
 
 /// The list of core-local structures. There is one per CPU.
 pub static CPU: OnceInit<Vec<PerCpu>> = unsafe { OnceInit::new() };
+
+/// CPU topology node
+pub struct TopologyNode {
+	/// Parent node
+	parent: Option<&'static TopologyNode>,
+	/// Child nodes
+	children: UnsafeCell<Vec<&'static TopologyNode>>,
+
+	/// ID used to avoid duplicate entries when this tree is built
+	id: u32,
+	/// The node's CPU. This is set only if the node is a leaf
+	cpu: Option<&'static PerCpu>,
+}
+
+unsafe impl Sync for TopologyNode {}
+
+impl TopologyNode {
+	/// Inserts a node in the topology tree. This function is thread-safe.
+	///
+	/// This function must be used only during boot.
+	///
+	/// On success, the function returns a reference to the node.
+	pub(crate) fn insert(
+		&'static self,
+		id: u32,
+		cpu: Option<&'static PerCpu>,
+	) -> AllocResult<&'static Self> {
+		// Lock to prevent several cores from adding their topology at the same time
+		static LOCK: Mutex<()> = Mutex::new(());
+		let _guard = LOCK.lock();
+		let children = unsafe { &mut *self.children.get() };
+		// Looks for a node with the same ID
+		if let Some(node) = children.iter().find(|node| node.id == id) {
+			// There is already a node, no need to insert a new one
+			return Ok(node);
+		}
+		// Insert node
+		let node = Box::new(TopologyNode {
+			parent: Some(self),
+			children: UnsafeCell::new(Vec::new()),
+
+			id,
+			cpu,
+		})?;
+		let node = Box::into_raw(node);
+		unsafe {
+			let node = &*node;
+			children.push(node)?;
+			Ok(node)
+		}
+	}
+
+	/// Returns the parent node if any
+	#[inline]
+	pub fn parent(&self) -> Option<&Self> {
+		self.parent
+	}
+
+	/// Returns the list of child nodes
+	#[inline]
+	pub fn children(&self) -> &[&Self] {
+		unsafe { &*self.children.get() }
+	}
+}
+
+/// Tree representing the topology of CPU cores
+pub static CPU_TOPOLOGY: TopologyNode = TopologyNode {
+	parent: None,
+	children: UnsafeCell::new(Vec::new()),
+
+	id: 0,
+	cpu: None,
+};
 
 /// A process scheduler.
 ///

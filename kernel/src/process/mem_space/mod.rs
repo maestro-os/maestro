@@ -308,7 +308,7 @@ impl MemSpace {
 	/// space
 	fn shootdown_range(&self, addr: VirtAddr, count: usize) {
 		defer::synchronous_multiple(self.bound_cpus(), move || {
-			vmem::invalidate_range(addr, count)
+			vmem::invalidate_range(addr, count);
 		});
 	}
 
@@ -571,12 +571,12 @@ impl MemSpace {
 	}
 
 	/// Returns an iterator over the IDs of CPUs bounding the memory space.
-	pub fn bound_cpus(&self) -> impl Iterator<Item = u8> {
+	pub fn bound_cpus(&self) -> impl Iterator<Item = u32> {
 		self.bound_cpus.iter().enumerate().flat_map(|(i, a)| {
 			let unit = a.load(Acquire);
 			(0..usize::BITS as usize)
 				.filter(move |j| unit & (1 << *j) != 0)
-				.map(move |j| (i * usize::BITS as usize + j) as u8)
+				.map(move |j| i as u32 * usize::BITS + j as u32)
 		})
 	}
 

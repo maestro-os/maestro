@@ -19,23 +19,20 @@
 //! Symmetric MultiProcessing management.
 
 use super::{
-	apic,
 	apic::{
 		REG_ERROR_STATUS, REG_ICR_HI, REG_ICR_LO, lapic_id, read_reg, wait_delivery, write_reg,
 	},
-	timer,
 	timer::udelay,
 };
 use crate::{
 	arch,
-	arch::x86::{gdt, tss},
 	boot::BOOT_STACK_SIZE,
 	memory::{
 		PhysAddr, VirtAddr, buddy,
 		vmem::{KERNEL_VMEM, write_ro},
 	},
 	println,
-	process::scheduler::{CPU, per_cpu, store_per_cpu, switch::idle_task},
+	process::scheduler::{CPU, per_cpu, switch::idle_task},
 };
 use core::{
 	arch::global_asm,
@@ -272,7 +269,7 @@ pub fn init() -> AllocResult<()> {
 			// Select AP
 			write_reg(
 				REG_ICR_HI,
-				(read_reg(REG_ICR_HI) & 0x00ffffff) | ((cpu.apic_id as u32) << 24),
+				(read_reg(REG_ICR_HI) & 0x00ffffff) | (cpu.apic_id << 24),
 			);
 			// Trigger INIT IPI
 			write_reg(REG_ICR_LO, (read_reg(REG_ICR_LO) & 0xfff00000) | 0xc500);
@@ -280,7 +277,7 @@ pub fn init() -> AllocResult<()> {
 			// Select AP
 			write_reg(
 				REG_ICR_HI,
-				(read_reg(REG_ICR_HI) & 0x00ffffff) | ((cpu.apic_id as u32) << 24),
+				(read_reg(REG_ICR_HI) & 0x00ffffff) | (cpu.apic_id << 24),
 			);
 			// INIT de-assert
 			write_reg(REG_ICR_LO, (read_reg(REG_ICR_LO) & 0xfff00000) | 0x8500);
@@ -295,7 +292,7 @@ pub fn init() -> AllocResult<()> {
 				// Select AP
 				write_reg(
 					REG_ICR_HI,
-					(read_reg(REG_ICR_HI) & 0x00ffffff) | ((cpu.apic_id as u32) << 24),
+					(read_reg(REG_ICR_HI) & 0x00ffffff) | (cpu.apic_id << 24),
 				);
 				// Trigger STARTUP IPI
 				write_reg(REG_ICR_LO, (read_reg(REG_ICR_LO) & 0xfff0f800) | 0x608);
@@ -315,16 +312,11 @@ pub fn init() -> AllocResult<()> {
 #[unsafe(no_mangle)]
 unsafe extern "C" fn smp_main() -> ! {
 	arch::init1(false);
-	store_per_cpu();
-	gdt::flush();
-	tss::init();
-	apic::init(false).expect("APIC initialization failed");
-	timer::init(false).expect("timer initialization failed");
-	timer::apic::periodic(100_000_000);
+	arch::init2(false).expect("architecture-specific initialization failed");
 	// Notify that the CPU is up
 	println!("Started core {}", lapic_id());
 	per_cpu().online.store(true, Release);
-	BOOTED_CORES.fetch_add(1, Acquire);
+	BOOTED_CORES.fetch_add(1, Release);
 	// Wait for work
 	unsafe {
 		idle_task();
