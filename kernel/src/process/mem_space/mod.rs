@@ -41,22 +41,16 @@ use crate::{
 	},
 	process::{
 		mem_space::mapping::MappedFrame,
-		scheduler::{CPU, critical, defer, per_cpu},
+		scheduler::{
+			cpu_bitmap_clear, cpu_bitmap_iter, cpu_bitmap_set, critical, defer, init_cpu_bitmap,
+			per_cpu,
+		},
 	},
 	sync::mutex::IntMutex,
 };
 use core::{
-	alloc::AllocError,
-	cmp::min,
-	ffi::c_void,
-	fmt,
-	hint::unlikely,
-	mem,
-	num::NonZeroUsize,
-	sync::atomic::{
-		AtomicUsize,
-		Ordering::{Acquire, Release},
-	},
+	alloc::AllocError, cmp::min, ffi::c_void, fmt, hint::unlikely, mem, num::NonZeroUsize,
+	sync::atomic::AtomicUsize,
 };
 use gap::MemGap;
 use mapping::MemMapping;
@@ -98,15 +92,6 @@ pub type Page = [u8; PAGE_SIZE];
 /// Tells whether the address is in bound of the userspace.
 pub fn bound_check(addr: usize, n: usize) -> bool {
 	addr >= PAGE_SIZE && addr.saturating_add(n) <= COPY_BUFFER.0
-}
-
-/// Allocates the `bound_cpus` bitmap.
-fn init_bound_cpu_bitmap() -> AllocResult<Vec<AtomicUsize>> {
-	let len = CPU.len().div_ceil(usize::BITS as usize);
-	(0..len)
-		.map(|_| AtomicUsize::new(0))
-		.collect::<CollectResult<_>>()
-		.0
 }
 
 /// Removes gaps in `on` in the given range, using `transaction`.
@@ -275,7 +260,7 @@ impl MemSpace {
 				envp_end: Default::default(),
 			},
 
-			bound_cpus: init_bound_cpu_bitmap()?,
+			bound_cpus: init_cpu_bitmap(false)?,
 		};
 		// Allocation begin and end addresses
 		let begin = VirtAddr(PAGE_SIZE);
@@ -541,14 +526,12 @@ impl MemSpace {
 			let prev = per_cpu().mem_space.replace(Some(this.clone()));
 			// Update new bitmap
 			let core_id = core_id() as usize;
-			let unit = core_id / usize::BITS as usize;
-			let bit = core_id % usize::BITS as usize;
-			this.bound_cpus[unit].fetch_or(1 << bit, Release);
+			cpu_bitmap_set(&this.bound_cpus, core_id);
 			// Do actual bind
 			this.vmem.lock().bind();
 			// Update old bitmap if any
 			if let Some(prev) = prev {
-				prev.bound_cpus[unit].fetch_and(!(1 << bit), Release);
+				cpu_bitmap_clear(&prev.bound_cpus, core_id);
 			}
 		});
 	}
@@ -563,21 +546,17 @@ impl MemSpace {
 			// Update old bitmap if any
 			if let Some(prev) = prev {
 				let core_id = core_id() as usize;
-				let unit = core_id / usize::BITS as usize;
-				let bit = core_id % usize::BITS as usize;
-				prev.bound_cpus[unit].fetch_and(!(1 << bit), Release);
+				cpu_bitmap_clear(&prev.bound_cpus, core_id);
 			}
 		});
 	}
 
 	/// Returns an iterator over the IDs of CPUs bounding the memory space.
 	pub fn bound_cpus(&self) -> impl Iterator<Item = u32> {
-		self.bound_cpus.iter().enumerate().flat_map(|(i, a)| {
-			let unit = a.load(Acquire);
-			(0..usize::BITS as usize)
-				.filter(move |j| unit & (1 << *j) != 0)
-				.map(move |j| i as u32 * usize::BITS + j as u32)
-		})
+		cpu_bitmap_iter(&self.bound_cpus)
+			.enumerate()
+			.filter(|(_, b)| *b)
+			.map(|(i, _)| i as _)
 	}
 
 	/// Temporarily switches to `this` to executes the closure `f`.
@@ -604,7 +583,7 @@ impl MemSpace {
 
 	/// Clones the current memory space for process forking.
 	pub fn fork(&self) -> AllocResult<MemSpace> {
-		let bound_cpus = init_bound_cpu_bitmap()?;
+		let bound_cpus = init_cpu_bitmap(false)?;
 		// Lock
 		let state = self.state.lock();
 		let mut vmem = self.vmem.lock();

@@ -25,9 +25,10 @@ use crate::{
 		CPUID_VENDOR_AMD, CPUID_VENDOR_INTEL, cpuid, extended_max_leaf, has_leaf_0x4,
 		has_leaf_0xb, has_package_bits,
 	},
-	println,
-	process::scheduler::{CPU, CPU_TOPOLOGY, PerCpu, per_cpu},
-	sync::once::OnceInit,
+	process::{
+		scheduler,
+		scheduler::{CPU, CPU_TOPOLOGY, PerCpu, per_cpu},
+	},
 };
 use utils::{collections::vec::Vec, errno::AllocResult};
 
@@ -47,14 +48,7 @@ pub fn enumerate_cpus() -> AllocResult<()> {
 			cpu.push(PerCpu::new(e.processor_id, e.apic_id as _, e.apic_flags)?)?;
 		}
 	}
-	// If no CPU is found, just add the current
-	if cpu.is_empty() {
-		cpu.push(PerCpu::new(1, 0, 0)?)?;
-	}
-	println!("{} CPU cores found", cpu.len());
-	unsafe {
-		OnceInit::init(&CPU, cpu);
-	}
+	scheduler::init_cpu(cpu)?;
 	Ok(())
 }
 

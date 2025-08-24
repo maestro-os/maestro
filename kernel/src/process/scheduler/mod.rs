@@ -27,7 +27,7 @@ pub mod switch;
 
 use crate::{
 	arch::{
-		end_of_interrupt,
+		core_id, end_of_interrupt,
 		x86::{cli, gdt::Gdt, idt::IntFrame, tss::Tss},
 	},
 	process::{
@@ -43,6 +43,7 @@ use crate::{
 };
 use core::{
 	cell::UnsafeCell,
+	cmp::Ordering,
 	hint::unlikely,
 	ptr,
 	sync::atomic::{
@@ -53,10 +54,47 @@ use core::{
 use utils::{
 	boxed::Box,
 	collections::vec::Vec,
-	errno::AllocResult,
+	errno::{AllocResult, CollectResult},
 	list, list_type,
 	ptr::arc::{Arc, AtomicArc, AtomicOptionalArc},
 };
+
+/// Helper allocating an atomic bitmap large enough to have a bit per CPU on the system
+///
+/// `set`: if `true` all bits are set at the beginning. Else they are clear
+pub fn init_cpu_bitmap(set: bool) -> AllocResult<Vec<AtomicUsize>> {
+	let len = CPU.len().div_ceil(usize::BITS as usize);
+	let unit_val = if set { !0 } else { 0 };
+	(0..len)
+		.map(|_| AtomicUsize::new(unit_val))
+		.collect::<CollectResult<_>>()
+		.0
+}
+
+/// Sets the bit for the given `cpu` in `bitmap`
+pub fn cpu_bitmap_set(bitmap: &[AtomicUsize], cpu: usize) {
+	let unit = cpu / usize::BITS as usize;
+	let bit = cpu % usize::BITS as usize;
+	bitmap[unit].fetch_or(1 << bit, Release);
+}
+
+/// Clears the bit for the given `cpu` in `bitmap`
+pub fn cpu_bitmap_clear(bitmap: &[AtomicUsize], cpu: usize) {
+	let unit = cpu / usize::BITS as usize;
+	let bit = cpu % usize::BITS as usize;
+	bitmap[unit].fetch_and(!(1 << bit), Release);
+}
+
+/// Iterates on bit values for each CPU in `bitmap`
+pub fn cpu_bitmap_iter(bitmap: &[AtomicUsize]) -> impl Iterator<Item = bool> {
+	bitmap
+		.iter()
+		.flat_map(|unit| {
+			let unit = unit.load(Acquire);
+			(0..usize::BITS).map(move |bit| unit & (1 << bit) != 0)
+		})
+		.take(CPU.len())
+}
 
 // TODO allow to declare per-core variables everywhere in the codebase using a dedicated ELF
 // section
@@ -83,13 +121,16 @@ pub struct PerCpu {
 	/// CPU's vendor ID
 	pub vendor: OnceInit<[u8; 12]>,
 
+	/// The core's topology node
+	pub topology_node: OnceInit<&'static TopologyNode>,
+
 	/// The CPU's GDT
 	pub gdt: Gdt,
 	/// The CPU's TSS
 	tss: UnsafeCell<Tss>,
 
 	/// The core's scheduler
-	pub scheduler: Scheduler,
+	pub sched: Scheduler,
 	/// The time in between each tick on the core, in nanoseconds
 	pub tick_period: AtomicU64,
 	/// Counter for nested critical sections
@@ -122,10 +163,12 @@ impl PerCpu {
 			online: AtomicBool::new(false),
 			vendor: unsafe { OnceInit::new() },
 
+			topology_node: unsafe { OnceInit::new() },
+
 			gdt: Default::default(),
 			tss: Default::default(),
 
-			scheduler: Scheduler {
+			sched: Scheduler {
 				queue: IntMutex::new(list!(Process, sched_node)),
 				queue_len: AtomicUsize::new(0),
 				cur_proc: AtomicArc::from(idle_task.clone()),
@@ -187,6 +230,27 @@ pub fn per_cpu() -> &'static PerCpu {
 
 /// The list of core-local structures. There is one per CPU.
 pub static CPU: OnceInit<Vec<PerCpu>> = unsafe { OnceInit::new() };
+/// Bitmap of currently idle CPUs, atomically updated
+pub static IDLE_CPUS: OnceInit<Vec<AtomicUsize>> = unsafe { OnceInit::new() };
+
+/// Initializes the CPU list
+///
+/// This function must be called only once at boot
+pub(crate) fn init_cpu(mut cpu: Vec<PerCpu>) -> AllocResult<()> {
+	// If no CPU is found, just add the current
+	if cpu.is_empty() {
+		cpu.push(PerCpu::new(0, 0, 0)?)?;
+	}
+	println!("{} CPU cores found", cpu.len());
+	unsafe {
+		OnceInit::init(&CPU, cpu);
+	}
+	let idle_cpus = init_cpu_bitmap(true)?;
+	unsafe {
+		OnceInit::init(&IDLE_CPUS, idle_cpus);
+	}
+	Ok(())
+}
 
 /// CPU topology node
 pub struct TopologyNode {
@@ -234,6 +298,10 @@ impl TopologyNode {
 		let node = Box::into_raw(node);
 		unsafe {
 			let node = &*node;
+			// Link back
+			if let Some(cpu) = node.cpu {
+				OnceInit::init(&cpu.topology_node, node);
+			}
 			children.push(node)?;
 			Ok(node)
 		}
@@ -302,6 +370,7 @@ impl Scheduler {
 	}
 }
 
+// TODO take into account power-states and core affinity
 /// Enqueues `proc` onto a scheduler.
 ///
 /// This function attempts to select the scheduler that is the most suitable for the process, in an
@@ -309,47 +378,69 @@ impl Scheduler {
 pub fn enqueue(proc: &Arc<Process>) {
 	// If the process already is enqueued, do nothing
 	let mut links = proc.links.lock();
-	if links.sched.is_some() {
+	if links.cur_cpu.is_some() {
 		return;
 	}
-	// Select the scheduler with the least running processes
-	#[allow(unused_variables)]
-	let (lapic_id, sched) = CPU
-		.iter()
-		.map(|cl| (cl.apic_id, &cl.scheduler))
-		// TODO when selecting the scheduler, take into account power-states, NUMA, process
-		// priority and core affinity
-		.min_by(|(_, s0), (_, s1)| {
-			let count0 = s0.queue_len.load(Acquire);
-			let count1 = s1.queue_len.load(Acquire);
-			count0.cmp(&count1)
+	// Select the CPU to run the process
+	let cpu = links
+		// Attempt to run on the last CPU that run the process, if any
+		.last_cpu
+		.and_then(|cpu| {
+			// If the CPU is able to execute immediately, select it
+			let ord = cpu.sched.get_current_process().cmp_priority(proc);
+			(ord == Ordering::Less).then_some(cpu)
+			// TODO else, attempt to explore the CPU topology to find a core that can
 		})
+		.or_else(|| {
+			// Attempt to find an idle CPU
+			cpu_bitmap_iter(&IDLE_CPUS)
+				.enumerate()
+				.find(|(_, idle)| *idle)
+				.map(|(id, _)| &CPU[id])
+		})
+		// TODO use other metrics than the amount of running processes, and attempt to find cores
+		// that can run the process immediately first
+		.or_else(|| {
+			// Select the scheduler with the least running processes
+			CPU.iter().min_by(|cpu0, cpu1| {
+				let count0 = cpu0.sched.queue_len.load(Acquire);
+				let count1 = cpu1.sched.queue_len.load(Acquire);
+				count0.cmp(&count1)
+			})
+		})
+		// There is at least one CPU on the system
 		.unwrap();
 	// Enqueue
 	#[cfg(feature = "strace")]
-	println!("[strace {}] enqueue on core {lapic_id}", proc.get_pid());
-	let mut queue = sched.queue.lock();
+	println!(
+		"[strace {}] enqueue on core {}",
+		proc.get_pid(),
+		cpu.apic_id
+	);
+	let mut queue = cpu.sched.queue.lock();
 	queue.insert_back(proc.clone());
-	sched.queue_len.fetch_add(1, Release);
-	links.sched = Some(sched);
+	cpu.sched.queue_len.fetch_add(1, Release);
+	links.cur_cpu = Some(cpu);
+	links.last_cpu = Some(cpu);
 }
 
 /// Removes the process from its scheduler, if any.
 pub fn dequeue(proc: &Arc<Process>) {
 	// If the process is not enqueued, do nothing
 	let mut links = proc.links.lock();
-	let Some(sched) = links.sched else {
+	let Some(cpu) = links.cur_cpu else {
 		return;
 	};
 	// Remove from queue
 	#[cfg(feature = "strace")]
 	println!("[strace {}] dequeue", proc.get_pid());
-	let mut queue = sched.queue.lock();
+	let mut queue = cpu.sched.queue.lock();
 	unsafe {
 		queue.remove(proc);
 	}
-	sched.queue_len.fetch_sub(1, Release);
-	links.sched = None;
+	cpu.sched.queue_len.fetch_sub(1, Release);
+	let prev = links.cur_cpu.take();
+	links.last_cpu = prev;
 }
 
 /// Reschedules, switching context to the next process to run on the current core.
@@ -365,15 +456,22 @@ pub fn schedule() {
 	per_cpu().preempt_counter.fetch_or(1 << 31, Relaxed);
 	// Make deferred calls
 	defer::consume();
-	let sched = &per_cpu().scheduler;
+	let sched = &per_cpu().sched;
 	let (prev, next) = {
+		let prev = sched.cur_proc.get();
 		// Find the next process to run
 		let next = sched
 			.get_next_process()
 			.unwrap_or_else(|| sched.idle_task.clone());
 		// If the process to run is the current, do nothing
-		if ptr::eq(next.as_ref(), sched.cur_proc.get().as_ref()) {
+		if ptr::eq(next.as_ref(), prev.as_ref()) {
 			return;
+		}
+		// Update the idle bitmap if necessary
+		if prev.is_idle_task() {
+			cpu_bitmap_clear(&IDLE_CPUS, core_id() as _);
+		} else if next.is_idle_task() {
+			cpu_bitmap_set(&IDLE_CPUS, core_id() as _);
 		}
 		// Swap current running process. We use pointers to avoid cloning the Arc
 		let next_ptr = Arc::as_ptr(&next);

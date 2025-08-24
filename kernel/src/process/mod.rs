@@ -31,7 +31,7 @@ pub mod signal;
 pub mod user_desc;
 
 use crate::{
-	arch::x86::{FxState, gdt, idt, idt::IntFrame},
+	arch::x86::{FxState, gdt, idt, idt::IntFrame, timer},
 	file,
 	file::{
 		File, O_RDWR,
@@ -47,7 +47,7 @@ use crate::{
 		pid::{IDLE_PID, INIT_PID, PidHandle},
 		rusage::Rusage,
 		scheduler::{
-			Scheduler, dequeue, enqueue, per_cpu, switch,
+			PerCpu, dequeue, enqueue, per_cpu, switch,
 			switch::{KThreadEntry, idle_task, save_segments},
 		},
 		signal::{SIGNALS_COUNT, SigSet},
@@ -58,6 +58,7 @@ use crate::{
 	time::timer::TimerManager,
 };
 use core::{
+	cmp::Ordering,
 	ffi::{c_int, c_void},
 	fmt,
 	fmt::Formatter,
@@ -65,7 +66,7 @@ use core::{
 	mem,
 	ptr::NonNull,
 	sync::atomic::{
-		AtomicBool, AtomicPtr, AtomicU8, AtomicU16, AtomicU32,
+		AtomicBool, AtomicI8, AtomicPtr, AtomicU8, AtomicU16, AtomicU32,
 		Ordering::{Acquire, Relaxed, Release, SeqCst},
 	},
 };
@@ -209,8 +210,10 @@ impl Drop for KernelStack {
 /// A process's links to other processes.
 #[derive(Default)]
 pub struct ProcessLinks {
-	/// The scheduler the process is enqueued on.
-	sched: Option<&'static Scheduler>,
+	/// The CPU the process is currently running on
+	cur_cpu: Option<&'static PerCpu>,
+	/// The last CPU the process ran on
+	last_cpu: Option<&'static PerCpu>,
 
 	/// A pointer to the parent process.
 	parent: Option<Arc<Process>>,
@@ -330,6 +333,8 @@ pub struct Process {
 
 	/// The node in the scheduler's run queue.
 	sched_node: ListNode,
+	/// Process's niceness (`-20..=19`). Defines its scheduling priority (lower = higher priority)
+	pub nice: AtomicI8,
 
 	/// A pointer to the kernelspace stack.
 	kernel_stack: KernelStack,
@@ -451,6 +456,8 @@ pub(crate) fn init() -> EResult<()> {
 		per_cpu().preempt_counter.fetch_and(!(1 << 31), Relaxed);
 		CallbackResult::Continue
 	})?);
+	// Re-enable timer since it has been disabled by delay functions
+	timer::apic::periodic(100_000_000);
 	Ok(())
 }
 
@@ -472,7 +479,7 @@ impl Process {
 	/// Returns the running process on the current core.
 	#[inline]
 	pub fn current() -> Arc<Self> {
-		per_cpu().scheduler.get_current_process()
+		per_cpu().sched.get_current_process()
 	}
 
 	/// Creates a kernel thread.
@@ -491,6 +498,12 @@ impl Process {
 			None => PidHandle::unique()?,
 		};
 		let tid = *pid;
+		let nice = if *pid == 0 {
+			// The idle task has a lower priority than everyone else
+			100
+		} else {
+			-20
+		};
 		let kernel_stack = KernelStack::new()?;
 		let kernel_sp = unsafe { switch::init_kthread(kernel_stack.top(), entry) };
 		let thread = Arc::new(Self {
@@ -502,6 +515,7 @@ impl Process {
 			links: Default::default(),
 
 			sched_node: ListNode::default(),
+			nice: AtomicI8::new(nice),
 
 			kernel_stack,
 			kernel_sp: AtomicPtr::new(kernel_sp),
@@ -574,6 +588,7 @@ impl Process {
 			links: Mutex::new(ProcessLinks::default()),
 
 			sched_node: ListNode::default(),
+			nice: AtomicI8::new(0),
 
 			kernel_stack: KernelStack::new()?,
 			kernel_sp: AtomicPtr::default(),
@@ -901,6 +916,7 @@ impl Process {
 			}),
 
 			sched_node: ListNode::default(),
+			nice: AtomicI8::new(0),
 
 			kernel_stack,
 			kernel_sp: AtomicPtr::new(kernel_sp),
@@ -986,6 +1002,13 @@ impl Process {
 				proc.kill(sig);
 			});
 		self.kill(sig);
+	}
+
+	/// Compares process priorities
+	pub fn cmp_priority(&self, other: &Self) -> Ordering {
+		let nice0 = self.nice.load(Acquire);
+		let nice1 = other.nice.load(Acquire);
+		nice0.cmp(&nice1).reverse() // niceness and priority are opposites
 	}
 
 	/// Exits the process with the given `status`.

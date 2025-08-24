@@ -34,6 +34,7 @@ use core::{
 	ffi::{c_int, c_ulong, c_void},
 	hint::unlikely,
 	ptr::null_mut,
+	sync::atomic::Ordering::{Acquire, Release},
 };
 use utils::{errno, errno::EResult, ptr::arc::Arc};
 
@@ -150,6 +151,13 @@ const RLIMIT_RTPRIO: i32 = 14;
 const RLIMIT_RTTIME: i32 = 15;
 /// TODO doc
 const RLIMIT_NLIMITS: i32 = 16;
+
+/// Process priority type: Process
+const PRIO_PROCESS: c_int = 0;
+/// Process priority type: Process group
+const PRIO_PGRP: c_int = 1;
+/// Process priority type: User
+const PRIO_USER: c_int = 2;
 
 pub fn getpid(proc: Arc<Process>) -> EResult<usize> {
 	Ok(proc.get_pid() as _)
@@ -430,6 +438,59 @@ pub fn prlimit64(
 		_ => return Err(errno!(EINVAL)),
 	}
 	Ok(0)
+}
+
+pub fn nice(Args(inc): Args<c_int>) -> EResult<usize> {
+	let nice = Process::current()
+		.nice
+		.fetch_update(Release, Acquire, |old| {
+			Some((old + inc as i8).clamp(-20, 19))
+		})
+		.unwrap();
+	Ok(nice as _)
+}
+
+pub fn getpriority(Args((which, who)): Args<(c_int, Pid)>) -> EResult<usize> {
+	match which {
+		PRIO_PROCESS => {
+			let proc = Process::get_by_pid(who).ok_or_else(|| errno!(ESRCH))?;
+			// Check permission
+			let cur = Process::current();
+			if unlikely(!cur.fs().lock().access_profile.can_kill(&proc)) {
+				return Err(errno!(EPERM));
+			}
+			// Update value
+			let nice = proc.nice.load(Acquire);
+			Ok(nice as _)
+		}
+		// TODO
+		PRIO_PGRP => Ok(0),
+		// TODO
+		PRIO_USER => Ok(0),
+		_ => Err(errno!(EINVAL)),
+	}
+}
+
+pub fn setpriority(Args((which, who, prio)): Args<(c_int, Pid, c_int)>) -> EResult<usize> {
+	let nice = prio.clamp(-20, 19);
+	match which {
+		PRIO_PROCESS => {
+			let proc = Process::get_by_pid(who).ok_or_else(|| errno!(ESRCH))?;
+			// Check permission
+			let cur = Process::current();
+			if unlikely(!cur.fs().lock().access_profile.can_kill(&proc)) {
+				return Err(errno!(EPERM));
+			}
+			// Update value
+			proc.nice.store(nice as _, Release);
+			Ok(0)
+		}
+		// TODO
+		PRIO_PGRP => Ok(0),
+		// TODO
+		PRIO_USER => Ok(0),
+		_ => Err(errno!(EINVAL)),
+	}
 }
 
 pub fn sched_yield() -> EResult<usize> {
