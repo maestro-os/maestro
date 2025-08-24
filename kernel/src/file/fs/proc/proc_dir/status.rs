@@ -20,7 +20,7 @@
 //! status of the process.
 
 use crate::{
-	file::{File, fs::FileOps},
+	file::{File, fs::FileOps, perm::AccessProfile},
 	format_content,
 	memory::user::UserSlice,
 	process::{Process, pid::Pid},
@@ -42,7 +42,14 @@ impl FileOps for Status {
 				.map(|m| m.exe_info.exe.name.as_bytes())
 				.unwrap_or_default();
 			let state = proc.get_state();
-			let fs = proc.fs().lock();
+			let (umask, ap) = proc
+				.fs
+				.as_ref()
+				.map(|fs| {
+					let fs = fs.lock();
+					(fs.umask(), fs.access_profile)
+				})
+				.unwrap_or((0, AccessProfile::KERNEL));
 			// TODO Fill every fields with process's data
 			writeln!(
 				f,
@@ -104,19 +111,18 @@ Mems_allowed_list: 0
 voluntary_ctxt_switches: 0
 nonvoluntary_ctxt_switches: 0",
 				name = DisplayableStr(name),
-				umask = fs.umask(),
 				state_char = state.as_char(),
 				state_name = state.as_str(),
 				pid = self.0,
 				ppid = proc.get_parent_pid(),
-				uid = fs.access_profile.uid,
-				euid = fs.access_profile.euid,
-				suid = fs.access_profile.suid,
-				ruid = fs.access_profile.uid,
-				gid = fs.access_profile.gid,
-				egid = fs.access_profile.egid,
-				sgid = fs.access_profile.sgid,
-				rgid = fs.access_profile.gid,
+				uid = ap.uid,
+				euid = ap.euid,
+				suid = ap.suid,
+				ruid = ap.uid,
+				gid = ap.gid,
+				egid = ap.egid,
+				sgid = ap.sgid,
+				rgid = ap.gid,
 			)
 		});
 		format_content!(off, buf, "{disp}")
