@@ -352,7 +352,7 @@ pub struct Process {
 	/// The virtual memory of the process.
 	pub mem_space: UnsafeMut<Option<Arc<MemSpace>>>,
 	/// Filesystem access information.
-	fs: Option<Mutex<ProcessFs>>, // TODO rwlock
+	pub fs: Option<Mutex<ProcessFs>>, // TODO rwlock
 	/// The list of open file descriptors with their respective ID.
 	pub file_descriptors: UnsafeMut<Option<Arc<Mutex<FileDescriptorTable>>>>,
 	/// Process's timers, shared between all threads of the same process.
