@@ -36,14 +36,12 @@ use crate::{
 	memory::{
 		COMPAT_PROCESS_END, PROCESS_END, VirtAddr,
 		cache::RcFrame,
-		vmem,
-		vmem::{KERNEL_VMEM, VMem},
+		vmem::{KERNEL_VMEM, VMem, shootdown_range},
 	},
 	process::{
 		mem_space::mapping::MappedFrame,
 		scheduler::{
-			cpu_bitmap_clear, cpu_bitmap_iter, cpu_bitmap_set, critical, defer, init_cpu_bitmap,
-			per_cpu,
+			cpu_bitmap_clear, cpu_bitmap_iter, cpu_bitmap_set, critical, init_cpu_bitmap, per_cpu,
 		},
 	},
 	sync::mutex::IntMutex,
@@ -282,19 +280,6 @@ impl MemSpace {
 	#[inline]
 	pub fn get_vmem_usage(&self) -> usize {
 		self.state.lock().vmem_usage
-	}
-
-	/// Invalidate the page at `addr` on all CPUs binding the memory space
-	fn shootdown_page(&self, addr: VirtAddr) {
-		defer::synchronous_multiple(self.bound_cpus(), move || vmem::invalidate_page(addr));
-	}
-
-	/// Invalidate the range of `count` pages starting at `addr` on all CPUs binding the memory
-	/// space
-	fn shootdown_range(&self, addr: VirtAddr, count: usize) {
-		defer::synchronous_multiple(self.bound_cpus(), move || {
-			vmem::invalidate_range(addr, count);
-		});
 	}
 
 	fn map_impl(
@@ -592,6 +577,7 @@ impl MemSpace {
 		// Unmap to invalidate the virtual memory context
 		for (_, m) in &state.mappings {
 			vmem.unmap_range(m.addr, m.size.get());
+			shootdown_range(m.addr, m.size.get(), self.bound_cpus());
 		}
 		Ok(Self {
 			state: IntMutex::new(MemSpaceState {

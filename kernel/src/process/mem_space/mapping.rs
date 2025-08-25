@@ -29,7 +29,7 @@ use crate::{
 		PhysAddr, VirtAddr,
 		buddy::ZONE_USER,
 		cache::{FrameOwner, RcFrame},
-		vmem::{VMem, write_ro},
+		vmem::{VMem, shootdown_page, write_ro},
 	},
 	process::mem_space::{
 		COPY_BUFFER, MAP_ANONYMOUS, MAP_PRIVATE, MAP_SHARED, MemSpace, PROT_EXEC, PROT_WRITE, Page,
@@ -277,7 +277,7 @@ impl MemMapping {
 				vmem.map(phys_addr, virtaddr, flags);
 			}
 		}
-		mem_space.shootdown_page(virtaddr);
+		shootdown_page(virtaddr, mem_space.bound_cpus());
 		Ok(())
 	}
 

@@ -32,6 +32,7 @@ use crate::{
 	elf::SHF_WRITE,
 	memory::{KERNEL_BEGIN, PhysAddr, VirtAddr, buddy, memmap::mmap_iter},
 	multiboot::{MEMORY_ACPI_RECLAIMABLE, MEMORY_AVAILABLE, MEMORY_RESERVED},
+	process::scheduler::defer,
 	sync::{mutex::Mutex, once::OnceInit},
 	tty::vga,
 };
@@ -95,20 +96,20 @@ impl VMem {
 	/// `physaddr`.
 	///
 	/// `flags` is the set of flags to use for the mapping, which are architecture-dependent.
+	///
+	/// **Note**: this function does *not* invalidate the cache. This is the caller's
+	/// responsibility
 	#[inline]
 	pub fn map(&mut self, physaddr: PhysAddr, virtaddr: VirtAddr, flags: usize) {
 		#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 		unsafe {
 			x86::paging::map(self.inner_mut(), physaddr, virtaddr, flags);
 		}
-		if self.is_bound() {
-			invalidate_page(virtaddr);
-		}
 	}
 
 	/// Like [`Self::map`] but on a range of several pages.
 	///
-	/// On overflow, the physical and virtual addresses wrap around the userspace.
+	/// On overflow, the physical and virtual addresses wrap around the memory space.
 	pub fn map_range(
 		&mut self,
 		physaddr: PhysAddr,
@@ -124,26 +125,23 @@ impl VMem {
 				x86::paging::map(self.inner_mut(), physaddr, virtaddr, flags);
 			}
 		}
-		if self.is_bound() {
-			invalidate_range(virtaddr, pages);
-		}
 	}
 
 	/// Unmaps a single page of virtual memory at `virtaddr`.
+	///
+	/// **Note**: this function does *not* invalidate the cache. This is the caller's
+	/// responsibility
 	#[inline]
 	pub fn unmap(&mut self, virtaddr: VirtAddr) {
 		#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 		unsafe {
 			x86::paging::unmap(self.inner_mut(), virtaddr);
 		}
-		if self.is_bound() {
-			invalidate_page(virtaddr);
-		}
 	}
 
 	/// Like [`Self::unmap`] but on a range of several pages.
 	///
-	/// On overflow, the physical and virtual addresses wrap around the userspace.
+	/// On overflow, the physical and virtual addresses wrap around the memory space.
 	pub fn unmap_range(&mut self, virtaddr: VirtAddr, pages: usize) {
 		for i in 0..pages {
 			let virtaddr = virtaddr + i * PAGE_SIZE;
@@ -151,9 +149,6 @@ impl VMem {
 			unsafe {
 				x86::paging::unmap(self.inner_mut(), virtaddr);
 			}
-		}
-		if self.is_bound() {
-			invalidate_range(virtaddr, pages);
 		}
 	}
 
@@ -211,7 +206,9 @@ pub fn invalidate_page(addr: VirtAddr) {
 
 /// Invalidate the range of `count` pages starting at `addr` on the current CPU.
 pub fn invalidate_range(addr: VirtAddr, count: usize) {
-	if count > TLB_FLUSH_THRESHOLD {
+	let end = addr + count * PAGE_SIZE;
+	// Cannot flush the whole memory space to invalidate kernel mappings since they are GLOBAL
+	if end.kernel_to_physical().is_none() && count > TLB_FLUSH_THRESHOLD {
 		flush();
 		return;
 	}
@@ -230,6 +227,18 @@ pub fn invalidate_range(addr: VirtAddr, count: usize) {
 pub fn flush() {
 	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	x86::paging::flush();
+}
+
+/// Invalidate the page at `addr` on all CPUs in `cpus`
+pub fn shootdown_page(addr: VirtAddr, cpus: impl Iterator<Item = u32>) {
+	defer::synchronous_multiple(cpus, move || invalidate_page(addr));
+}
+
+/// Invalidate the range of `count` pages starting at `addr` on all CPUs in `cpus`
+pub fn shootdown_range(addr: VirtAddr, count: usize, cpus: impl Iterator<Item = u32>) {
+	defer::synchronous_multiple(cpus, move || {
+		invalidate_range(addr, count);
+	});
 }
 
 /// Executes the closure while allowing the kernel to write on read-only pages.
@@ -270,7 +279,8 @@ pub static KERNEL_VMEM: OnceInit<Mutex<VMem>> = unsafe { OnceInit::new() };
 
 /// Initializes virtual memory management.
 pub(crate) fn init() {
-	// Kernel context init
+	// No cache invalidation is required in this function since the memory context is not bound
+	// until the end
 	let mut kernel_vmem = unsafe { VMem::new() };
 	// Map kernel
 	for entry in mmap_iter() {

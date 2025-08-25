@@ -22,7 +22,11 @@
 use super::{PhysAddr, VirtAddr, buddy};
 use crate::{
 	arch::x86::paging::{FLAG_CACHE_DISABLE, FLAG_GLOBAL, FLAG_WRITE, FLAG_WRITE_THROUGH},
-	memory::{buddy::ZONE_MMIO, vmem::KERNEL_VMEM},
+	memory::{
+		buddy::ZONE_MMIO,
+		vmem::{KERNEL_VMEM, shootdown_range},
+	},
+	process::scheduler::cpu_iter_all,
 };
 use core::num::NonZeroUsize;
 use utils::{errno::AllocResult, limits::PAGE_SIZE};
@@ -72,6 +76,7 @@ impl Mmio {
 		KERNEL_VMEM
 			.lock()
 			.map_range(phys_addr, virt_addr, pages.get(), flags);
+		shootdown_range(virt_addr, pages.get(), cpu_iter_all());
 		// Add offset to virtual address
 		let page_off = phys_addr.0 & 0xfff;
 		let virt_addr = unsafe { virt_addr.as_ptr::<u8>().add(page_off) };
@@ -99,6 +104,7 @@ impl Drop for Mmio {
 			self.pages.get(),
 			FLAG_WRITE | FLAG_GLOBAL,
 		);
+		shootdown_range(virt_addr, self.pages.get(), cpu_iter_all());
 		// Free allocated physical memory, if any
 		if let Some(phys_addr) = self.phys_addr {
 			let order = buddy::get_order(self.pages);

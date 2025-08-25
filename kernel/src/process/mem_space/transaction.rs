@@ -20,7 +20,10 @@
 
 use super::{MemSpace, MemSpaceState, gap::MemGap, mapping::MemMapping};
 use crate::{
-	memory::{VirtAddr, vmem::VMem},
+	memory::{
+		VirtAddr,
+		vmem::{VMem, shootdown_range},
+	},
 	sync::mutex::MutexGuard,
 };
 use core::{alloc::AllocError, hash::Hash, mem};
@@ -186,8 +189,11 @@ impl<'m> MemSpaceTransaction<'m> {
 			mapping.sync(&self.vmem, true)?;
 			// Apply to vmem. No rollback is required since this would be corrected by a page fault
 			self.vmem.unmap_range(mapping.addr, mapping.size.get());
-			self.mem_space
-				.shootdown_range(mapping.addr, mapping.size.get());
+			shootdown_range(
+				mapping.addr,
+				mapping.size.get(),
+				self.mem_space.bound_cpus(),
+			);
 			// Update usage
 			self.vmem_usage -= mapping.size.get();
 		}
