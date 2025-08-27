@@ -128,8 +128,8 @@ jobs:
           CARGOFLAGS: --target arch/${{ matrix.arch }}/${{ matrix.arch }}.json
         run: ci/test.sh self
         timeout-minutes: 10
-  inttest:
-    name: inttest (${{ matrix.arch.kernel }})
+  build_inttest:
+    name: build_inttest (${{ matrix.arch.kernel }})
     runs-on: [self-hosted, linux]
     needs: module
     strategy:
@@ -149,13 +149,7 @@ jobs:
           TARGET: ${{ matrix.arch.user }}
         run: |
           ./build.sh
-          mv disk ../kernel/qemu_disk
-      - name: Run
-        working-directory: kernel
-        env:
-          CARGOFLAGS: --target arch/${{ matrix.arch.kernel }}/${{ matrix.arch.kernel }}.json
-        run: ci/test.sh int
-        timeout-minutes: 10
+          mv disk disk-${{ matrix.arch.kernel }}
       - name: Build tests (compat)
         if: ${{ matrix.arch.user_compat }}
         working-directory: inttest
@@ -164,11 +158,38 @@ jobs:
           TARGET: ${{ matrix.arch.user_compat }}
         run: |
           ./build.sh
-          mv disk ../kernel/qemu_disk
+          mv disk disk-${{ matrix.arch.kernel }}-compat
+  inttest:
+    name: inttest (${{ matrix.arch.kernel }})
+    runs-on: [self-hosted, linux]
+    needs: build_inttest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - kernel: "x86"
+            user: "i686-unknown-linux-musl"
+          - kernel: "x86_64"
+            user: "x86_64-unknown-linux-musl"
+            user_compat: "i686-unknown-linux-musl"
+        cores: ["1", "2"]
+    steps:
+      - name: Run
+        working-directory: kernel
+        env:
+          CARGOFLAGS: --target arch/${{ matrix.arch.kernel }}/${{ matrix.arch.kernel }}.json
+          QEMUFLAGS: "-smp ${{ matrix.cores }}"
+        run:
+          cp ../inttest/disk-${{ matrix.arch.kernel }} qemu_disk
+          ci/test.sh int
+        timeout-minutes: 10
       - name: Run (compat)
         if: ${{ matrix.arch.user_compat }}
         working-directory: kernel
         env:
           CARGOFLAGS: --target arch/${{ matrix.arch.kernel }}/${{ matrix.arch.kernel }}.json
-        run: ci/test.sh int
+          QEMUFLAGS: "-smp ${{ matrix.cores }}"
+        run:
+          cp ../inttest/disk-${{ matrix.arch.kernel }}-compat qemu_disk
+          ci/test.sh int
         timeout-minutes: 10

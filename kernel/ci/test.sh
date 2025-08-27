@@ -2,7 +2,7 @@
 
 set -e
 
-export QEMUFLAGS="-nographic -monitor none -serial stdio"
+export QEMUFLAGS="-nographic -monitor none -serial stdio $QEMUFLAGS"
 
 cp default.build-config.toml build-config.toml
 sed -i 's/^qemu = false$/qemu = true/' build-config.toml
