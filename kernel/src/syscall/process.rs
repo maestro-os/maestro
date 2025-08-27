@@ -453,10 +453,14 @@ pub fn nice(Args(inc): Args<c_int>) -> EResult<usize> {
 pub fn getpriority(Args((which, who)): Args<(c_int, Pid)>) -> EResult<usize> {
 	match which {
 		PRIO_PROCESS => {
-			let proc = Process::get_by_pid(who).ok_or_else(|| errno!(ESRCH))?;
-			// Check permission
 			let cur = Process::current();
-			if unlikely(!cur.fs().lock().access_profile.can_kill(&proc)) {
+			let proc = if who != 0 {
+				&Process::get_by_pid(who).ok_or_else(|| errno!(ESRCH))?
+			} else {
+				&cur
+			};
+			// Check permission
+			if unlikely(!cur.fs().lock().access_profile.can_kill(proc)) {
 				return Err(errno!(EPERM));
 			}
 			// Update value

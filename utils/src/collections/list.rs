@@ -183,17 +183,22 @@ impl<T, const OFF: usize> List<T, OFF> {
 		unsafe { NonNull::from(val).byte_add(OFF).cast::<ListNode>() }
 	}
 
+	#[inline]
 	fn head_node(&self) -> Option<&ListNode> {
 		unsafe { self.head.map(|n| n.as_ref()) }
+	}
+
+	#[inline]
+	fn tail_node(&self) -> Option<&ListNode> {
+		self.head_node()?.prev()
 	}
 
 	/// Returns a reference to the first element of the list.
 	#[inline]
 	pub fn front(&self) -> Option<Arc<T>> {
-		let node = self.head_node()?;
 		let cursor = Cursor {
 			list: NonNull::from(self),
-			node,
+			node: self.head_node()?,
 		};
 		Some(cursor.arc())
 	}
@@ -201,10 +206,9 @@ impl<T, const OFF: usize> List<T, OFF> {
 	/// Returns a reference to the last element of the list.
 	#[inline]
 	pub fn back(&self) -> Option<Arc<T>> {
-		let node = self.head_node()?.prev()?;
 		let cursor = Cursor {
 			list: NonNull::from(self),
-			node,
+			node: self.tail_node()?,
 		};
 		Some(cursor.arc())
 	}
@@ -277,6 +281,15 @@ impl<T, const OFF: usize> List<T, OFF> {
 		let cursor = Cursor {
 			list: NonNull::from(&mut *self),
 			node: self.head_node()?,
+		};
+		Some(cursor.remove())
+	}
+
+	/// Removes the last element of the list and returns it, if any.
+	pub fn remove_back(&mut self) -> Option<Arc<T>> {
+		let cursor = Cursor {
+			list: NonNull::from(&mut *self),
+			node: self.tail_node()?,
 		};
 		Some(cursor.remove())
 	}

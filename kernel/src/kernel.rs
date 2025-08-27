@@ -88,7 +88,8 @@ use crate::{
 	process::{
 		Process, exec,
 		exec::{ExecInfo, exec},
-		scheduler::{per_cpu, switch, switch::idle_task},
+		scheduler,
+		scheduler::{CPU, per_cpu, switch, switch::idle_task},
 	},
 	sync::mutex::Mutex,
 	tty::TTY,
@@ -208,6 +209,11 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	println!("Execute init process ({init_path})");
 	let init_frame = init(init_path).expect("init process execution failed");
 
+	// Launch kernel tasks
+	if CPU.len() > 1 {
+		Process::new_kthread(None, scheduler::rebalance_task, true)
+			.expect("rebalance task launch failed");
+	}
 	Process::new_kthread(None, cache::flush_task, true).expect("cache flush task launch failed");
 
 	unsafe {

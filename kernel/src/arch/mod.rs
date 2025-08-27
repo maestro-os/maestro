@@ -19,7 +19,7 @@
 //! Architecture-specific **Hardware Abstraction Layers** (HAL).
 
 use crate::{
-	arch::x86::cpu::enumerate_cpus,
+	arch::x86::cpu::{enumerate_cpus, topology_add},
 	println,
 	process::scheduler::{per_cpu, store_per_cpu},
 	sync::once::OnceInit,
@@ -100,6 +100,8 @@ pub(crate) fn init2(first: bool) -> AllocResult<()> {
 		unsafe {
 			OnceInit::init(&per_cpu().vendor, cpuid::vendor());
 		}
+		// Explore CPU topology
+		topology_add()?;
 		gdt::flush();
 		tss::init();
 		// Setup timer

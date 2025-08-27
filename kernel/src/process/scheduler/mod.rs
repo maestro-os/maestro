@@ -40,11 +40,13 @@ use crate::{
 		mutex::{IntMutex, Mutex},
 		once::OnceInit,
 	},
+	time::{clock::Clock, sleep_for},
 };
 use core::{
 	cell::UnsafeCell,
 	cmp::Ordering,
 	hint::unlikely,
+	mem::swap,
 	ptr,
 	sync::atomic::{
 		AtomicBool, AtomicU32, AtomicUsize,
@@ -58,6 +60,10 @@ use utils::{
 	list, list_type,
 	ptr::arc::{Arc, AtomicArc, AtomicOptionalArc},
 };
+
+// TODO must be configurable
+/// The timeout, in milliseconds, after which processes are rebalanced
+const REBALANCE_TIMEOUT: u64 = 100;
 
 /// Helper allocating an atomic bitmap large enough to have a bit per CPU on the system
 ///
@@ -169,8 +175,10 @@ impl PerCpu {
 			tss: Default::default(),
 
 			sched: Scheduler {
-				queue: IntMutex::new(list!(Process, sched_node)),
-				queue_len: AtomicUsize::new(0),
+				run_queue: IntMutex::new(RunQueue {
+					queue: list!(Process, sched_node),
+					len: 0,
+				}),
 				cur_proc: AtomicArc::from(idle_task.clone()),
 
 				idle_task: idle_task.clone(),
@@ -337,14 +345,20 @@ pub static CPU_TOPOLOGY: TopologyNode = TopologyNode {
 	cpu: None,
 };
 
+/// Queue of processes to run
+struct RunQueue {
+	/// Queue of processes to run
+	queue: list_type!(Process, sched_node),
+	/// The number of processes in queue
+	len: usize,
+}
+
 /// A process scheduler.
 ///
 /// Each CPU core has its own scheduler.
 pub struct Scheduler {
-	/// Queue of processes to run
-	queue: IntMutex<list_type!(Process, sched_node)>,
-	/// The number of processes in queue
-	queue_len: AtomicUsize,
+	/// Run queue
+	run_queue: IntMutex<RunQueue>,
 	/// The currently running process
 	cur_proc: AtomicArc<Process>,
 
@@ -367,13 +381,19 @@ impl Scheduler {
 		self.cur_proc.replace(new)
 	}
 
+	/// Returns the number of processes in the run queue
+	#[inline]
+	pub fn queue_len(&self) -> usize {
+		self.run_queue.lock().len
+	}
+
 	/// Returns the next process to run with its PID.
 	///
 	/// If no process is left to run, the function returns `None`.
 	fn get_next_process(&self) -> Option<Arc<Process>> {
-		let mut queue = self.queue.lock();
-		let proc = queue.front()?;
-		queue.rotate_left();
+		let mut queue = self.run_queue.lock();
+		let proc = queue.queue.front()?;
+		queue.queue.rotate_left();
 		Some(proc)
 	}
 }
@@ -385,14 +405,22 @@ impl Scheduler {
 /// attempt to load-balance processes across CPU cores.
 pub fn enqueue(proc: &Arc<Process>) {
 	// If the process already is enqueued, do nothing
-	let mut links = proc.links.lock();
-	if links.cur_cpu.is_some() {
-		return;
-	}
+	let last_cpu = {
+		let links = proc.links.lock();
+		if links.cur_cpu.is_some() {
+			return;
+		}
+		links.last_cpu
+	};
 	// Select the CPU to run the process
-	let cpu = links
-		// Attempt to run on the last CPU that run the process, if any
-		.last_cpu
+	let cpu_cmp = |cpu0: &&PerCpu, cpu1: &&PerCpu| {
+		// TODO use other metrics than the amount of running processes
+		let cnt0 = cpu0.sched.queue_len();
+		let cnt1 = cpu1.sched.queue_len();
+		cnt0.cmp(&cnt1)
+	};
+	// Attempt to run on the last CPU that run the process, if any
+	let cpu = last_cpu
 		.and_then(|cpu| {
 			// If the CPU is able to execute immediately, select it
 			let ord = cpu.sched.get_current_process().cmp_priority(proc);
@@ -406,15 +434,19 @@ pub fn enqueue(proc: &Arc<Process>) {
 				.find(|(_, idle)| *idle)
 				.map(|(id, _)| &CPU[id])
 		})
-		// TODO use other metrics than the amount of running processes, and attempt to find cores
-		// that can run the process immediately first
+		.or_else(|| {
+			// Select the scheduler with the least running processes among those able to run the
+			// process immediately
+			CPU.iter()
+				.filter(|cpu| {
+					let ord = cpu.sched.get_current_process().cmp_priority(proc);
+					ord == Ordering::Less
+				})
+				.min_by(cpu_cmp)
+		})
 		.or_else(|| {
 			// Select the scheduler with the least running processes
-			CPU.iter().min_by(|cpu0, cpu1| {
-				let count0 = cpu0.sched.queue_len.load(Acquire);
-				let count1 = cpu1.sched.queue_len.load(Acquire);
-				count0.cmp(&count1)
-			})
+			CPU.iter().min_by(cpu_cmp)
 		})
 		// There is at least one CPU on the system
 		.unwrap();
@@ -425,9 +457,10 @@ pub fn enqueue(proc: &Arc<Process>) {
 		proc.get_pid(),
 		cpu.apic_id
 	);
-	let mut queue = cpu.sched.queue.lock();
-	queue.insert_back(proc.clone());
-	cpu.sched.queue_len.fetch_add(1, Release);
+	let mut run_queue = cpu.sched.run_queue.lock();
+	run_queue.queue.insert_back(proc.clone());
+	run_queue.len += 1;
+	let mut links = proc.links.lock();
 	links.cur_cpu = Some(cpu);
 	links.last_cpu = Some(cpu);
 }
@@ -435,20 +468,117 @@ pub fn enqueue(proc: &Arc<Process>) {
 /// Removes the process from its scheduler, if any.
 pub fn dequeue(proc: &Arc<Process>) {
 	// If the process is not enqueued, do nothing
-	let mut links = proc.links.lock();
-	let Some(cpu) = links.cur_cpu else {
+	let Some(cpu) = proc.links.lock().cur_cpu else {
 		return;
 	};
 	// Remove from queue
 	#[cfg(feature = "strace")]
 	println!("[strace {}] dequeue", proc.get_pid());
-	let mut queue = cpu.sched.queue.lock();
+	let mut run_queue = cpu.sched.run_queue.lock();
 	unsafe {
-		queue.remove(proc);
+		run_queue.queue.remove(proc);
 	}
-	cpu.sched.queue_len.fetch_sub(1, Release);
+	run_queue.len -= 1;
+	let mut links = proc.links.lock();
 	let prev = links.cur_cpu.take();
 	links.last_cpu = prev;
+}
+
+/// Attempts to return the CPU cores with the least and most processes queued, without locking
+fn min_max() -> (&'static PerCpu, &'static PerCpu) {
+	let mut iter = CPU.iter();
+	let mut min = iter.next().unwrap(); // The system has at least one core
+	let mut max = min;
+	let mut min_cnt = min.sched.queue_len();
+	let mut max_cnt = min_cnt;
+	for cpu in iter {
+		let proc_count = cpu.sched.queue_len();
+		if proc_count < min_cnt {
+			min = cpu;
+			min_cnt = proc_count;
+		} else if proc_count > max_cnt {
+			max = cpu;
+			max_cnt = proc_count;
+		}
+	}
+	(min, max)
+}
+
+/// Rebalances processes across cores
+fn rebalance() {
+	/*
+	 * This function works by picking the CPUs with the least and most running processes, and
+	 * balancing processes across them
+	 *
+	 * Searching for the least and most loaded CPUs is done without locking. So the result is
+	 * not exact, but it does not matter since this function is called in a loop.
+	 *
+	 * The system tends more and more towards equilibrium at each call
+	 */
+	let (mut dst, mut src) = min_max();
+	if ptr::eq(dst, src) {
+		return;
+	}
+	// Lock both cores' queues
+	let mut dst_queue = dst.sched.run_queue.lock();
+	let mut src_queue = src.sched.run_queue.lock();
+	// Process counts might have changed before we locked
+	if dst_queue.len > src_queue.len {
+		swap(&mut dst, &mut src);
+		swap(&mut dst_queue, &mut src_queue);
+	}
+	// No need to do anything if no core has more than one process
+	if src_queue.len <= 1 {
+		return;
+	}
+	// Compute the number of processes to move
+	let diff = src_queue.len - dst_queue.len;
+	let mut iter = src_queue.queue.iter();
+	let mut migrated_count = 0;
+	// We must have more than one process to move, otherwise a process might get needlessly moved
+	// back and forth
+	for _ in 1..diff {
+		let Some(cursor) = iter.next() else {
+			break;
+		};
+		// Skip currently running process
+		if ptr::eq(
+			cursor.value(),
+			Arc::as_ptr(&src.sched.get_current_process()),
+		) {
+			continue;
+		}
+		// Remove the process from its old queue
+		let proc = cursor.remove();
+		#[cfg(feature = "strace")]
+		println!(
+			"[strace {}] migrate from {} to {}",
+			proc.get_pid(),
+			src.apic_id,
+			dst.apic_id
+		);
+		// Update the process's scheduler
+		{
+			let mut links = proc.links.lock();
+			links.cur_cpu = Some(dst);
+			links.last_cpu = Some(dst);
+		}
+		// Insert in the new queue
+		dst_queue.queue.insert_back(proc);
+		migrated_count += 1;
+	}
+	dst_queue.len += migrated_count;
+	src_queue.len -= migrated_count;
+}
+
+/// The entry point of the kernel task rebalancing processes across CPU cores
+pub(crate) fn rebalance_task() -> ! {
+	loop {
+		rebalance();
+		// Sleep
+		let mut remain = 0;
+		let _ = sleep_for(Clock::Monotonic, REBALANCE_TIMEOUT * 1_000_000, &mut remain);
+	}
 }
 
 /// Reschedules, switching context to the next process to run on the current core.
