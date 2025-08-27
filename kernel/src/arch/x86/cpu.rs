@@ -56,7 +56,12 @@ pub fn enumerate_cpus() -> AllocResult<()> {
 pub fn topology_add() -> AllocResult<()> {
 	let ebx = cpuid(1, 0).1;
 	let mut lapic_id = (ebx >> 24) & 0xff;
-	let bits_below_package = ((ebx >> 16) as u8 - 1).trailing_ones();
+	let logical_per_package = (ebx >> 16) as u8;
+	let bits_below_package = if logical_per_package > 0 {
+		32 - (logical_per_package - 1).leading_zeros()
+	} else {
+		0
+	};
 	let has_package_bits = has_package_bits();
 	let cpu = &CPU[lapic_id as usize];
 	match &*per_cpu().vendor {
