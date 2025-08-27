@@ -252,10 +252,12 @@ pub(crate) fn init_cpu(mut cpu: Vec<PerCpu>) -> AllocResult<()> {
 	Ok(())
 }
 
-/// Helper returning an iterator over the IDs of all CPUs. This is useful for TLB shootdown on all
+/// Returns an iterator over the IDs of all online CPUs. This is useful for TLB shootdown on all
 /// cores
-pub fn cpu_iter_all() -> impl Iterator<Item = u32> {
-	CPU.iter().map(|cpu| cpu.apic_id)
+pub fn cpu_iter_online() -> impl Iterator<Item = u32> {
+	CPU.iter()
+		.filter(|cpu| cpu.online.load(Acquire))
+		.map(|cpu| cpu.apic_id)
 }
 
 /// CPU topology node

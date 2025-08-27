@@ -119,7 +119,7 @@ impl DeferredCallQueue {
 
 /// Sends an IPI to `cpu` to notify it there is a deferred call.
 pub fn ipi(cpu: u32) {
-	apic::ipi(cpu, IpiDeliveryMode::Nmi, INT);
+	apic::ipi(cpu, IpiDeliveryMode::Fixed, INT);
 }
 
 /// Defers a call to `func` on the CPU `cpu`.
