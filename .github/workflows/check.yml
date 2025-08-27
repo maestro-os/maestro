@@ -179,7 +179,7 @@ jobs:
         env:
           CARGOFLAGS: --target arch/${{ matrix.arch.kernel }}/${{ matrix.arch.kernel }}.json
           QEMUFLAGS: "-smp ${{ matrix.cores }}"
-        run:
+        run: |
           cp ../inttest/disk-${{ matrix.arch.kernel }} qemu_disk
           ci/test.sh int
         timeout-minutes: 10
@@ -189,7 +189,7 @@ jobs:
         env:
           CARGOFLAGS: --target arch/${{ matrix.arch.kernel }}/${{ matrix.arch.kernel }}.json
           QEMUFLAGS: "-smp ${{ matrix.cores }}"
-        run:
+        run: |
           cp ../inttest/disk-${{ matrix.arch.kernel }}-compat qemu_disk
           ci/test.sh int
         timeout-minutes: 10
