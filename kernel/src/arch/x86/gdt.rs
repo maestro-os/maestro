@@ -22,7 +22,7 @@
 //! It is a deprecated structure that still must be used in order to switch to protected mode,
 //! handle protection rings and load the Task State Segment (TSS).
 
-use crate::{memory::VirtAddr, process::scheduler::per_cpu};
+use crate::{memory::VirtAddr, process::scheduler::cpu::per_cpu};
 use core::{arch::asm, cell::UnsafeCell, fmt};
 
 /// The offset of the kernel code segment.

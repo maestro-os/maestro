@@ -29,7 +29,7 @@ use crate::{
 		},
 		timer::hpet,
 	},
-	process::scheduler::per_cpu,
+	process::scheduler::cpu::per_cpu,
 	sync::mutex::Mutex,
 };
 use core::{hint, hint::likely, sync::atomic::Ordering::Relaxed};

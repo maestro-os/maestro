@@ -22,328 +22,38 @@
 //! Scheduling can be disabled/enabled by entering a **critical section**, with
 //! [`preempt_disable`]/[`preempt_enable`], or with [`critical`].
 
+pub mod cpu;
 pub mod defer;
 pub mod switch;
 
 use crate::{
 	arch::{
 		core_id, end_of_interrupt,
-		x86::{cli, gdt::Gdt, idt::IntFrame, tss::Tss},
+		x86::{cli, idt::IntFrame},
 	},
 	process::{
 		Process, State,
-		mem_space::MemSpace,
-		scheduler::{defer::DeferredCallQueue, switch::switch},
+		scheduler::{cpu::per_cpu, switch::switch},
 	},
-	sync::{
-		atomic::AtomicU64,
-		mutex::{IntMutex, Mutex},
-		once::OnceInit,
-	},
+	sync::mutex::IntMutex,
 	time::{clock::Clock, sleep_for},
 };
 use core::{
-	cell::UnsafeCell,
 	cmp::Ordering,
 	hint::unlikely,
 	mem::swap,
 	ptr,
-	sync::atomic::{
-		AtomicBool, AtomicU32, AtomicUsize,
-		Ordering::{Acquire, Relaxed, Release},
-	},
+	sync::atomic::Ordering::{Relaxed, Release},
 };
+use cpu::{CPU, IDLE_CPUS, PerCpu};
 use utils::{
-	boxed::Box,
-	collections::vec::Vec,
-	errno::{AllocResult, CollectResult},
-	list, list_type,
-	ptr::arc::{Arc, AtomicArc, AtomicOptionalArc},
+	list_type,
+	ptr::arc::{Arc, AtomicArc},
 };
 
 // TODO must be configurable
 /// The timeout, in milliseconds, after which processes are rebalanced
 const REBALANCE_TIMEOUT: u64 = 100;
-
-/// Helper allocating an atomic bitmap large enough to have a bit per CPU on the system
-///
-/// `set`: if `true` all bits are set at the beginning. Else they are clear
-pub fn init_cpu_bitmap(set: bool) -> AllocResult<Vec<AtomicUsize>> {
-	let len = CPU.len().div_ceil(usize::BITS as usize);
-	let unit_val = if set { !0 } else { 0 };
-	(0..len)
-		.map(|_| AtomicUsize::new(unit_val))
-		.collect::<CollectResult<_>>()
-		.0
-}
-
-/// Sets the bit for the given `cpu` in `bitmap`
-pub fn cpu_bitmap_set(bitmap: &[AtomicUsize], cpu: usize) {
-	let unit = cpu / usize::BITS as usize;
-	let bit = cpu % usize::BITS as usize;
-	bitmap[unit].fetch_or(1 << bit, Release);
-}
-
-/// Clears the bit for the given `cpu` in `bitmap`
-pub fn cpu_bitmap_clear(bitmap: &[AtomicUsize], cpu: usize) {
-	let unit = cpu / usize::BITS as usize;
-	let bit = cpu % usize::BITS as usize;
-	bitmap[unit].fetch_and(!(1 << bit), Release);
-}
-
-/// Iterates on bit values for each CPU in `bitmap`
-pub fn cpu_bitmap_iter(bitmap: &[AtomicUsize]) -> impl Iterator<Item = bool> {
-	bitmap
-		.iter()
-		.flat_map(|unit| {
-			let unit = unit.load(Acquire);
-			(0..usize::BITS).map(move |bit| unit & (1 << bit) != 0)
-		})
-		.take(CPU.len())
-}
-
-// TODO allow to declare per-core variables everywhere in the codebase using a dedicated ELF
-// section
-
-/// Per-CPU data.
-///
-/// This structure is using `#[repr(C)]` because some field offsets are important for assembly code
-#[repr(C)]
-pub struct PerCpu {
-	/// The current kernel stack
-	pub kernel_stack: AtomicUsize,
-	/// The stashed user stack
-	pub user_stack: AtomicUsize,
-
-	/// Processor ID
-	pub cpu_id: u8,
-	/// Local APIC ID
-	pub apic_id: u32,
-	/// Local APIC flags
-	pub apic_flags: u32,
-
-	/// Tells whether the CPU core has booted.
-	pub online: AtomicBool,
-	/// CPU's vendor ID
-	pub vendor: OnceInit<[u8; 12]>,
-
-	/// The core's topology node
-	pub topology_node: OnceInit<&'static TopologyNode>,
-
-	/// The CPU's GDT
-	pub gdt: Gdt,
-	/// The CPU's TSS
-	tss: UnsafeCell<Tss>,
-
-	/// The core's scheduler
-	pub sched: Scheduler,
-	/// The time in between each tick on the core, in nanoseconds
-	pub tick_period: AtomicU64,
-	/// Counter for nested critical sections
-	///
-	/// The highest bit is used to tell whether preemption has been requested by the timer (clear
-	/// = requested, set = not requested)
-	pub preempt_counter: AtomicU32,
-
-	/// Attached memory space
-	///
-	/// The pointer stored by this field is returned by [`Arc::into_raw`]
-	pub mem_space: AtomicOptionalArc<MemSpace>,
-
-	/// Queue of deferred calls to be executed on this core
-	deferred_calls: DeferredCallQueue,
-}
-
-impl PerCpu {
-	/// Creates a new instance.
-	pub fn new(cpu_id: u8, apic_id: u32, apic_flags: u32) -> AllocResult<Self> {
-		let idle_task = Process::idle_task()?;
-		Ok(Self {
-			kernel_stack: AtomicUsize::new(0),
-			user_stack: AtomicUsize::new(0),
-
-			cpu_id,
-			apic_id,
-			apic_flags,
-
-			online: AtomicBool::new(false),
-			vendor: unsafe { OnceInit::new() },
-
-			topology_node: unsafe { OnceInit::new() },
-
-			gdt: Default::default(),
-			tss: Default::default(),
-
-			sched: Scheduler {
-				run_queue: IntMutex::new(RunQueue {
-					queue: list!(Process, sched_node),
-					len: 0,
-				}),
-				cur_proc: AtomicArc::from(idle_task.clone()),
-
-				idle_task: idle_task.clone(),
-			},
-			tick_period: AtomicU64::new(0),
-			preempt_counter: AtomicU32::new(1 << 31),
-
-			mem_space: AtomicOptionalArc::new(),
-
-			deferred_calls: DeferredCallQueue::new(),
-		})
-	}
-
-	/// Returns a mutable reference to the TSS.
-	///
-	/// # Safety
-	///
-	/// Concurrent accesses are undefined.
-	#[inline]
-	#[allow(clippy::mut_from_ref)]
-	pub unsafe fn tss(&self) -> &mut Tss {
-		&mut *self.tss.get()
-	}
-}
-
-/// Sets, on the current CPU core, the register to make the associated [`PerCpu`] structure
-/// available.
-pub(crate) fn store_per_cpu() {
-	#[cfg(target_arch = "x86_64")]
-	{
-		use crate::arch::{core_id, x86};
-		let local = &CPU[core_id() as usize];
-		// Set to `IA32_GS_BASE` instead of `IA32_KERNEL_GS_BASE` since it will get swapped
-		// when switching to userspace
-		x86::wrmsr(x86::IA32_GS_BASE, local as *const _ as u64);
-	}
-}
-
-/// Returns the per-CPU structure for the current core.
-#[inline]
-pub fn per_cpu() -> &'static PerCpu {
-	#[cfg(target_arch = "x86")]
-	{
-		use crate::arch::core_id;
-		&CPU[core_id() as usize]
-	}
-	#[cfg(target_arch = "x86_64")]
-	{
-		use crate::{arch::x86, memory::VirtAddr};
-		let base = x86::rdmsr(x86::IA32_GS_BASE);
-		unsafe {
-			let ptr = VirtAddr(base as _).as_ptr::<PerCpu>();
-			&*ptr
-		}
-	}
-}
-
-/// The list of core-local structures. There is one per CPU.
-pub static CPU: OnceInit<Vec<PerCpu>> = unsafe { OnceInit::new() };
-/// Bitmap of currently idle CPUs, atomically updated
-pub static IDLE_CPUS: OnceInit<Vec<AtomicUsize>> = unsafe { OnceInit::new() };
-
-/// Initializes the CPU list
-///
-/// This function must be called only once at boot
-pub(crate) fn init_cpu(mut cpu: Vec<PerCpu>) -> AllocResult<()> {
-	// If no CPU is found, just add the current
-	if cpu.is_empty() {
-		cpu.push(PerCpu::new(0, 0, 0)?)?;
-	}
-	println!("{} CPU cores found", cpu.len());
-	unsafe {
-		OnceInit::init(&CPU, cpu);
-	}
-	let idle_cpus = init_cpu_bitmap(true)?;
-	unsafe {
-		OnceInit::init(&IDLE_CPUS, idle_cpus);
-	}
-	Ok(())
-}
-
-/// Returns an iterator over the IDs of all online CPUs. This is useful for TLB shootdown on all
-/// cores
-pub fn cpu_iter_online() -> impl Iterator<Item = u32> {
-	CPU.iter()
-		.filter(|cpu| cpu.online.load(Acquire))
-		.map(|cpu| cpu.apic_id)
-}
-
-/// CPU topology node
-pub struct TopologyNode {
-	/// Parent node
-	parent: Option<&'static TopologyNode>,
-	/// Child nodes
-	children: UnsafeCell<Vec<&'static TopologyNode>>,
-
-	/// ID used to avoid duplicate entries when this tree is built
-	id: u32,
-	/// The node's CPU. This is set only if the node is a leaf
-	cpu: Option<&'static PerCpu>,
-}
-
-unsafe impl Sync for TopologyNode {}
-
-impl TopologyNode {
-	/// Inserts a node in the topology tree. This function is thread-safe.
-	///
-	/// This function must be used only during boot.
-	///
-	/// On success, the function returns a reference to the node.
-	pub(crate) fn insert(
-		&'static self,
-		id: u32,
-		cpu: Option<&'static PerCpu>,
-	) -> AllocResult<&'static Self> {
-		// Lock to prevent several cores from adding their topology at the same time
-		static LOCK: Mutex<()> = Mutex::new(());
-		let _guard = LOCK.lock();
-		let children = unsafe { &mut *self.children.get() };
-		// Looks for a node with the same ID
-		if let Some(node) = children.iter().find(|node| node.id == id) {
-			// There is already a node, no need to insert a new one
-			return Ok(node);
-		}
-		// Insert node
-		let node = Box::new(TopologyNode {
-			parent: Some(self),
-			children: UnsafeCell::new(Vec::new()),
-
-			id,
-			cpu,
-		})?;
-		let node = Box::into_raw(node);
-		unsafe {
-			let node = &*node;
-			// Link back
-			if let Some(cpu) = node.cpu {
-				OnceInit::init(&cpu.topology_node, node);
-			}
-			children.push(node)?;
-			Ok(node)
-		}
-	}
-
-	/// Returns the parent node if any
-	#[inline]
-	pub fn parent(&self) -> Option<&Self> {
-		self.parent
-	}
-
-	/// Returns the list of child nodes
-	#[inline]
-	pub fn children(&self) -> &[&Self] {
-		unsafe { &*self.children.get() }
-	}
-}
-
-/// Tree representing the topology of CPU cores
-pub static CPU_TOPOLOGY: TopologyNode = TopologyNode {
-	parent: None,
-	children: UnsafeCell::new(Vec::new()),
-
-	id: 0,
-	cpu: None,
-};
 
 /// Queue of processes to run
 struct RunQueue {
@@ -379,6 +89,12 @@ impl Scheduler {
 			.kernel_stack
 			.store(new.kernel_stack.top().as_ptr() as _, Release);
 		self.cur_proc.replace(new)
+	}
+
+	/// Tells whether this scheduler can immediately run `proc`
+	pub fn can_immediately_run(&self, proc: &Process) -> bool {
+		let ord = self.get_current_process().cmp_priority(proc);
+		ord == Ordering::Less
 	}
 
 	/// Returns the number of processes in the run queue
@@ -422,14 +138,12 @@ pub fn enqueue(proc: &Arc<Process>) {
 	// Attempt to run on the last CPU that run the process, if any
 	let cpu = last_cpu
 		.and_then(|cpu| {
-			// If the CPU is able to execute immediately, select it
-			let ord = cpu.sched.get_current_process().cmp_priority(proc);
-			(ord == Ordering::Less).then_some(cpu)
-			// TODO else, attempt to explore the CPU topology to find a core that can
+			// Explore the CPU topology to find the closest suitable core
+			cpu::topology::find_closest_core(cpu, proc)
 		})
 		.or_else(|| {
 			// Attempt to find an idle CPU
-			cpu_bitmap_iter(&IDLE_CPUS)
+			cpu::bitmap_iter(&IDLE_CPUS)
 				.enumerate()
 				.find(|(_, idle)| *idle)
 				.map(|(id, _)| &CPU[id])
@@ -438,10 +152,7 @@ pub fn enqueue(proc: &Arc<Process>) {
 			// Select the scheduler with the least running processes among those able to run the
 			// process immediately
 			CPU.iter()
-				.filter(|cpu| {
-					let ord = cpu.sched.get_current_process().cmp_priority(proc);
-					ord == Ordering::Less
-				})
+				.filter(|cpu| cpu.sched.can_immediately_run(proc))
 				.min_by(cpu_cmp)
 		})
 		.or_else(|| {
@@ -607,9 +318,9 @@ pub fn schedule() {
 		}
 		// Update the idle bitmap if necessary
 		if prev.is_idle_task() {
-			cpu_bitmap_clear(&IDLE_CPUS, core_id() as _);
+			cpu::bitmap_clear(&IDLE_CPUS, core_id() as _);
 		} else if next.is_idle_task() {
-			cpu_bitmap_set(&IDLE_CPUS, core_id() as _);
+			cpu::bitmap_set(&IDLE_CPUS, core_id() as _);
 		}
 		// Swap current running process. We use pointers to avoid cloning the Arc
 		let next_ptr = Arc::as_ptr(&next);

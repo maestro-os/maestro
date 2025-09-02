@@ -41,7 +41,8 @@ use crate::{
 	process::{
 		mem_space::mapping::MappedFrame,
 		scheduler::{
-			cpu_bitmap_clear, cpu_bitmap_iter, cpu_bitmap_set, critical, init_cpu_bitmap, per_cpu,
+			cpu::{bitmap_clear, bitmap_iter, bitmap_set, init_bitmap, per_cpu},
+			critical,
 		},
 	},
 	sync::mutex::IntMutex,
@@ -258,7 +259,7 @@ impl MemSpace {
 				envp_end: Default::default(),
 			},
 
-			bound_cpus: init_cpu_bitmap(false)?,
+			bound_cpus: init_bitmap(false)?,
 		};
 		// Allocation begin and end addresses
 		let begin = VirtAddr(PAGE_SIZE);
@@ -511,12 +512,12 @@ impl MemSpace {
 			let prev = per_cpu().mem_space.replace(Some(this.clone()));
 			// Update new bitmap
 			let core_id = core_id() as usize;
-			cpu_bitmap_set(&this.bound_cpus, core_id);
+			bitmap_set(&this.bound_cpus, core_id);
 			// Do actual bind
 			this.vmem.lock().bind();
 			// Update old bitmap if any
 			if let Some(prev) = prev {
-				cpu_bitmap_clear(&prev.bound_cpus, core_id);
+				bitmap_clear(&prev.bound_cpus, core_id);
 			}
 		});
 	}
@@ -531,14 +532,14 @@ impl MemSpace {
 			// Update old bitmap if any
 			if let Some(prev) = prev {
 				let core_id = core_id() as usize;
-				cpu_bitmap_clear(&prev.bound_cpus, core_id);
+				bitmap_clear(&prev.bound_cpus, core_id);
 			}
 		});
 	}
 
 	/// Returns an iterator over the IDs of CPUs bounding the memory space.
 	pub fn bound_cpus(&self) -> impl Iterator<Item = u32> {
-		cpu_bitmap_iter(&self.bound_cpus)
+		bitmap_iter(&self.bound_cpus)
 			.enumerate()
 			.filter(|(_, b)| *b)
 			.map(|(i, _)| i as _)
@@ -568,7 +569,7 @@ impl MemSpace {
 
 	/// Clones the current memory space for process forking.
 	pub fn fork(&self) -> AllocResult<MemSpace> {
-		let bound_cpus = init_cpu_bitmap(false)?;
+		let bound_cpus = init_bitmap(false)?;
 		// Lock
 		let state = self.state.lock();
 		let mut vmem = self.vmem.lock();

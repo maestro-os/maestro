@@ -32,7 +32,10 @@ use crate::{
 		vmem::{KERNEL_VMEM, write_ro},
 	},
 	println,
-	process::scheduler::{CPU, per_cpu, switch::idle_task},
+	process::scheduler::{
+		cpu::{CPU, per_cpu},
+		switch::idle_task,
+	},
 };
 use core::{
 	arch::global_asm,

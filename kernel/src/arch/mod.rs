@@ -21,7 +21,7 @@
 use crate::{
 	arch::x86::cpu::{enumerate_cpus, topology_add},
 	println,
-	process::scheduler::{per_cpu, store_per_cpu},
+	process::scheduler::cpu::{per_cpu, store_per_cpu},
 	sync::once::OnceInit,
 };
 use utils::errno::AllocResult;

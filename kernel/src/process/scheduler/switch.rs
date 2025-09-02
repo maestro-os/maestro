@@ -20,7 +20,7 @@
 
 use crate::{
 	arch::x86::{fxrstor, fxsave, gdt, idt::IntFrame},
-	process::{Process, mem_space::MemSpace, scheduler::per_cpu},
+	process::{Process, mem_space::MemSpace, scheduler::cpu::per_cpu},
 };
 use core::{arch::global_asm, mem::offset_of, ptr::NonNull};
 

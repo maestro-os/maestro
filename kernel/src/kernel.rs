@@ -89,7 +89,11 @@ use crate::{
 		Process, exec,
 		exec::{ExecInfo, exec},
 		scheduler,
-		scheduler::{CPU, per_cpu, switch, switch::idle_task},
+		scheduler::{
+			cpu::{CPU, per_cpu},
+			switch,
+			switch::idle_task,
+		},
 	},
 	sync::mutex::Mutex,
 	tty::TTY,

@@ -31,7 +31,7 @@ use crate::{
 	arch::x86::idt::IntFrame,
 	file::vfs::ResolutionSettings,
 	memory::VirtAddr,
-	process::{Process, mem_space::MemSpace, scheduler::per_cpu},
+	process::{Process, mem_space::MemSpace, scheduler::cpu::per_cpu},
 	sync::mutex::Mutex,
 };
 use utils::{
@@ -106,7 +106,7 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 	{
 		use crate::{
 			arch::{x86, x86::idt::wrap_disable_interrupts},
-			process::scheduler::{per_cpu, store_per_cpu},
+			process::scheduler::cpu::store_per_cpu,
 		};
 		use core::{arch::asm, sync::atomic::Ordering::Relaxed};
 

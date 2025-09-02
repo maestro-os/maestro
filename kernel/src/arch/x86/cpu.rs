@@ -25,10 +25,7 @@ use crate::{
 		CPUID_VENDOR_AMD, CPUID_VENDOR_INTEL, cpuid, extended_max_leaf, has_leaf_0x4,
 		has_leaf_0xb, has_package_bits,
 	},
-	process::{
-		scheduler,
-		scheduler::{CPU, CPU_TOPOLOGY, PerCpu, per_cpu},
-	},
+	process::scheduler::cpu::{CPU, PerCpu, init_cpu_list, per_cpu, topology::CPU_TOPOLOGY},
 };
 use utils::{collections::vec::Vec, errno::AllocResult};
 
@@ -48,7 +45,7 @@ pub fn enumerate_cpus() -> AllocResult<()> {
 			cpu.push(PerCpu::new(e.processor_id, e.apic_id as _, e.apic_flags)?)?;
 		}
 	}
-	scheduler::init_cpu(cpu)?;
+	init_cpu_list(cpu)?;
 	Ok(())
 }
 

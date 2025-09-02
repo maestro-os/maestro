@@ -26,7 +26,10 @@ use crate::{
 		io::{inb, outb},
 	},
 	println,
-	process::scheduler::{CPU, defer, per_cpu},
+	process::scheduler::{
+		cpu::{CPU, per_cpu},
+		defer,
+	},
 };
 use core::{
 	arch::asm,

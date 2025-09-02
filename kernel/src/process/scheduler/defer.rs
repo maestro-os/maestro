@@ -27,7 +27,7 @@ use crate::{
 		core_id,
 		x86::{apic, apic::IpiDeliveryMode},
 	},
-	process::scheduler::{CPU, per_cpu},
+	process::scheduler::cpu::{CPU, per_cpu},
 };
 use core::{
 	cell::UnsafeCell,

@@ -26,7 +26,7 @@
 //! The structure has to be registered into the GDT into the TSS segment, and must be loaded using
 //! instruction `ltr`.
 
-use crate::{arch::x86::gdt, process::scheduler::per_cpu};
+use crate::{arch::x86::gdt, process::scheduler::cpu::per_cpu};
 use core::{arch::asm, mem};
 
 /// Task State Segment.

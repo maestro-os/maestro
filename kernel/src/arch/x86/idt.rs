@@ -20,7 +20,7 @@
 //! storing the list of interrupt handlers, allowing to catch and handle
 //! interruptions.
 
-use super::{DEFAULT_FLAGS, cli, cpuid::cpuid, gdt, is_interrupt_enabled, sti};
+use super::{DEFAULT_FLAGS, cli, gdt, is_interrupt_enabled, sti};
 use crate::syscall::syscall_int;
 use core::{arch::asm, ffi::c_void, fmt, fmt::Formatter, mem::size_of, ptr::addr_of};
 use utils::errno::EResult;
@@ -461,6 +461,8 @@ pub(crate) fn init_table() {
 /// Enables the syscall/sysret instruction pairs if available.
 #[cfg(target_arch = "x86_64")]
 fn enable_syscall_inst() {
+	use super::cpuid::cpuid;
+
 	let (_, _, _, mask) = cpuid(0x80000001, 0);
 	let available = mask & (1 << 11) != 0;
 	if !available {

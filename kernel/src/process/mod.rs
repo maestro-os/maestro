@@ -47,7 +47,7 @@ use crate::{
 		pid::{IDLE_PID, INIT_PID, PidHandle},
 		rusage::Rusage,
 		scheduler::{
-			PerCpu, dequeue, enqueue, per_cpu, switch,
+			dequeue, enqueue, switch,
 			switch::{KThreadEntry, idle_task, save_segments},
 		},
 		signal::{SIGNALS_COUNT, SigSet},
@@ -72,6 +72,7 @@ use core::{
 };
 use mem_space::MemSpace;
 use pid::Pid;
+use scheduler::cpu::{PerCpu, per_cpu};
 use signal::{Signal, SignalHandler};
 use utils::{
 	collections::{
