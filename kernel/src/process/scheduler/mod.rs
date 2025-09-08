@@ -119,7 +119,7 @@ impl Scheduler {
 ///
 /// This function attempts to select the scheduler that is the most suitable for the process, in an
 /// attempt to load-balance processes across CPU cores.
-pub fn enqueue(proc: &Arc<Process>) {
+pub(crate) fn enqueue(proc: &Arc<Process>) {
 	// If the process already is enqueued, do nothing
 	let last_cpu = {
 		let links = proc.links.lock();
@@ -177,7 +177,7 @@ pub fn enqueue(proc: &Arc<Process>) {
 }
 
 /// Removes the process from its scheduler, if any.
-pub fn dequeue(proc: &Arc<Process>) {
+pub(crate) fn dequeue(proc: &Arc<Process>) {
 	// If the process is not enqueued, do nothing
 	let Some(cpu) = proc.links.lock().cur_cpu else {
 		return;

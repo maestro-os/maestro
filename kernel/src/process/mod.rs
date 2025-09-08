@@ -31,7 +31,7 @@ pub mod signal;
 pub mod user_desc;
 
 use crate::{
-	arch::x86::{FxState, gdt, idt, idt::IntFrame, timer},
+	arch::x86::{FxState, gdt, idt::IntFrame, timer},
 	file,
 	file::{
 		File, O_RDWR,
@@ -47,7 +47,7 @@ use crate::{
 		pid::{IDLE_PID, INIT_PID, PidHandle},
 		rusage::Rusage,
 		scheduler::{
-			dequeue, enqueue, switch,
+			critical, dequeue, enqueue, switch,
 			switch::{KThreadEntry, idle_task, save_segments},
 		},
 		signal::{SIGNALS_COUNT, SigSet},
@@ -62,12 +62,13 @@ use core::{
 	ffi::{c_int, c_void},
 	fmt,
 	fmt::Formatter,
+	hint,
 	hint::unlikely,
 	mem,
 	ptr::NonNull,
 	sync::atomic::{
 		AtomicBool, AtomicI8, AtomicPtr, AtomicU8, AtomicU16, AtomicU32,
-		Ordering::{Acquire, Relaxed, Release, SeqCst},
+		Ordering::{Acquire, Relaxed, Release},
 	},
 };
 use mem_space::MemSpace;
@@ -86,6 +87,9 @@ use utils::{
 	ptr::arc::Arc,
 	unsafe_mut::UnsafeMut,
 };
+
+/// Atomic lock for a process's `state`
+const STATE_LOCK: u8 = 1 << 7;
 
 /// The opcode of the `hlt` instruction.
 const HLT_INSTRUCTION: u8 = 0xf4;
@@ -325,7 +329,9 @@ pub struct Process {
 	/// The thread ID of the process.
 	pub tid: Pid,
 
-	/// The current state of the process.
+	/// The current state of the process
+	///
+	/// [`STATE_LOCK`] write-locks the state, while allowing it to be read
 	state: AtomicU8,
 	/// If `true`, the parent can resume after a `vfork`.
 	pub vfork_done: AtomicBool,
@@ -712,8 +718,25 @@ impl Process {
 	/// caution
 	#[inline(always)]
 	pub fn get_state(&self) -> State {
-		let id = self.state.load(Relaxed);
+		let id = self.state.load(Relaxed) & !STATE_LOCK;
 		State::from_id(id)
+	}
+
+	/// In a critical section, write-locks the process's state while executing `f`
+	fn lock_state<F: FnOnce(State)>(&self, f: F) {
+		critical(|| {
+			let mut val;
+			loop {
+				val = self.state.fetch_or(STATE_LOCK, Release);
+				if val & STATE_LOCK == 0 {
+					break;
+				}
+				hint::spin_loop();
+			}
+			let state = State::from_id(val);
+			f(state);
+			self.state.fetch_and(!STATE_LOCK, Release);
+		});
 	}
 
 	/// Sets the process's state to `new_state`.
@@ -721,24 +744,19 @@ impl Process {
 	/// If the transition from the previous state to `new_state` is invalid, the function does
 	/// nothing.
 	pub fn set_state(this: &Arc<Self>, new_state: State) {
-		// Disable interruptions to ensure the function can finish before the scheduler switches
-		// context (and thus never resume if the new state is `Zombie`)
-		idt::wrap_disable_interrupts(|| {
-			let Ok(old_state) = this.state.fetch_update(Release, Acquire, |old_state| {
-				let old_state = State::from_id(old_state);
-				let valid = matches!(
-					(old_state, new_state),
-					(State::Running | State::Sleeping, _) | (State::Stopped, State::Running)
-				);
-				valid.then_some(new_state as u8)
-			}) else {
-				// Invalid transition, do nothing
+		this.lock_state(|old_state| {
+			let valid = matches!(
+				(old_state, new_state),
+				(State::Running | State::Sleeping, _) | (State::Stopped, State::Running)
+			);
+			if !valid {
 				return;
-			};
-			let old_state = State::from_id(old_state);
+			}
 			if new_state == old_state {
 				return;
 			}
+			// Update state
+			this.state.store(STATE_LOCK | new_state as u8, Relaxed);
 			#[cfg(feature = "strace")]
 			println!(
 				"[strace {pid}] changed state: {old_state:?} -> {new_state:?}",
@@ -785,31 +803,6 @@ impl Process {
 				}
 			}
 		});
-	}
-
-	/// Tells whether there is a pending signal on the process.
-	pub fn has_pending_signal(&self) -> bool {
-		let signal = self.signal.lock();
-		signal.sigpending.0 & !signal.sigmask.0 != 0
-	}
-
-	/// Wakes up the process if in [`Sleeping`] state.
-	pub fn wake(this: &Arc<Self>) {
-		// TODO make sure the ordering is right
-		let res = this.state.fetch_update(SeqCst, SeqCst, |old_state| {
-			(old_state == State::Sleeping as _).then_some(State::Running as _)
-		});
-		if res.is_err() {
-			return;
-		}
-		#[cfg(feature = "strace")]
-		println!(
-			"[strace {pid}] changed state: {old_state:?} -> {new_state:?}",
-			old_state = State::Sleeping,
-			new_state = State::Running,
-			pid = this.get_pid()
-		);
-		enqueue(this);
 	}
 
 	/// Signals the parent that the `vfork` operation has completed.
@@ -969,6 +962,12 @@ impl Process {
 		self.fs
 			.as_ref()
 			.expect("kernel threads don't have ProcessFS structures")
+	}
+
+	/// Tells whether there is a pending signal on the process.
+	pub fn has_pending_signal(&self) -> bool {
+		let signal = self.signal.lock();
+		signal.sigpending.0 & !signal.sigmask.0 != 0
 	}
 
 	/// Kills the process with the given signal `sig`.
