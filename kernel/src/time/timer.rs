@@ -22,7 +22,7 @@ use super::unit::{ITimerspec32, TimerT};
 use crate::{
 	memory::oom,
 	process::{
-		Process, State,
+		Process,
 		pid::Pid,
 		signal::{SIGEV_NONE, SIGEV_SIGNAL, SIGEV_THREAD, SigEvent, Signal},
 	},
@@ -90,7 +90,7 @@ impl TimerInner {
 			return;
 		};
 		match self.sevp.sigev_notify {
-			SIGEV_NONE => Process::set_state(&proc, State::Running),
+			SIGEV_NONE => Process::wake(&proc),
 			SIGEV_SIGNAL => {
 				let Ok(signal) = Signal::try_from(self.sevp.sigev_signo) else {
 					return;

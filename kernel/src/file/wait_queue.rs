@@ -84,7 +84,7 @@ impl WaitQueue {
 			};
 			break proc;
 		};
-		Process::set_state(&proc, State::Running);
+		Process::wake(&proc);
 	}
 
 	/// Wakes all processes.
@@ -95,7 +95,7 @@ impl WaitQueue {
 				// Process does not exist, try next
 				continue;
 			};
-			Process::set_state(&proc, State::Running);
+			Process::wake(&proc);
 		}
 	}
 }

@@ -805,6 +805,24 @@ impl Process {
 		});
 	}
 
+	/// Wakes up the process if in [`Sleeping`] state.
+	///
+	/// Contrary to [`Self::set_state`], this function does not send a `SIGCHLD` signal
+	pub fn wake(this: &Arc<Self>) {
+		this.lock_state(|old_state| {
+			if unlikely(old_state != State::Sleeping) {
+				return;
+			}
+			this.state.store(STATE_LOCK | State::Running as u8, Relaxed);
+			#[cfg(feature = "strace")]
+			println!(
+				"[strace {pid}] changed state: Sleeping -> Running",
+				pid = this.get_pid()
+			);
+			enqueue(this);
+		});
+	}
+
 	/// Signals the parent that the `vfork` operation has completed.
 	pub fn vfork_wake(&self) {
 		self.vfork_done.store(true, Release);
