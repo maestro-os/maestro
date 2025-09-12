@@ -21,7 +21,7 @@
 use crate::{
 	file::{FileType, fd::FileDescriptorTable, perm::AccessProfile},
 	memory,
-	memory::VirtAddr,
+	memory::{VirtAddr, user::UserSlice},
 	process::mem_space::{MAP_ANONYMOUS, MAP_SHARED, MemSpace, PROT_WRITE},
 	sync::mutex::Mutex,
 	syscall::Args,
@@ -109,6 +109,16 @@ pub fn mmap2(
 pub fn brk(Args(addr): Args<VirtAddr>, mem_space: Arc<MemSpace>) -> EResult<usize> {
 	let addr = mem_space.brk(addr);
 	Ok(addr.0 as _)
+}
+
+pub fn mincore(
+	Args((addr, length, vec)): Args<(VirtAddr, usize, *mut u8)>,
+	mem_space: Arc<MemSpace>,
+) -> EResult<usize> {
+	let pages = length.div_ceil(PAGE_SIZE);
+	let vec = UserSlice::from_user(vec, pages)?;
+	mem_space.mincore(addr, pages, vec)?;
+	Ok(0)
 }
 
 pub fn madvise(

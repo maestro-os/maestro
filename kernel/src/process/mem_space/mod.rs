@@ -36,6 +36,7 @@ use crate::{
 	memory::{
 		COMPAT_PROCESS_END, PROCESS_END, VirtAddr,
 		cache::RcFrame,
+		user::UserSlice,
 		vmem::{KERNEL_VMEM, VMem, shootdown_range},
 	},
 	process::{
@@ -411,6 +412,30 @@ impl MemSpace {
 		transaction.insert_mapping(map)?;
 		transaction.commit();
 		Ok(addr)
+	}
+
+	/// Tells whether memory pages in the given range are resident (won't cause disk I/O on
+	/// access).
+	///
+	/// Arguments:
+	/// - `addr` is the starting address of the range
+	/// - `size` is the number of pages, and bytes in `res`
+	/// - `res` is a bitmap in which the result is written
+	pub fn mincore(&self, addr: VirtAddr, size: usize, res: UserSlice<u8>) -> EResult<()> {
+		let state = self.state.lock();
+		for i in 0..size {
+			let addr = addr + size * PAGE_SIZE;
+			let resident = state
+				.get_mapping_for_addr(addr)
+				.map(|mapping| {
+					let page_offset = (addr.0 - mapping.addr.0) / PAGE_SIZE;
+					let page = mapping.pages.get(page_offset);
+					matches!(page, Some(Some(_)))
+				})
+				.unwrap_or(false);
+			res.copy_to_user(i, &[resident as u8])?;
+		}
+		Ok(())
 	}
 
 	/// Implementation for `unmap`.
