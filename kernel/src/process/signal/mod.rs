@@ -86,14 +86,16 @@ pub enum SignalAction {
 
 impl SignalAction {
 	/// Executes the signal action for the given process.
-	pub fn exec(self, process: &Arc<Process>) {
+	pub fn exec(self, process: &Arc<Process>, sig: Signal) {
 		match self {
 			// TODO when `Abort`ing, dump core
 			SignalAction::Terminate | SignalAction::Abort => {
+				process.signal.lock().termsig = sig as u8;
 				Process::set_state(process, State::Zombie)
 			}
 			SignalAction::Ignore => {}
 			SignalAction::Stop => {
+				process.signal.lock().termsig = sig as u8;
 				Process::set_state(process, State::Stopped);
 				process.parent_event.fetch_or(WUNTRACED as _, Release);
 			}
@@ -364,7 +366,7 @@ impl SignalHandler {
 				// Signals on the init process can be executed only if the process has set a
 				// signal handler
 				if !process.is_init() || !signal.can_catch() {
-					signal.get_default_action().exec(process);
+					signal.get_default_action().exec(process, signal);
 				}
 				return;
 			}
