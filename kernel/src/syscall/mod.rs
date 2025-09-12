@@ -72,7 +72,7 @@ use crate::{
 		getrandom::getrandom,
 		host::{reboot, sethostname, sysinfo, uname},
 		ioctl::ioctl,
-		mem::{brk, madvise, mmap, mmap2, mprotect, munmap},
+		mem::{brk, madvise, mincore, mmap, mmap2, mprotect, munmap},
 		module::{delete_module, finit_module, init_module},
 		mount::{mount, umount, umount2},
 		pipe::{pipe, pipe2},
@@ -558,7 +558,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		// TODO 0x0d7 => syscall!(setfsuid32, frame),
 		// TODO 0x0d8 => syscall!(setfsgid32, frame),
 		// TODO 0x0d9 => syscall!(pivot_root, frame),
-		// TODO 0x0da => syscall!(mincore, frame),
+		0x0da => syscall!(mincore, frame),
 		0x0db => syscall!(madvise, frame),
 		0x0dc => syscall!(getdents64, frame),
 		0x0dd => syscall!(fcntl64, frame),
@@ -815,7 +815,7 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		0x018 => syscall!(sched_yield, frame),
 		// TODO 0x019 => syscall!(mremap, frame),
 		0x01a => syscall!(msync, frame),
-		// TODO 0x01b => syscall!(mincore, frame),
+		0x01b => syscall!(mincore, frame),
 		0x01c => syscall!(madvise, frame),
 		// TODO 0x01d => syscall!(shmget, frame),
 		// TODO 0x01e => syscall!(shmat, frame),
@@ -1178,7 +1178,7 @@ pub extern "C" fn syscall_handler(frame: &mut IntFrame) {
 		let proc = Process::current();
 		#[cfg(feature = "strace")]
 		crate::println!(
-			"[strace PID: {pid}] invalid syscall (ID: 0x{id:x})",
+			"[strace {pid}] invalid syscall (ID: 0x{id:x})",
 			pid = proc.get_pid()
 		);
 		proc.kill(Signal::SIGSYS);
