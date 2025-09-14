@@ -18,13 +18,13 @@
 
 //! `*at` system calls allow to perform operations on files without having to redo the whole
 //! path-resolution each time.
-//!
-//! This module implements utility functions for those system calls.
 
-use crate::file::{
-	fd::FileDescriptorTable,
-	vfs,
-	vfs::{ResolutionSettings, Resolved},
+use crate::{
+	file::{
+		vfs,
+		vfs::{ResolutionSettings, Resolved},
+	},
+	process::Process,
 };
 use core::ffi::c_int;
 use utils::{collections::path::Path, errno, errno::EResult};
@@ -55,7 +55,6 @@ pub const AT_STATX_DONT_SYNC: c_int = 0x4000;
 /// Returns the file for the given path `path`.
 ///
 /// Arguments:
-/// - `fds` is the file descriptors table to use
 /// - `rs` is the path resolution settings to use
 /// - `dirfd` is the file descriptor of the parent directory
 /// - `path` is the path relative to the parent directory
@@ -63,23 +62,24 @@ pub const AT_STATX_DONT_SYNC: c_int = 0x4000;
 ///
 /// **Note**: the `start` field of [`ResolutionSettings`] must be set as it is used as the current
 /// working directory.
-pub fn get_file<'p>(
-	fds: &FileDescriptorTable,
+pub fn get_file(
 	mut rs: ResolutionSettings,
 	dirfd: c_int,
-	path: Option<&'p Path>,
+	path: Option<&Path>,
 	flags: c_int,
-) -> EResult<Resolved<'p>> {
+) -> EResult<Resolved> {
 	// Prepare resolution settings
-	let follow_links = if rs.follow_link {
+	let follow_link = if rs.follow_link {
 		flags & AT_SYMLINK_NOFOLLOW == 0
 	} else {
 		flags & AT_SYMLINK_FOLLOW != 0
 	};
-	rs.follow_link = follow_links;
+	rs.follow_link = follow_link;
 	// If not starting from current directory, get location
 	if dirfd != AT_FDCWD {
-		let cwd = fds
+		let cwd = Process::current()
+			.file_descriptors()
+			.lock()
 			.get_fd(dirfd)?
 			.get_file()
 			.vfs_entry
