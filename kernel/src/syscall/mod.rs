@@ -65,9 +65,9 @@ use crate::{
 		},
 		fs::{
 			access, chdir, chmod, chown, chroot, creat, faccessat, faccessat2, fadvise64_64,
-			fchdir, fchmod, fchmodat, getcwd, lchown, link, linkat, mkdir, mknod, open, openat,
-			readlink, rename, renameat2, rmdir, symlink, symlinkat, truncate, umask, unlink,
-			unlinkat, utimensat,
+			fchdir, fchmod, fchmodat, fchown, fchownat, getcwd, lchown, link, linkat, mkdir,
+			mknod, open, openat, readlink, rename, renameat2, rmdir, symlink, symlinkat, truncate,
+			umask, unlink, unlinkat, utimensat,
 		},
 		getrandom::getrandom,
 		host::{reboot, sethostname, sysinfo, uname},
@@ -107,7 +107,7 @@ use crate::{
 		wait::{wait4, waitpid},
 	},
 };
-use core::{fmt, hint::unlikely, ops::Deref, ptr};
+use core::{fmt, hint::unlikely, ptr};
 use utils::{
 	errno,
 	errno::{ENOSYS, EResult},
@@ -214,7 +214,7 @@ impl FromSyscall for Arc<MemSpace> {
 impl FromSyscall for Arc<Mutex<FileDescriptorTable>> {
 	#[inline]
 	fn from_syscall(_frame: &IntFrame) -> Self {
-		Process::current().file_descriptors.deref().clone().unwrap()
+		Process::current().file_descriptors().clone()
 	}
 }
 
@@ -437,7 +437,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		0x05c => syscall!(truncate, frame),
 		// TODO 0x05d => syscall!(ftruncate, frame),
 		0x05e => syscall!(fchmod, frame),
-		// TODO 0x05f => syscall!(fchown, frame),
+		0x05f => syscall!(fchown, frame),
 		0x060 => syscall!(getpriority, frame),
 		0x061 => syscall!(setpriority, frame),
 		// 0x062: unimplemented (profil),
@@ -634,7 +634,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		0x127 => syscall!(openat, frame),
 		// TODO 0x128 => syscall!(mkdirat, frame),
 		// TODO 0x129 => syscall!(mknodat, frame),
-		// TODO 0x12a => syscall!(fchownat, frame),
+		0x12a => syscall!(fchownat, frame),
 		// TODO 0x12b => syscall!(futimesat, frame),
 		// TODO 0x12c => syscall!(fstatat64, frame),
 		0x12d => syscall!(unlinkat, frame),
@@ -881,7 +881,7 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		0x05a => syscall!(chmod, frame),
 		0x05b => syscall!(fchmod, frame),
 		0x05c => syscall!(chown, frame),
-		// TODO 0x05d => syscall!(fchown, frame),
+		0x05d => syscall!(fchown, frame),
 		0x05e => syscall!(lchown, frame),
 		0x05f => syscall!(umask, frame),
 		// TODO 0x060 => syscall!(gettimeofday, frame),
@@ -1048,7 +1048,7 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		0x101 => syscall!(openat, frame),
 		// TODO 0x102 => syscall!(mkdirat, frame),
 		// TODO 0x103 => syscall!(mknodat, frame),
-		// TODO 0x104 => syscall!(fchownat, frame),
+		0x104 => syscall!(fchownat, frame),
 		// TODO 0x105 => syscall!(futimesat, frame),
 		// TODO 0x106 => syscall!(newfstatat, frame),
 		0x107 => syscall!(unlinkat, frame),

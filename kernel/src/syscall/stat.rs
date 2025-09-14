@@ -330,7 +330,6 @@ pub fn statx(
 		UserPtr<Statx>,
 	)>,
 	rs: ResolutionSettings,
-	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	// Validation
 	if unlikely(pathname.0.is_none() || statxbuff.0.is_none()) {
@@ -342,8 +341,7 @@ pub fn statx(
 		.copy_from_user()?
 		.map(PathBuf::try_from)
 		.transpose()?;
-	let Resolved::Found(file) = at::get_file(&fds.lock(), rs, dirfd, pathname.as_deref(), flags)?
-	else {
+	let Resolved::Found(file) = at::get_file(rs, dirfd, pathname.as_deref(), flags)? else {
 		return Err(errno!(ENOENT));
 	};
 	// Get file's stat
