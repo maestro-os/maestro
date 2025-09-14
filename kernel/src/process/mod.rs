@@ -366,7 +366,7 @@ pub struct Process {
 	/// Filesystem access information.
 	pub fs: Option<Mutex<ProcessFs>>, // TODO rwlock
 	/// The list of open file descriptors with their respective ID.
-	pub file_descriptors: UnsafeMut<Option<Arc<Mutex<FileDescriptorTable>>>>,
+	file_descriptors: UnsafeMut<Option<Arc<Mutex<FileDescriptorTable>>>>,
 	/// Process's timers, shared between all threads of the same process.
 	pub timer_manager: Arc<Mutex<TimerManager>>,
 	/// The process's signal management structure.
@@ -980,6 +980,15 @@ impl Process {
 		self.fs
 			.as_ref()
 			.expect("kernel threads don't have ProcessFS structures")
+	}
+
+	/// Returns a reference to the file descriptors table
+	#[inline]
+	pub fn file_descriptors(&self) -> Arc<Mutex<FileDescriptorTable>> {
+		self.file_descriptors
+			.get()
+			.clone()
+			.expect("kernel threads don't have a file descriptor table")
 	}
 
 	/// Tells whether there is a pending signal on the process.
