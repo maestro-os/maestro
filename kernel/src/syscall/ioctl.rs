@@ -19,9 +19,10 @@
 //! The `ioctl` syscall allows to control a device represented by a file
 //! descriptor.
 
-use crate::{file::fd::FileDescriptorTable, sync::mutex::Mutex, syscall::Args};
+use crate::process::Process;
 use core::ffi::{c_int, c_ulong, c_void};
-use utils::{errno::EResult, ptr::arc::Arc};
+use utils::errno::EResult;
+
 // ioctl requests: hard drive
 
 /// ioctl request: get device geometry.
@@ -116,12 +117,13 @@ impl Request {
 	}
 }
 
-pub(super) fn ioctl(
-	Args((fd, request, argp)): Args<(c_int, c_ulong, *const c_void)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-) -> EResult<usize> {
+pub(super) fn ioctl(fd: c_int, request: c_ulong, argp: *const c_void) -> EResult<usize> {
 	let request = Request::from(request);
-	let fds = fds.lock();
-	let file = fds.get_fd(fd)?.get_file();
-	file.ops.ioctl(file, request, argp).map(|v| v as _)
+	let file = Process::current()
+		.file_descriptors()
+		.lock()
+		.get_fd(fd)?
+		.get_file()
+		.clone();
+	file.ops.ioctl(&file, request, argp).map(|v| v as _)
 }

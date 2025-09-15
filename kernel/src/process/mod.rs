@@ -38,7 +38,6 @@ use crate::{
 		fd::{FileDescriptorTable, NewFDConstraint},
 		perm::AccessProfile,
 		vfs,
-		vfs::ResolutionSettings,
 	},
 	int,
 	int::CallbackResult,
@@ -65,6 +64,7 @@ use core::{
 	hint,
 	hint::unlikely,
 	mem,
+	ops::Deref,
 	ptr::NonNull,
 	sync::atomic::{
 		AtomicBool, AtomicI8, AtomicPtr, AtomicU8, AtomicU16, AtomicU32,
@@ -236,8 +236,6 @@ pub struct ProcessLinks {
 pub struct ProcessFs {
 	/// The process's access profile, containing user and group IDs.
 	pub access_profile: AccessProfile,
-	/// The process's current umask.
-	pub umask: AtomicU32,
 	/// Current working directory
 	///
 	/// The field contains both the path and the directory.
@@ -246,18 +244,10 @@ pub struct ProcessFs {
 	pub chroot: Arc<vfs::Entry>,
 }
 
-impl ProcessFs {
-	/// Returns the current umask.
-	pub fn umask(&self) -> file::Mode {
-		self.umask.load(Acquire)
-	}
-}
-
 impl Clone for ProcessFs {
 	fn clone(&self) -> Self {
 		Self {
 			access_profile: self.access_profile,
-			umask: AtomicU32::new(self.umask.load(Acquire)),
 			cwd: self.cwd.clone(),
 			chroot: self.chroot.clone(),
 		}
@@ -362,11 +352,13 @@ pub struct Process {
 	pub tls: Mutex<[gdt::Entry; TLS_ENTRIES_COUNT]>, // TODO rwlock
 
 	/// The virtual memory of the process.
-	pub mem_space: UnsafeMut<Option<Arc<MemSpace>>>,
+	mem_space: UnsafeMut<Option<Arc<MemSpace>>>,
 	/// Filesystem access information.
 	pub fs: Option<Mutex<ProcessFs>>, // TODO rwlock
+	/// The process's current umask.
+	pub umask: AtomicU32,
 	/// The list of open file descriptors with their respective ID.
-	file_descriptors: UnsafeMut<Option<Arc<Mutex<FileDescriptorTable>>>>,
+	fd_table: UnsafeMut<Option<Arc<Mutex<FileDescriptorTable>>>>,
 	/// Process's timers, shared between all threads of the same process.
 	pub timer_manager: Arc<Mutex<TimerManager>>,
 	/// The process's signal management structure.
@@ -537,7 +529,8 @@ impl Process {
 			// Not needed for kernel threads
 			mem_space: Default::default(),
 			fs: None,
-			file_descriptors: Default::default(),
+			umask: Default::default(),
+			fd_table: Default::default(),
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(0)?))?,
 			signal: Mutex::new(ProcessSignal::new()?),
 			parent_event: Default::default(),
@@ -564,28 +557,24 @@ impl Process {
 	///
 	/// The process is set to state [`State::Running`] by default and has user root.
 	pub fn init() -> EResult<Arc<Self>> {
-		let rs = ResolutionSettings::kernel_follow();
 		// Create the default file descriptors table
-		let file_descriptors = {
-			let mut fds_table = FileDescriptorTable::default();
-			let tty_path = PathBuf::try_from(TTY_DEVICE_PATH.as_bytes())?;
-			let tty_ent = vfs::get_file_from_path(&tty_path, &rs)?;
-			let tty_file = File::open_entry(tty_ent, O_RDWR)?;
-			let (stdin_fd_id, _) = fds_table.create_fd(0, tty_file)?;
-			assert_eq!(stdin_fd_id, STDIN_FILENO);
-			fds_table.duplicate_fd(
-				STDIN_FILENO as _,
-				NewFDConstraint::Fixed(STDOUT_FILENO as _),
-				false,
-			)?;
-			fds_table.duplicate_fd(
-				STDIN_FILENO as _,
-				NewFDConstraint::Fixed(STDERR_FILENO as _),
-				false,
-			)?;
-			fds_table
-		};
-		let root_dir = vfs::get_file_from_path(Path::root(), &rs)?;
+		let mut fd_table = FileDescriptorTable::default();
+		let tty_path = PathBuf::try_from(TTY_DEVICE_PATH.as_bytes())?;
+		let tty_ent = vfs::get_file_from_path(&tty_path, true)?;
+		let tty_file = File::open_entry(tty_ent, O_RDWR)?;
+		let (stdin_fd_id, _) = fd_table.create_fd(0, tty_file)?;
+		assert_eq!(stdin_fd_id, STDIN_FILENO);
+		fd_table.duplicate_fd(
+			STDIN_FILENO as _,
+			NewFDConstraint::Fixed(STDOUT_FILENO as _),
+			false,
+		)?;
+		fd_table.duplicate_fd(
+			STDIN_FILENO as _,
+			NewFDConstraint::Fixed(STDERR_FILENO as _),
+			false,
+		)?;
+		let root_dir = vfs::get_file_from_path(Path::root(), false)?;
 		let proc = Arc::new(Self {
 			pid: PidHandle::mark_used(INIT_PID)?,
 			tid: INIT_PID,
@@ -609,12 +598,12 @@ impl Process {
 
 			mem_space: UnsafeMut::new(None),
 			fs: Some(Mutex::new(ProcessFs {
-				access_profile: rs.access_profile,
-				umask: AtomicU32::new(DEFAULT_UMASK),
+				access_profile: AccessProfile::KERNEL,
 				cwd: root_dir.clone(),
 				chroot: root_dir,
 			})),
-			file_descriptors: UnsafeMut::new(Some(Arc::new(Mutex::new(file_descriptors))?)),
+			umask: AtomicU32::new(DEFAULT_UMASK),
+			fd_table: UnsafeMut::new(Some(Arc::new(Mutex::new(fd_table))?)),
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(INIT_PID)?))?,
 			signal: Mutex::new(ProcessSignal {
 				handlers: Arc::new(Default::default())?,
@@ -776,7 +765,7 @@ impl Process {
 				unsafe {
 					//this.mem_space = None; // TODO Handle the case where the memory space is
 					// bound
-					*this.file_descriptors.get_mut() = None;
+					*this.fd_table.get_mut() = None;
 				}
 				// Attach every child to the init process
 				let init_proc = Process::get_by_pid(INIT_PID).unwrap();
@@ -879,10 +868,10 @@ impl Process {
 		};
 		// Clone file descriptors
 		let file_descriptors = if fork_options.share_fd {
-			parent.file_descriptors.get().clone()
+			parent.fd_table.get().clone()
 		} else {
 			parent
-				.file_descriptors
+				.fd_table
 				.as_ref()
 				.map(|fds| -> EResult<_> {
 					let fds = fds.lock();
@@ -942,7 +931,8 @@ impl Process {
 
 			mem_space: UnsafeMut::new(Some(mem_space)),
 			fs: Some(Mutex::new(parent.fs().lock().clone())),
-			file_descriptors: UnsafeMut::new(file_descriptors),
+			umask: AtomicU32::new(parent.umask.load(Relaxed)),
+			fd_table: UnsafeMut::new(file_descriptors),
 			// TODO if creating a thread: timer_manager: parent.timer_manager.clone(),
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid_int)?))?,
 			signal: Mutex::new(ProcessSignal {
@@ -972,6 +962,23 @@ impl Process {
 		Ok(proc)
 	}
 
+	/// Returns the process's memory space.
+	///
+	/// If the process is a kernel thread, the function panics.
+	#[inline]
+	pub fn mem_space(&self) -> &Arc<MemSpace> {
+		self.mem_space
+			.get()
+			.as_ref()
+			.expect("kernel threads don't have a memory space")
+	}
+
+	/// Returns the process's memory space if any.
+	#[inline]
+	pub fn mem_space_opt(&self) -> &Option<Arc<MemSpace>> {
+		self.mem_space.deref()
+	}
+
 	/// Returns the process's [`ProcessFs`].
 	///
 	/// If the process is a kernel thread, the function panics.
@@ -982,10 +989,16 @@ impl Process {
 			.expect("kernel threads don't have ProcessFS structures")
 	}
 
+	/// Returns the umask
+	#[inline]
+	pub fn umask(&self) -> u32 {
+		self.umask.load(Acquire)
+	}
+
 	/// Returns a reference to the file descriptors table
 	#[inline]
 	pub fn file_descriptors(&self) -> Arc<Mutex<FileDescriptorTable>> {
-		self.file_descriptors
+		self.fd_table
 			.get()
 			.clone()
 			.expect("kernel threads don't have a file descriptor table")

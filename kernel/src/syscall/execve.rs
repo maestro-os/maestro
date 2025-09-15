@@ -18,14 +18,13 @@
 
 //! The `execve` system call allows to execute a program from a file.
 
-use super::Args;
 use crate::{
 	arch::x86::idt::IntFrame,
-	file::{File, O_RDONLY, vfs, vfs::ResolutionSettings},
+	file::{File, O_RDONLY, perm::AccessProfile, vfs},
 	memory::user::{UserArray, UserSlice, UserString},
 	process::{
 		Process,
-		exec::{ExecInfo, elf, exec},
+		exec::{elf, exec},
 		scheduler::switch::init_ctx,
 	},
 };
@@ -76,17 +75,17 @@ impl Default for ShebangBuffer {
 /// - `argv` is an iterator over the arguments passed to the system call.
 fn get_file<A: Iterator<Item = EResult<String>>>(
 	path: &Path,
-	rs: &ResolutionSettings,
 	argv: A,
 ) -> EResult<(Arc<vfs::Entry>, Vec<String>)> {
+	let ap = AccessProfile::cur_task();
 	let mut shebangs: [ShebangBuffer; INTERP_MAX] = Default::default();
 	// Read and parse shebangs
-	let mut ent = vfs::get_file_from_path(path, rs)?;
+	let mut ent = vfs::get_file_from_path(path, true)?;
 	let mut i = 0;
 	loop {
 		// Check permission
 		let stat = ent.stat();
-		if !rs.access_profile.can_read_file(&stat) || !rs.access_profile.can_execute_file(&stat) {
+		if !ap.can_read_file(&stat) || !ap.can_execute_file(&stat) {
 			return Err(errno!(EACCES));
 		}
 		// Read file
@@ -111,7 +110,7 @@ fn get_file<A: Iterator<Item = EResult<String>>>(
 			return Err(errno!(ELOOP));
 		}
 		// Read interpreter
-		ent = vfs::get_file_from_path(interp_path, rs)?;
+		ent = vfs::get_file_from_path(interp_path, true)?;
 	}
 	// Build arguments
 	let final_argv = shebangs[..i]
@@ -135,8 +134,9 @@ fn get_file<A: Iterator<Item = EResult<String>>>(
 }
 
 pub fn execve(
-	Args((pathname, argv, envp)): Args<(UserString, UserArray, UserArray)>,
-	rs: ResolutionSettings,
+	pathname: UserString,
+	argv: UserArray,
+	envp: UserArray,
 	frame: &mut IntFrame,
 ) -> EResult<usize> {
 	// Use scope to drop everything before calling `init_ctx`
@@ -144,16 +144,9 @@ pub fn execve(
 		let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 		let path = PathBuf::try_from(path)?;
 		let argv = argv.iter();
-		let (file, argv) = get_file(&path, &rs, argv)?;
+		let (file, argv) = get_file(&path, argv)?;
 		let envp = envp.iter().collect::<EResult<CollectResult<Vec<_>>>>()?.0?;
-		let program_image = elf::exec(
-			file,
-			ExecInfo {
-				path_resolution: &rs,
-				argv,
-				envp,
-			},
-		)?;
+		let program_image = elf::exec(file, argv, envp)?;
 		let proc = Process::current();
 		exec(&proc, frame, program_image)?;
 	}

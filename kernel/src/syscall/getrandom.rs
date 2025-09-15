@@ -18,11 +18,11 @@
 
 //! The `getrandom` system call allows to get random bytes.
 
-use crate::{memory::user::UserSlice, rand, syscall::Args};
+use crate::{memory::user::UserSlice, rand};
 use core::ffi::c_uint;
 use utils::errno::EResult;
 
-pub fn getrandom(Args((buf, buflen, flags)): Args<(*mut u8, usize, c_uint)>) -> EResult<usize> {
+pub fn getrandom(buf: *mut u8, buflen: usize, flags: c_uint) -> EResult<usize> {
 	let buf = UserSlice::from_user(buf, buflen)?;
 	rand::getrandom(buf, flags)
 }

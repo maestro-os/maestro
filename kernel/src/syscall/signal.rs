@@ -27,7 +27,7 @@ use crate::{
 		pid::{INIT_PID, Pid},
 		signal::{CompatSigAction, SigAction, SigSet, Signal, SignalHandler, ucontext},
 	},
-	syscall::{Args, FromSyscallArg},
+	syscall::FromSyscallArg,
 };
 use core::{
 	ffi::{c_int, c_void},
@@ -35,7 +35,7 @@ use core::{
 	hint::unlikely,
 	mem,
 };
-use utils::{errno, errno::EResult, ptr::arc::Arc};
+use utils::{errno, errno::EResult};
 
 /// Performs the union of the given mask with the current mask.
 const SIG_BLOCK: i32 = 0;
@@ -44,16 +44,12 @@ const SIG_UNBLOCK: i32 = 1;
 /// Sets the mask with the given one.
 const SIG_SETMASK: i32 = 2;
 
-pub fn signal(
-	Args((signum, handler)): Args<(c_int, *const c_void)>,
-	proc: Arc<Process>,
-) -> EResult<usize> {
+pub fn signal(signum: c_int, handler: *const c_void) -> EResult<usize> {
+	let proc = Process::current();
+	let signals = proc.signal.lock();
 	let signal = Signal::try_from(signum)?;
 	let new_handler = SignalHandler::from_legacy(handler);
-	let old_handler = mem::replace(
-		&mut proc.signal.lock().handlers.lock()[signal as usize],
-		new_handler,
-	);
+	let old_handler = mem::replace(&mut signals.handlers.lock()[signal as usize], new_handler);
 	Ok(old_handler.to_legacy() as _)
 }
 
@@ -61,52 +57,57 @@ fn do_rt_sigaction<S: Debug + From<SigAction> + Into<SigAction>>(
 	signum: c_int,
 	act: UserPtr<S>,
 	oldact: UserPtr<S>,
-	proc: Arc<Process>,
 ) -> EResult<usize> {
+	let proc = Process::current();
+	let signals = proc.signal.lock();
+	let mut handlers = signals.handlers.lock();
 	let signal = Signal::try_from(signum)?;
-	let signal_manager = proc.signal.lock();
-	let mut signal_handlers = signal_manager.handlers.lock();
 	// Save the old structure
-	let old = signal_handlers[signal as usize].get_action().into();
+	let old = handlers[signal as usize].get_action().into();
 	oldact.copy_to_user(&old)?;
 	// Set the new structure
 	if let Some(new) = act.copy_from_user()? {
-		signal_handlers[signal as usize] = SignalHandler::from(new.into());
+		handlers[signal as usize] = SignalHandler::from(new.into());
 	}
 	Ok(0)
 }
 
 pub fn rt_sigaction(
-	Args((signum, act, oldact)): Args<(c_int, UserPtr<SigAction>, UserPtr<SigAction>)>,
-	proc: Arc<Process>,
+	signum: c_int,
+	act: UserPtr<SigAction>,
+	oldact: UserPtr<SigAction>,
 ) -> EResult<usize> {
-	do_rt_sigaction(signum, act, oldact, proc)
+	do_rt_sigaction(signum, act, oldact)
 }
 
 pub fn compat_rt_sigaction(
-	Args((signum, act, oldact)): Args<(c_int, UserPtr<CompatSigAction>, UserPtr<CompatSigAction>)>,
-	proc: Arc<Process>,
+	signum: c_int,
+	act: UserPtr<CompatSigAction>,
+	oldact: UserPtr<CompatSigAction>,
 ) -> EResult<usize> {
-	do_rt_sigaction(signum, act, oldact, proc)
+	do_rt_sigaction(signum, act, oldact)
 }
 
 pub fn rt_sigprocmask(
-	Args((how, set, oldset, sigsetsize)): Args<(c_int, UserPtr<SigSet>, UserPtr<SigSet>, usize)>,
-	proc: Arc<Process>,
+	how: c_int,
+	set: UserPtr<SigSet>,
+	oldset: UserPtr<SigSet>,
+	sigsetsize: usize,
 ) -> EResult<usize> {
 	// Validation
 	if unlikely(sigsetsize != size_of::<SigSet>()) {
 		return Err(errno!(EINVAL));
 	}
-	let mut signal_manager = proc.signal.lock();
+	let proc = Process::current();
+	let mut signals = proc.signal.lock();
 	// Save old set
-	oldset.copy_to_user(&signal_manager.sigmask)?;
+	oldset.copy_to_user(&signals.sigmask)?;
 	// Apply new set
 	if let Some(set) = set.copy_from_user()? {
 		match how {
-			SIG_BLOCK => signal_manager.sigmask.0 |= set.0,
-			SIG_UNBLOCK => signal_manager.sigmask.0 &= !set.0,
-			SIG_SETMASK => signal_manager.sigmask.0 = set.0,
+			SIG_BLOCK => signals.sigmask.0 |= set.0,
+			SIG_UNBLOCK => signals.sigmask.0 &= !set.0,
+			SIG_SETMASK => signals.sigmask.0 = set.0,
 			_ => return Err(errno!(EINVAL)),
 		}
 	}
@@ -195,7 +196,7 @@ fn try_kill_group(pid: i32, sig: Option<Signal>) -> EResult<()> {
 		.try_for_each(|pid| try_kill(*pid as _, sig))
 }
 
-pub fn kill(Args((pid, sig)): Args<(c_int, c_int)>) -> EResult<usize> {
+pub fn kill(pid: c_int, sig: c_int) -> EResult<usize> {
 	let sig = (sig != 0).then(|| Signal::try_from(sig)).transpose()?;
 	match pid {
 		// Kill the process with the given PID
@@ -219,13 +220,10 @@ pub fn kill(Args((pid, sig)): Args<(c_int, c_int)>) -> EResult<usize> {
 	Ok(0)
 }
 
-pub fn tkill(
-	Args((tid, sig)): Args<(Pid, c_int)>,
-	access_profile: AccessProfile,
-) -> EResult<usize> {
+pub fn tkill(tid: Pid, sig: c_int) -> EResult<usize> {
 	let signal = Signal::try_from(sig)?;
 	let thread = Process::get_by_tid(tid).ok_or(errno!(ESRCH))?;
-	if !access_profile.can_kill(&thread) {
+	if !AccessProfile::cur_task().can_kill(&thread) {
 		return Err(errno!(EPERM));
 	}
 	thread.kill(signal);

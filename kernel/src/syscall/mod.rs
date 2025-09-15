@@ -111,7 +111,6 @@ use core::{fmt, hint::unlikely, ptr};
 use utils::{
 	errno,
 	errno::{ENOSYS, EResult},
-	ptr::arc::Arc,
 };
 
 /// The ID of the `sigreturn` system call, for use by the signal trampoline.
@@ -135,19 +134,21 @@ macro_rules! impl_syscall_handler {
 		// Implementation **without** trailing reference to frame
         impl<F, $($ty,)*> SyscallHandler<($($ty,)*)> for F
         where F: FnOnce($($ty,)*) -> EResult<usize>,
-			$($ty: FromSyscall,)*
+			$($ty: FromSyscallArg,)*
         {
-			#[allow(non_snake_case, unused_variables)]
+			#[allow(non_snake_case, unused)]
             fn call(self, name: &str, frame: &mut IntFrame) -> EResult<usize> {
+				let mut cursor = 0;
+                $(
+                    let $ty = $ty::from_syscall_arg(frame.get_syscall_arg(cursor), frame.is_compat());
+					cursor += 1;
+                )*
 				#[cfg(feature = "strace")]
 				let pid = {
 					let pid = Process::current().get_pid();
-					print!("[strace {pid}] {name}");
+					print!("[strace {pid}] {name}{args:?}", args = ($(&$ty,)*));
 					pid
 				};
-                $(
-                    let $ty = $ty::from_syscall(frame);
-                )*
                 let res = self($($ty,)*);
 				#[cfg(feature = "strace")]
 				println!("[strace {pid}] -> {res:?}");
@@ -159,19 +160,21 @@ macro_rules! impl_syscall_handler {
 		#[allow(unused_parens)]
         impl<F, $($ty,)*> SyscallHandler<($($ty,)* &mut IntFrame)> for F
         where F: FnOnce($($ty,)* &mut IntFrame) -> EResult<usize>,
-			$($ty: FromSyscall,)*
+			$($ty: FromSyscallArg,)*
         {
-			#[allow(non_snake_case, unused_variables)]
+			#[allow(non_snake_case, unused)]
             fn call(self, name: &str, frame: &mut IntFrame) -> EResult<usize> {
+				let mut cursor = 0;
+                $(
+                    let $ty = $ty::from_syscall_arg(frame.get_syscall_arg(cursor), frame.is_compat());
+					cursor += 1;
+                )*
 				#[cfg(feature = "strace")]
 				let pid = {
 					let pid = Process::current().get_pid();
-					print!("[strace {pid}] {name}");
+					print!("[strace {pid}] {name}{args:?}", args = ($(&$ty,)*));
 					pid
 				};
-                $(
-                    let $ty = $ty::from_syscall(frame);
-                )*
                 let res = self($($ty,)* frame);
 				#[cfg(feature = "strace")]
 				println!("[strace {pid}] -> {res:?}");
@@ -190,96 +193,6 @@ impl_syscall_handler!(T1, T2, T3, T4, T5);
 impl_syscall_handler!(T1, T2, T3, T4, T5, T6);
 impl_syscall_handler!(T1, T2, T3, T4, T5, T6, T7);
 impl_syscall_handler!(T1, T2, T3, T4, T5, T6, T7, T8);
-
-/// Extracts a value from the process that made a system call.
-pub trait FromSyscall {
-	/// Constructs the value from the given process or syscall argument value.
-	fn from_syscall(frame: &IntFrame) -> Self;
-}
-
-impl FromSyscall for Arc<Process> {
-	#[inline]
-	fn from_syscall(_frame: &IntFrame) -> Self {
-		Process::current()
-	}
-}
-
-impl FromSyscall for Arc<MemSpace> {
-	#[inline]
-	fn from_syscall(_frame: &IntFrame) -> Self {
-		Process::current().mem_space.as_ref().unwrap().clone()
-	}
-}
-
-impl FromSyscall for Arc<Mutex<FileDescriptorTable>> {
-	#[inline]
-	fn from_syscall(_frame: &IntFrame) -> Self {
-		Process::current().file_descriptors().clone()
-	}
-}
-
-impl FromSyscall for AccessProfile {
-	fn from_syscall(_frame: &IntFrame) -> Self {
-		Process::current().fs().lock().access_profile
-	}
-}
-
-impl FromSyscall for ResolutionSettings {
-	fn from_syscall(_frame: &IntFrame) -> Self {
-		ResolutionSettings::for_process(&Process::current(), true)
-	}
-}
-
-/// The umask of the process performing the system call.
-pub struct Umask(Mode);
-
-impl FromSyscall for Umask {
-	fn from_syscall(_frame: &IntFrame) -> Self {
-		Self(Process::current().fs().lock().umask())
-	}
-}
-
-/// System call arguments.
-#[derive(Debug)]
-pub struct Args<T: fmt::Debug>(pub T);
-
-impl<T: FromSyscallArg> FromSyscall for Args<T> {
-	fn from_syscall(frame: &IntFrame) -> Self {
-		let arg = T::from_syscall_arg(frame.get_syscall_arg(0), frame.is_compat());
-		#[cfg(feature = "strace")]
-		println!("({arg:?})");
-		Self(arg)
-	}
-}
-
-macro_rules! impl_from_syscall_args {
-    ($($ty:ident),*) => {
-		impl<$($ty: FromSyscallArg,)*> FromSyscall for Args<($($ty,)*)> {
-			#[inline]
-			#[allow(non_snake_case, unused_variables, unused_mut, unused_assignments)]
-			fn from_syscall(
-				frame: &IntFrame,
-			) -> Self {
-				let mut cursor = 0;
-                $(
-                    let $ty = $ty::from_syscall_arg(frame.get_syscall_arg(cursor), frame.is_compat());
-					cursor += 1;
-                )*
-				let args = ($($ty,)*);
-				#[cfg(feature = "strace")]
-				println!("{args:?}");
-				Args(args)
-			}
-		}
-	};
-}
-
-impl_from_syscall_args!(T1);
-impl_from_syscall_args!(T1, T2);
-impl_from_syscall_args!(T1, T2, T3);
-impl_from_syscall_args!(T1, T2, T3, T4);
-impl_from_syscall_args!(T1, T2, T3, T4, T5);
-impl_from_syscall_args!(T1, T2, T3, T4, T5, T6);
 
 /// A value that can be constructed from a system call argument.
 ///

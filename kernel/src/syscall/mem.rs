@@ -19,19 +19,20 @@
 //! Memory management system calls.
 
 use crate::{
-	file::{FileType, fd::FileDescriptorTable, perm::AccessProfile},
+	file::FileType,
 	memory,
 	memory::{VirtAddr, user::UserSlice},
-	process::mem_space::{MAP_ANONYMOUS, MAP_SHARED, MemSpace, PROT_WRITE},
-	sync::mutex::Mutex,
-	syscall::Args,
+	process::{
+		Process,
+		mem_space::{MAP_ANONYMOUS, MAP_SHARED, PROT_WRITE},
+	},
 };
 use core::{
 	ffi::{c_int, c_void},
 	hint::unlikely,
 	num::NonZeroUsize,
 };
-use utils::{errno, errno::EResult, limits::PAGE_SIZE, ptr::arc::Arc};
+use utils::{errno, errno::EResult, limits::PAGE_SIZE};
 
 /// Performs the `mmap` system call.
 #[allow(clippy::too_many_arguments)]
@@ -42,8 +43,6 @@ pub fn do_mmap(
 	flags: i32,
 	fd: i32,
 	offset: u64,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-	mem_space: Arc<MemSpace>,
 ) -> EResult<usize> {
 	// The length in number of pages
 	let pages = length.div_ceil(PAGE_SIZE);
@@ -60,7 +59,12 @@ pub fn do_mmap(
 			return Err(errno!(EINVAL));
 		}
 		// Get file
-		let file = fds.lock().get_fd(fd)?.get_file().clone();
+		let file = Process::current()
+			.file_descriptors()
+			.lock()
+			.get_fd(fd)?
+			.get_file()
+			.clone();
 		// Check permissions
 		if unlikely(file.stat()?.get_type() != Some(FileType::Regular)) {
 			return Err(errno!(EACCES));
@@ -72,80 +76,62 @@ pub fn do_mmap(
 	} else {
 		None
 	};
-	let addr = mem_space.map(addr, pages, prot, flags, file, offset)?;
+	let addr = Process::current()
+		.mem_space()
+		.map(addr, pages, prot, flags, file, offset)?;
 	Ok(addr.0 as _)
 }
 
 pub fn mmap(
-	Args((addr, length, prot, flags, fd, offset)): Args<(
-		VirtAddr,
-		usize,
-		c_int,
-		c_int,
-		c_int,
-		u64,
-	)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-	mem_space: Arc<MemSpace>,
+	addr: VirtAddr,
+	length: usize,
+	prot: c_int,
+	flags: c_int,
+	fd: c_int,
+	offset: u64,
 ) -> EResult<usize> {
-	do_mmap(addr, length, prot, flags, fd, offset as _, fds, mem_space)
+	do_mmap(addr, length, prot, flags, fd, offset as _)
 }
 
 pub fn mmap2(
-	Args((addr, length, prot, flags, fd, offset)): Args<(
-		VirtAddr,
-		usize,
-		c_int,
-		c_int,
-		c_int,
-		u64,
-	)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-	mem_space: Arc<MemSpace>,
+	addr: VirtAddr,
+	length: usize,
+	prot: c_int,
+	flags: c_int,
+	fd: c_int,
+	offset: u64,
 ) -> EResult<usize> {
-	do_mmap(addr, length, prot, flags, fd, offset * 4096, fds, mem_space)
+	do_mmap(addr, length, prot, flags, fd, offset * 4096)
 }
 
-pub fn brk(Args(addr): Args<VirtAddr>, mem_space: Arc<MemSpace>) -> EResult<usize> {
-	let addr = mem_space.brk(addr);
+pub fn brk(addr: VirtAddr) -> EResult<usize> {
+	let addr = Process::current().mem_space().brk(addr);
 	Ok(addr.0 as _)
 }
 
-pub fn mincore(
-	Args((addr, length, vec)): Args<(VirtAddr, usize, *mut u8)>,
-	mem_space: Arc<MemSpace>,
-) -> EResult<usize> {
+pub fn mincore(addr: VirtAddr, length: usize, vec: *mut u8) -> EResult<usize> {
 	let pages = length.div_ceil(PAGE_SIZE);
 	let vec = UserSlice::from_user(vec, pages)?;
-	mem_space.mincore(addr, pages, vec)?;
+	Process::current().mem_space().mincore(addr, pages, vec)?;
 	Ok(0)
 }
 
-pub fn madvise(
-	Args((_addr, _length, _advice)): Args<(*mut c_void, usize, c_int)>,
-) -> EResult<usize> {
+pub fn madvise(_addr: *mut c_void, _length: usize, _advice: c_int) -> EResult<usize> {
 	// TODO
 	Ok(0)
 }
 
-pub fn mprotect(
-	Args((addr, len, prot)): Args<(*mut c_void, usize, c_int)>,
-	mem_space: Arc<MemSpace>,
-	ap: AccessProfile,
-) -> EResult<usize> {
+pub fn mprotect(addr: *mut c_void, len: usize, prot: c_int) -> EResult<usize> {
 	// Check alignment of `addr` and `length`
 	if !addr.is_aligned_to(PAGE_SIZE) || len == 0 {
 		return Err(errno!(EINVAL));
 	}
 	let prot = prot as u8;
-	mem_space.set_prot(addr, len, prot, &ap)?;
+	Process::current().mem_space().set_prot(addr, len, prot)?;
 	Ok(0)
 }
 
-pub fn munmap(
-	Args((addr, length)): Args<(VirtAddr, usize)>,
-	mem_space: Arc<MemSpace>,
-) -> EResult<usize> {
+pub fn munmap(addr: VirtAddr, length: usize) -> EResult<usize> {
 	// Check address alignment
 	if !addr.is_aligned_to(PAGE_SIZE) || length == 0 {
 		return Err(errno!(EINVAL));
@@ -160,6 +146,8 @@ pub fn munmap(
 	if unlikely(end > memory::PROCESS_END.0) {
 		return Err(errno!(EINVAL));
 	}
-	mem_space.unmap(addr, NonZeroUsize::new(pages).unwrap())?;
+	Process::current()
+		.mem_space()
+		.unmap(addr, NonZeroUsize::new(pages).unwrap())?;
 	Ok(0)
 }

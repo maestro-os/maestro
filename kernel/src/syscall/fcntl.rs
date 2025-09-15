@@ -19,15 +19,11 @@
 //! The `fcntl` syscall call allows to manipulate a file descriptor.
 
 use crate::{
-	file::{
-		fd::{FileDescriptorTable, NewFDConstraint},
-		pipe::PipeBuffer,
-	},
-	sync::mutex::Mutex,
-	syscall::Args,
+	file::{fd::NewFDConstraint, pipe::PipeBuffer},
+	process::Process,
 };
 use core::ffi::{c_int, c_void};
-use utils::{errno, errno::EResult, ptr::arc::Arc};
+use utils::{errno, errno::EResult};
 
 /// Duplicate the file descriptor using the lowest numbered available file descriptor greater than
 /// or equal to the specified argument.
@@ -134,13 +130,9 @@ const F_SEAL_WRITE: c_int = 8;
 /// Performs the fcntl system call.
 ///
 /// `fcntl64` tells whether this is the `fcntl64` system call.
-pub fn do_fcntl(
-	fd: c_int,
-	cmd: c_int,
-	arg: *mut c_void,
-	_fcntl64: bool,
-	fds: &mut FileDescriptorTable,
-) -> EResult<usize> {
+pub fn do_fcntl(fd: c_int, cmd: c_int, arg: *mut c_void, _fcntl64: bool) -> EResult<usize> {
+	let fds_mutex = Process::current().file_descriptors();
+	let mut fds = fds_mutex.lock();
 	match cmd {
 		F_DUPFD => {
 			let (id, _) = fds.duplicate_fd(fd as _, NewFDConstraint::Min(arg as _), false)?;
@@ -200,16 +192,10 @@ pub fn do_fcntl(
 	}
 }
 
-pub fn fcntl(
-	Args((fd, cmd, arg)): Args<(c_int, c_int, *mut c_void)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-) -> EResult<usize> {
-	do_fcntl(fd, cmd, arg, false, &mut fds.lock())
+pub fn fcntl(fd: c_int, cmd: c_int, arg: *mut c_void) -> EResult<usize> {
+	do_fcntl(fd, cmd, arg, false)
 }
 
-pub fn fcntl64(
-	Args((fd, cmd, arg)): Args<(c_int, c_int, *mut c_void)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-) -> EResult<usize> {
-	do_fcntl(fd, cmd, arg, true, &mut fds.lock())
+pub fn fcntl64(fd: c_int, cmd: c_int, arg: *mut c_void) -> EResult<usize> {
+	do_fcntl(fd, cmd, arg, true)
 }

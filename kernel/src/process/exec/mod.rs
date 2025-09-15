@@ -29,26 +29,11 @@ pub mod vdso;
 
 use crate::{
 	arch::x86::idt::IntFrame,
-	file::vfs::ResolutionSettings,
 	memory::VirtAddr,
 	process::{Process, mem_space::MemSpace, scheduler::cpu::per_cpu},
 	sync::mutex::Mutex,
 };
-use utils::{
-	collections::{string::String, vec::Vec},
-	errno::EResult,
-	ptr::arc::Arc,
-};
-
-/// Information to prepare a program image to be executed.
-pub struct ExecInfo<'s> {
-	/// Path resolution settings.
-	pub path_resolution: &'s ResolutionSettings,
-	/// The list of arguments.
-	pub argv: Vec<String>,
-	/// The list of environment variables.
-	pub envp: Vec<String>,
-}
+use utils::{errno::EResult, ptr::arc::Arc};
 
 /// A built program image.
 pub struct ProgramImage {
@@ -70,7 +55,7 @@ pub struct ProgramImage {
 pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResult<()> {
 	// Preform all fallible operations first before touching the process
 	let fds = proc
-		.file_descriptors
+		.fd_table
 		.as_ref()
 		.map(|fds_mutex| -> EResult<_> {
 			let fds = fds_mutex.lock();
@@ -83,7 +68,7 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 	MemSpace::bind(&image.mem_space);
 	// Safe because no other thread can execute this function at the same time for the same process
 	unsafe {
-		*proc.file_descriptors.get_mut() = fds;
+		*proc.fd_table.get_mut() = fds;
 		*proc.mem_space.get_mut() = Some(image.mem_space);
 	}
 	// Reset signals

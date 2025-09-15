@@ -21,7 +21,6 @@
 use crate::{
 	memory::user::UserPtr,
 	process::{Process, State, pid::Pid, rusage::Rusage, scheduler::schedule},
-	syscall::Args,
 };
 use core::{
 	ffi::c_int,
@@ -165,15 +164,16 @@ pub fn do_waitpid(
 }
 
 #[allow(missing_docs)]
-pub fn waitpid(
-	Args((pid, wstatus, options)): Args<(c_int, UserPtr<c_int>, c_int)>,
-) -> EResult<usize> {
+pub fn waitpid(pid: c_int, wstatus: UserPtr<c_int>, options: c_int) -> EResult<usize> {
 	do_waitpid(pid, wstatus, options | WEXITED, UserPtr(None))
 }
 
 #[allow(missing_docs)]
 pub fn wait4(
-	Args((pid, wstatus, options, rusage)): Args<(c_int, UserPtr<c_int>, c_int, UserPtr<Rusage>)>,
+	pid: c_int,
+	wstatus: UserPtr<c_int>,
+	options: c_int,
+	rusage: UserPtr<Rusage>,
 ) -> EResult<usize> {
 	do_waitpid(pid, wstatus, options | WEXITED, rusage)
 }

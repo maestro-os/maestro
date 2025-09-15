@@ -20,11 +20,8 @@
 //! writable or for an exception to occur.
 
 use crate::{
-	file::fd::FileDescriptorTable,
 	memory::user::{UserPtr, UserSlice},
-	process::scheduler::schedule,
-	sync::mutex::Mutex,
-	syscall::Args,
+	process::{Process, scheduler::schedule},
 	time::{
 		clock::{Clock, current_time_ms, current_time_ns},
 		unit::{TimeUnit, Timespec, Timestamp, Timeval},
@@ -34,7 +31,7 @@ use core::{
 	cmp::min,
 	ffi::{c_int, c_long},
 };
-use utils::{errno, errno::EResult, ptr::arc::Arc};
+use utils::{errno, errno::EResult};
 
 /// The number of file descriptors in FDSet.
 pub const FD_SETSIZE: usize = 1024;
@@ -73,8 +70,6 @@ impl FDSet {
 /// Performs the select operation.
 ///
 /// Arguments:
-/// - `mem_space` is the process's memory space.
-/// - `fds` is the process's file descriptors table.
 /// - `nfds` is the number of the highest checked fd + 1.
 /// - `readfds` is the bitfield of fds to check for read operations.
 /// - `writefds` is the bitfield of fds to check for write operations.
@@ -82,7 +77,6 @@ impl FDSet {
 /// - `timeout` is the timeout after which the syscall returns.
 /// - `sigmask` TODO
 pub fn do_select<T: TimeUnit>(
-	fds: Arc<Mutex<FileDescriptorTable>>,
 	nfds: u32,
 	readfds: UserPtr<FDSet>,
 	writefds: UserPtr<FDSet>,
@@ -90,6 +84,7 @@ pub fn do_select<T: TimeUnit>(
 	timeout: UserPtr<T>,
 	_sigmask: Option<*mut u8>,
 ) -> EResult<usize> {
+	let proc = Process::current();
 	let start = current_time_ns(Clock::Monotonic);
 	// Get timeout
 	let timeout = timeout
@@ -137,7 +132,8 @@ pub fn do_select<T: TimeUnit>(
 			}
 			// Poll file
 			let result = {
-				let fds = fds.lock();
+				let fds_mutex = proc.file_descriptors();
+				let fds = fds_mutex.lock();
 				let Ok(fd) = fds.get_fd(fd_id as _) else {
 					if mask != 0 {
 						return Err(errno!(EBADF));
@@ -189,46 +185,36 @@ pub fn do_select<T: TimeUnit>(
 
 #[allow(clippy::type_complexity)]
 pub(super) fn select(
-	Args((nfds, readfds, writefds, exceptfds, timeout)): Args<(
-		c_int,
-		UserPtr<FDSet>,
-		UserPtr<FDSet>,
-		UserPtr<FDSet>,
-		UserPtr<Timeval>,
-	)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
+	nfds: c_int,
+	readfds: UserPtr<FDSet>,
+	writefds: UserPtr<FDSet>,
+	exceptfds: UserPtr<FDSet>,
+	timeout: UserPtr<Timeval>,
 ) -> EResult<usize> {
-	do_select(fds, nfds as _, readfds, writefds, exceptfds, timeout, None)
+	do_select(nfds as _, readfds, writefds, exceptfds, timeout, None)
 }
 
 #[allow(clippy::type_complexity)]
 pub(super) fn _newselect(
-	Args((nfds, readfds, writefds, exceptfds, timeout)): Args<(
-		c_int,
-		UserPtr<FDSet>,
-		UserPtr<FDSet>,
-		UserPtr<FDSet>,
-		UserPtr<Timeval>,
-	)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
+	nfds: c_int,
+	readfds: UserPtr<FDSet>,
+	writefds: UserPtr<FDSet>,
+	exceptfds: UserPtr<FDSet>,
+	timeout: UserPtr<Timeval>,
 ) -> EResult<usize> {
-	do_select(fds, nfds as _, readfds, writefds, exceptfds, timeout, None)
+	do_select(nfds as _, readfds, writefds, exceptfds, timeout, None)
 }
 
 #[allow(clippy::type_complexity)]
 pub(super) fn pselect6(
-	Args((nfds, readfds, writefds, exceptfds, timeout, sigmask)): Args<(
-		c_int,
-		UserPtr<FDSet>,
-		UserPtr<FDSet>,
-		UserPtr<FDSet>,
-		UserPtr<Timespec>,
-		*mut u8,
-	)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
+	nfds: c_int,
+	readfds: UserPtr<FDSet>,
+	writefds: UserPtr<FDSet>,
+	exceptfds: UserPtr<FDSet>,
+	timeout: UserPtr<Timespec>,
+	sigmask: *mut u8,
 ) -> EResult<usize> {
 	do_select(
-		fds,
 		nfds as _,
 		readfds,
 		writefds,
@@ -274,9 +260,7 @@ pub struct PollFD {
 	revents: i16,
 }
 
-pub(super) fn poll(
-	Args((fds, nfds, timeout)): Args<(*mut PollFD, usize, c_int)>,
-) -> EResult<usize> {
+pub(super) fn poll(fds: *mut PollFD, nfds: usize, timeout: c_int) -> EResult<usize> {
 	let fds = UserSlice::from_user(fds, nfds)?;
 	// The timeout. `None` means no timeout
 	let to = (timeout >= 0).then_some(timeout as Timestamp);

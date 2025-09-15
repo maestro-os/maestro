@@ -20,22 +20,16 @@
 
 use crate::{
 	device::id::{major, makedev, minor},
-	file::{
-		INode, Stat,
-		fd::FileDescriptorTable,
-		fs::Statfs,
-		vfs,
-		vfs::{ResolutionSettings, Resolved},
-	},
+	file::{INode, Stat, fs::Statfs, vfs, vfs::Resolved},
 	memory::user::{UserPtr, UserString},
-	sync::mutex::Mutex,
-	syscall::{Args, util::at},
+	process::Process,
+	syscall::util::at,
 };
 use core::{
 	ffi::{c_int, c_uint},
 	hint::unlikely,
 };
-use utils::{collections::path::PathBuf, errno, errno::EResult, ptr::arc::Arc};
+use utils::{collections::path::PathBuf, errno, errno::EResult};
 
 /// Status of a file, 32 bit version.
 #[derive(Debug)]
@@ -169,79 +163,61 @@ fn do_stat64(stat: Stat, entry: Option<&vfs::Entry>, statbuf: UserPtr<Stat64>) -
 	})
 }
 
-pub fn stat(
-	Args((pathname, statbuf)): Args<(UserString, UserPtr<Stat32>)>,
-	rs: ResolutionSettings,
-) -> EResult<usize> {
+pub fn stat(pathname: UserString, statbuf: UserPtr<Stat32>) -> EResult<usize> {
 	let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EINVAL))?;
 	let pathname = PathBuf::try_from(pathname)?;
-	let ent = vfs::get_file_from_path(&pathname, &rs)?;
+	let ent = vfs::get_file_from_path(&pathname, true)?;
 	let stat = ent.stat();
 	do_stat32(stat, Some(&ent), statbuf)?;
 	Ok(0)
 }
 
-pub fn stat64(
-	Args((pathname, statbuf)): Args<(UserString, UserPtr<Stat64>)>,
-	rs: ResolutionSettings,
-) -> EResult<usize> {
+pub fn stat64(pathname: UserString, statbuf: UserPtr<Stat64>) -> EResult<usize> {
 	let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EINVAL))?;
 	let pathname = PathBuf::try_from(pathname)?;
-	let ent = vfs::get_file_from_path(&pathname, &rs)?;
+	let ent = vfs::get_file_from_path(&pathname, true)?;
 	let stat = ent.stat();
 	do_stat64(stat, Some(&ent), statbuf)?;
 	Ok(0)
 }
 
-pub fn fstat(
-	Args((fd, statbuf)): Args<(c_int, UserPtr<Stat32>)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-) -> EResult<usize> {
-	let fds = fds.lock();
-	let file = fds.get_fd(fd)?.get_file();
+pub fn fstat(fd: c_int, statbuf: UserPtr<Stat32>) -> EResult<usize> {
+	let file = Process::current()
+		.file_descriptors()
+		.lock()
+		.get_fd(fd)?
+		.get_file()
+		.clone();
 	let stat = file.stat()?;
 	do_stat32(stat, file.vfs_entry.as_deref(), statbuf)?;
 	Ok(0)
 }
 
-pub fn fstat64(
-	Args((fd, statbuf)): Args<(c_int, UserPtr<Stat64>)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-) -> EResult<usize> {
-	let fds = fds.lock();
-	let file = fds.get_fd(fd)?.get_file();
+pub fn fstat64(fd: c_int, statbuf: UserPtr<Stat64>) -> EResult<usize> {
+	let file = Process::current()
+		.file_descriptors()
+		.lock()
+		.get_fd(fd)?
+		.get_file()
+		.clone();
 	let stat = file.stat()?;
 	do_stat64(stat, file.vfs_entry.as_deref(), statbuf)?;
 	Ok(0)
 }
 
-pub fn lstat(
-	Args((pathname, statbuf)): Args<(UserString, UserPtr<Stat32>)>,
-	rs: ResolutionSettings,
-) -> EResult<usize> {
+pub fn lstat(pathname: UserString, statbuf: UserPtr<Stat32>) -> EResult<usize> {
 	let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EINVAL))?;
 	let pathname = PathBuf::try_from(pathname)?;
-	let rs = ResolutionSettings {
-		follow_link: false,
-		..rs
-	};
-	let ent = vfs::get_file_from_path(&pathname, &rs)?;
+	let ent = vfs::get_file_from_path(&pathname, false)?;
 	let stat = ent.stat();
 	do_stat32(stat, Some(&ent), statbuf)?;
 	Ok(0)
 }
 
-pub fn lstat64(
-	Args((pathname, statbuf)): Args<(UserString, UserPtr<Stat64>)>,
-	rs: ResolutionSettings,
-) -> EResult<usize> {
+pub fn lstat64(pathname: UserString, statbuf: UserPtr<Stat64>) -> EResult<usize> {
 	let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EINVAL))?;
 	let pathname = PathBuf::try_from(pathname)?;
-	let rs = ResolutionSettings {
-		follow_link: false,
-		..rs
-	};
-	let ent = vfs::get_file_from_path(&pathname, &rs)?;
+	let ent = vfs::get_file_from_path(&pathname, false)?;
 	let stat = ent.stat();
 	do_stat64(stat, Some(&ent), statbuf)?;
 	Ok(0)
@@ -322,14 +298,11 @@ pub struct Statx {
 }
 
 pub fn statx(
-	Args((dirfd, pathname, flags, _mask, statxbuff)): Args<(
-		c_int,
-		UserString,
-		c_int,
-		c_uint,
-		UserPtr<Statx>,
-	)>,
-	rs: ResolutionSettings,
+	dirfd: c_int,
+	pathname: UserString,
+	flags: c_int,
+	_mask: c_uint,
+	statxbuff: UserPtr<Statx>,
 ) -> EResult<usize> {
 	// Validation
 	if unlikely(pathname.0.is_none() || statxbuff.0.is_none()) {
@@ -341,8 +314,9 @@ pub fn statx(
 		.copy_from_user()?
 		.map(PathBuf::try_from)
 		.transpose()?;
-	let Resolved::Found(file) = at::get_file(rs, dirfd, pathname.as_deref(), flags)? else {
-		return Err(errno!(ENOENT));
+	let Resolved::Found(file) = at::get_file(dirfd, pathname.as_deref(), flags, false, true)?
+	else {
+		unreachable!();
 	};
 	// Get file's stat
 	let stat = file.stat();
@@ -402,18 +376,10 @@ pub fn statx(
 	Ok(0)
 }
 
-pub(super) fn do_statfs(
-	path: UserString,
-	buf: UserPtr<Statfs>,
-	rs: ResolutionSettings,
-) -> EResult<usize> {
-	let rs = ResolutionSettings {
-		follow_link: false,
-		..rs
-	};
+pub(super) fn do_statfs(path: UserString, buf: UserPtr<Statfs>) -> EResult<usize> {
 	let path = path.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	let path = PathBuf::try_from(path)?;
-	let stat = vfs::get_file_from_path(&path, &rs)?
+	let stat = vfs::get_file_from_path(&path, false)?
 		.node()
 		.fs
 		.ops
@@ -423,31 +389,22 @@ pub(super) fn do_statfs(
 	Ok(0)
 }
 
-pub fn statfs(
-	Args((path, buf)): Args<(UserString, UserPtr<Statfs>)>,
-	rs: ResolutionSettings,
-) -> EResult<usize> {
-	do_statfs(path, buf, rs)
+pub fn statfs(path: UserString, buf: UserPtr<Statfs>) -> EResult<usize> {
+	do_statfs(path, buf)
 }
 
 // TODO Check args types
-pub fn statfs64(
-	Args((path, _sz, buf)): Args<(UserString, usize, UserPtr<Statfs>)>,
-	rs: ResolutionSettings,
-) -> EResult<usize> {
+pub fn statfs64(path: UserString, _sz: usize, buf: UserPtr<Statfs>) -> EResult<usize> {
 	// TODO Use `sz`
-	do_statfs(path, buf, rs)
+	do_statfs(path, buf)
 }
 
 /// Performs the `fstatfs` system call.
-pub fn do_fstatfs(
-	fd: c_int,
-	_sz: usize,
-	buf: UserPtr<Statfs>,
-	fds: &FileDescriptorTable,
-) -> EResult<usize> {
+pub fn do_fstatfs(fd: c_int, _sz: usize, buf: UserPtr<Statfs>) -> EResult<usize> {
 	// TODO use `sz`
-	let stat = fds
+	let stat = Process::current()
+		.file_descriptors()
+		.lock()
 		.get_fd(fd)?
 		.get_file()
 		.vfs_entry
@@ -461,16 +418,10 @@ pub fn do_fstatfs(
 	Ok(0)
 }
 
-pub fn fstatfs(
-	Args((fd, buf)): Args<(c_int, UserPtr<Statfs>)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-) -> EResult<usize> {
-	do_fstatfs(fd, size_of::<Statfs>(), buf, &fds.lock())
+pub fn fstatfs(fd: c_int, buf: UserPtr<Statfs>) -> EResult<usize> {
+	do_fstatfs(fd, size_of::<Statfs>(), buf)
 }
 
-pub fn fstatfs64(
-	Args((fd, sz, buf)): Args<(c_int, usize, UserPtr<Statfs>)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-) -> EResult<usize> {
-	do_fstatfs(fd, sz, buf, &fds.lock())
+pub fn fstatfs64(fd: c_int, sz: usize, buf: UserPtr<Statfs>) -> EResult<usize> {
+	do_fstatfs(fd, sz, buf)
 }

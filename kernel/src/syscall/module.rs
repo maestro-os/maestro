@@ -19,25 +19,25 @@
 //! Kernel module system calls.
 
 use crate::{
-	file::{fd::FileDescriptorTable, perm::AccessProfile},
+	file::perm::AccessProfile,
 	memory::user::{UserSlice, UserString},
 	module,
 	module::Module,
-	sync::mutex::Mutex,
-	syscall::Args,
+	process::Process,
 };
 use core::{
 	ffi::{c_int, c_uint, c_ulong},
 	hint::unlikely,
 };
-use utils::{errno, errno::EResult, ptr::arc::Arc};
+use utils::{errno, errno::EResult};
 
 pub fn init_module(
-	Args((module_image, len, _param_values)): Args<(*mut u8, c_ulong, UserString)>,
-	ap: AccessProfile,
+	module_image: *mut u8,
+	len: c_ulong,
+	_param_values: UserString,
 ) -> EResult<usize> {
 	let module_image = UserSlice::from_user(module_image, len as _)?;
-	if unlikely(!ap.is_privileged()) {
+	if unlikely(!AccessProfile::cur_task().is_privileged()) {
 		return Err(errno!(EPERM));
 	}
 	let image = module_image
@@ -48,27 +48,26 @@ pub fn init_module(
 	Ok(0)
 }
 
-pub fn finit_module(
-	Args((fd, _param_values, _flags)): Args<(c_int, UserString, c_int)>,
-	ap: AccessProfile,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-) -> EResult<usize> {
-	if !ap.is_privileged() {
+pub fn finit_module(fd: c_int, _param_values: UserString, _flags: c_int) -> EResult<usize> {
+	if unlikely(!AccessProfile::cur_task().is_privileged()) {
 		return Err(errno!(EPERM));
 	}
 	// Read file
-	let image = fds.lock().get_fd(fd)?.get_file().read_all()?;
+	let file = Process::current()
+		.file_descriptors()
+		.lock()
+		.get_fd(fd)?
+		.get_file()
+		.clone();
+	let image = file.read_all()?;
 	let module = Module::load(&image)?;
 	module::add(module)?;
 	Ok(0)
 }
 
 // TODO handle flags
-pub fn delete_module(
-	Args((name, _flags)): Args<(UserString, c_uint)>,
-	ap: AccessProfile,
-) -> EResult<usize> {
-	if !ap.is_privileged() {
+pub fn delete_module(name: UserString, _flags: c_uint) -> EResult<usize> {
+	if unlikely(!AccessProfile::cur_task().is_privileged()) {
 		return Err(errno!(EPERM));
 	}
 	let name = name.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;

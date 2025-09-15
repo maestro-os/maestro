@@ -25,11 +25,11 @@ use crate::{
 		ET_DYN, ET_EXEC, PF_X, PT_GNU_STACK, PT_LOAD,
 		parser::{Class, ELFParser, ProgramHeader},
 	},
-	file::{File, FileType, O_RDONLY, vfs},
+	file::{File, FileType, O_RDONLY, perm::AccessProfile, vfs},
 	memory::{COMPAT_PROCESS_END, PROCESS_END, VirtAddr, vmem},
 	process::{
 		USER_STACK_SIZE,
-		exec::{ExecInfo, ProgramImage, vdso::MappedVDSO},
+		exec::{ProgramImage, vdso::MappedVDSO},
 		mem_space,
 		mem_space::{
 			MAP_ANONYMOUS, MAP_FIXED, MAP_PRIVATE, MemSpace, PROT_EXEC, PROT_READ, PROT_WRITE,
@@ -38,7 +38,7 @@ use crate::{
 };
 use core::{cmp::max, hint::unlikely, num::NonZeroUsize, ops::Add, ptr, slice};
 use utils::{
-	collections::{path::Path, vec::Vec},
+	collections::{path::Path, string::String, vec::Vec},
 	errno,
 	errno::{AllocResult, EResult},
 	limits::PAGE_SIZE,
@@ -137,20 +137,13 @@ struct AuxEntryDesc<'s> {
 }
 
 /// Builds an auxiliary vector.
-///
-/// Arguments:
-/// - `exec_path` the executable file path
-/// - `exec_info` is the set of execution information
-/// - `interp_load_base` is the base address at which the interpreter is loaded
-/// - `load_info` is the set of ELF load information
-/// - `vdso` is the set of vDSO information
 fn build_auxiliary<'s>(
 	exec_path: &'s Path,
-	exec_info: &ExecInfo,
 	interp_load_base: VirtAddr,
 	load_info: &ELFLoadInfo,
 	vdso: &MappedVDSO,
 ) -> AllocResult<Vec<AuxEntryDesc<'s>>> {
+	let ap = AccessProfile::cur_task();
 	let mut vec = vec![
 		AuxEntryDesc {
 			a_type: AT_PHDR,
@@ -182,19 +175,19 @@ fn build_auxiliary<'s>(
 		},
 		AuxEntryDesc {
 			a_type: AT_UID,
-			a_val: AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.uid as _),
+			a_val: AuxEntryDescValue::Number(ap.uid as _),
 		},
 		AuxEntryDesc {
 			a_type: AT_EUID,
-			a_val: AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.euid as _),
+			a_val: AuxEntryDescValue::Number(ap.euid as _),
 		},
 		AuxEntryDesc {
 			a_type: AT_GID,
-			a_val: AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.gid as _),
+			a_val: AuxEntryDescValue::Number(ap.gid as _),
 		},
 		AuxEntryDesc {
 			a_type: AT_EGID,
-			a_val: AuxEntryDescValue::Number(exec_info.path_resolution.access_profile.egid as _),
+			a_val: AuxEntryDescValue::Number(ap.egid as _),
 		},
 		AuxEntryDesc {
 			a_type: AT_PLATFORM,
@@ -354,7 +347,12 @@ fn load_elf(
 ///
 /// Returns the size of the "information" part, and the total size on the stack (including the
 /// "information" part).
-fn get_init_stack_size(info: &ExecInfo, aux: &[AuxEntryDesc], compat: bool) -> (usize, usize) {
+fn get_init_stack_size(
+	argv: &[String],
+	envp: &[String],
+	aux: &[AuxEntryDesc],
+	compat: bool,
+) -> (usize, usize) {
 	let size = if compat { 4 } else { 8 };
 	// The size of the block storing the arguments and environment
 	let info_block_size = aux
@@ -366,17 +364,17 @@ fn get_init_stack_size(info: &ExecInfo, aux: &[AuxEntryDesc], compat: bool) -> (
 				None
 			}
 		})
-		.chain(info.envp.iter().map(|e| e.len() + 1))
-		.chain(info.argv.iter().map(|a| a.len() + 1))
+		.chain(envp.iter().map(|e| e.len() + 1))
+		.chain(argv.iter().map(|a| a.len() + 1))
 		.sum::<usize>()
 		// Add padding before the information block allowing to preserve stack alignment
 		.next_multiple_of(size);
 	// The size of the auxiliary vector
 	let aux_size = aux.len() * (size * 2);
 	// The size of the environment pointers + null
-	let envp_size = (info.envp.len() + 1) * size;
+	let envp_size = (envp.len() + 1) * size;
 	// The size of the argument pointers + null + argc
-	let argv_size = (info.argv.len() + 2) * size;
+	let argv_size = (argv.len() + 2) * size;
 	// The total size of the stack data in bytes
 	let total_size = info_block_size + aux_size + envp_size + argv_size;
 	(info_block_size, total_size)
@@ -414,31 +412,32 @@ unsafe fn copy_string(stack: &mut *mut u8, str: &[u8]) {
 /// The start/end of `argv` and `envp` in userspace are also updated into `exe_info`.
 ///
 /// Arguments:
-/// - `user_stack` the pointer to the user stack.
-/// - `argv` is the list of arguments.
-/// - `envp` is the environment.
-/// - `aux` is the auxiliary vector.
-/// - `exe_info` is the execution information stored the memory space's structure.
-/// - `compat` indicates whether userspace runs in compatibility mode.
+/// - `user_stack` the pointer to the user stack
+/// - `argv` is the list of arguments
+/// - `envp` is the environment
+/// - `aux` is the auxiliary vector
+/// - `exe_info` is the execution information stored the memory space's structure
+/// - `compat` indicates whether userspace runs in compatibility mode
 ///
 /// # Safety
 ///
 /// `stack` must point to a valid stack.
 unsafe fn init_stack(
 	user_stack: *mut u8,
-	info: &ExecInfo,
+	argv: &[String],
+	envp: &[String],
 	aux: &[AuxEntryDesc],
 	exe_info: &mut mem_space::ExeInfo,
 	compat: bool,
 ) {
-	let (info_size, total_size) = get_init_stack_size(info, aux, compat);
+	let (info_size, total_size) = get_init_stack_size(argv, envp, aux, compat);
 	let mut info_ptr = user_stack.sub(info_size);
 	let mut args_ptr = user_stack.sub(total_size);
 	// Push argc
-	write_val(&mut args_ptr, info.argv.len(), compat);
+	write_val(&mut args_ptr, argv.len(), compat);
 	// Set argv
 	exe_info.argv_begin = VirtAddr::from(info_ptr);
-	for arg in &info.argv {
+	for arg in argv {
 		write_val(&mut args_ptr, info_ptr as _, compat);
 		copy_string(&mut info_ptr, arg);
 	}
@@ -447,7 +446,7 @@ unsafe fn init_stack(
 	exe_info.argv_end = VirtAddr::from(info_ptr);
 	// Set environment
 	exe_info.envp_begin = exe_info.argv_end;
-	for var in &info.envp {
+	for var in envp {
 		write_val(&mut args_ptr, info_ptr as _, compat);
 		copy_string(&mut info_ptr, var);
 	}
@@ -474,15 +473,17 @@ unsafe fn init_stack(
 ///
 /// Arguments:
 /// - `ent` is the program's file
-/// - `info` is the set execution information for the program
+/// - `argv` is the list of arguments
+/// - `envp` is the list of
 #[inline]
-pub fn exec(ent: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
+pub fn exec(ent: Arc<vfs::Entry>, argv: Vec<String>, envp: Vec<String>) -> EResult<ProgramImage> {
 	// Check the file can be executed by the user
 	let stat = ent.stat();
 	if unlikely(stat.get_type() != Some(FileType::Regular)) {
 		return Err(errno!(EACCES));
 	}
-	if unlikely(!info.path_resolution.access_profile.can_execute_file(&stat)) {
+	let ap = AccessProfile::cur_task();
+	if unlikely(!ap.can_execute_file(&stat)) {
 		return Err(errno!(EACCES));
 	}
 	// Read and parse file
@@ -514,13 +515,13 @@ pub fn exec(ent: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
 	let mut interp_load_base = VirtAddr(0);
 	if let Some(interp) = parser.get_interpreter_path() {
 		let interp = Path::new(interp)?;
-		let interp_ent = vfs::get_file_from_path(interp, info.path_resolution)?;
+		let interp_ent = vfs::get_file_from_path(interp, true)?;
 		// Check the file can be executed by the user
 		let stat = interp_ent.stat();
 		if unlikely(stat.get_type() != Some(FileType::Regular)) {
 			return Err(errno!(EACCES));
 		}
-		if unlikely(!info.path_resolution.access_profile.can_execute_file(&stat)) {
+		if unlikely(!ap.can_execute_file(&stat)) {
 			return Err(errno!(EACCES));
 		}
 		// Read and parse file
@@ -555,12 +556,19 @@ pub fn exec(ent: Arc<vfs::Entry>, info: ExecInfo) -> EResult<ProgramImage> {
 	let vdso = vdso::map(&mem_space, compat)?;
 	// Initialize the userspace stack
 	let exec_path = vfs::Entry::get_path(&mem_space.exe_info.exe)?;
-	let aux = build_auxiliary(&exec_path, &info, interp_load_base, &load_info, &vdso)?;
-	let (_, init_stack_size) = get_init_stack_size(&info, &aux, compat);
+	let aux = build_auxiliary(&exec_path, interp_load_base, &load_info, &vdso)?;
+	let (_, init_stack_size) = get_init_stack_size(&argv, &envp, &aux, compat);
 	let mut exe_info = mem_space.exe_info.clone();
 	MemSpace::switch(&mem_space, |_| unsafe {
 		vmem::smap_disable(|| {
-			init_stack(user_stack.as_ptr(), &info, &aux, &mut exe_info, compat);
+			init_stack(
+				user_stack.as_ptr(),
+				&argv,
+				&envp,
+				&aux,
+				&mut exe_info,
+				compat,
+			);
 		});
 	});
 	// Set immutable fields

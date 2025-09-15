@@ -47,7 +47,6 @@ use crate::{
 	file::{
 		File, FileType, Mode, Stat,
 		fs::FileOps,
-		perm::AccessProfile,
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
 	},
@@ -110,13 +109,7 @@ pub fn create_file(id: &DeviceID, dev_type: DeviceType, path: &Path, perms: Mode
 	let parent_path = path.parent().unwrap_or(Path::root());
 	file::util::create_dirs(parent_path)?;
 	// Resolve path
-	let resolved = vfs::resolve_path(
-		path,
-		&ResolutionSettings {
-			create: true,
-			..ResolutionSettings::kernel_follow()
-		},
-	)?;
+	let resolved = vfs::resolve_path(path, &ResolutionSettings::cur_task(true, true))?;
 	match resolved {
 		Resolved::Creatable {
 			parent,
@@ -126,7 +119,6 @@ pub fn create_file(id: &DeviceID, dev_type: DeviceType, path: &Path, perms: Mode
 			vfs::create_file(
 				parent,
 				name,
-				&AccessProfile::KERNEL,
 				Stat {
 					mode: dev_type.to_file_type().to_mode() | perms,
 					dev_major: id.major,
@@ -143,14 +135,13 @@ pub fn create_file(id: &DeviceID, dev_type: DeviceType, path: &Path, perms: Mode
 
 /// If it exists, removes the file at `path`.
 pub fn remove_file(path: &Path) -> EResult<()> {
-	let rs = ResolutionSettings::kernel_follow();
-	let res = vfs::get_file_from_path(path, &rs);
+	let res = vfs::get_file_from_path(path, true);
 	let ent = match res {
 		Ok(ent) => ent,
 		Err(e) if e.as_int() == ENOENT => return Ok(()),
 		Err(e) => return Err(e),
 	};
-	vfs::unlink(ent, &rs.access_profile)
+	vfs::unlink(ent)
 }
 
 /// A device type, major and minor, who act as a unique ID for a device.
