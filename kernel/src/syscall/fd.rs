@@ -19,13 +19,9 @@
 //! File descriptors handling system calls.
 
 use crate::{
-	file::{
-		FileType,
-		fd::{FileDescriptorTable, NewFDConstraint},
-	},
+	file::{FileType, fd::NewFDConstraint},
 	memory::user::{UserIOVec, UserPtr, UserSlice},
-	sync::mutex::Mutex,
-	syscall::Args,
+	process::Process,
 };
 use core::{
 	cmp::min,
@@ -33,7 +29,7 @@ use core::{
 	hint::unlikely,
 	sync::atomic::Ordering::{Acquire, Release},
 };
-use utils::{errno, errno::EResult, limits::IOV_MAX, ptr::arc::Arc};
+use utils::{errno, errno::EResult, limits::IOV_MAX};
 
 /// Sets the offset from the given value.
 const SEEK_SET: u32 = 0;
@@ -42,17 +38,19 @@ const SEEK_CUR: u32 = 1;
 /// Sets the offset relative to the end of the file.
 const SEEK_END: u32 = 2;
 
-pub fn read(
-	Args((fd, buf, count)): Args<(c_int, *mut u8, usize)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-) -> EResult<usize> {
+pub fn read(fd: c_int, buf: *mut u8, count: usize) -> EResult<usize> {
 	let buf = UserSlice::from_user(buf, count)?;
 	// Validation
 	let len = min(count, i32::MAX as usize);
 	if len == 0 {
 		return Ok(0);
 	}
-	let file = fds.lock().get_fd(fd)?.get_file().clone();
+	let file = Process::current()
+		.file_descriptors()
+		.lock()
+		.get_fd(fd)?
+		.get_file()
+		.clone();
 	if file.get_type()? == FileType::Link {
 		return Err(errno!(EINVAL));
 	}
@@ -80,7 +78,6 @@ fn do_readv(
 	iovcnt: c_int,
 	offset: Option<isize>,
 	_flags: Option<i32>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	// Validation
 	if unlikely(iovcnt < 0 || iovcnt as usize > IOV_MAX) {
@@ -92,7 +89,12 @@ fn do_readv(
 		Some(..-1) => return Err(errno!(EINVAL)),
 	};
 	// TODO Handle flags
-	let file = fds.lock().get_fd(fd)?.get_file().clone();
+	let file = Process::current()
+		.file_descriptors()
+		.lock()
+		.get_fd(fd)?
+		.get_file()
+		.clone();
 	if file.get_type()? == FileType::Link {
 		return Err(errno!(EINVAL));
 	}
@@ -123,46 +125,45 @@ fn do_readv(
 	Ok(off)
 }
 
-pub fn readv(
-	Args((fd, iov, iovcnt)): Args<(c_int, UserIOVec, c_int)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-) -> EResult<usize> {
-	do_readv(fd, iov, iovcnt, None, None, fds)
+pub fn readv(fd: c_int, iov: UserIOVec, iovcnt: c_int) -> EResult<usize> {
+	do_readv(fd, iov, iovcnt, None, None)
 }
 
 pub fn preadv(
-	Args((fd, iov, iovcnt, offset_low, offset_high)): Args<(
-		c_int,
-		UserIOVec,
-		c_int,
-		isize,
-		isize,
-	)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
+	fd: c_int,
+	iov: UserIOVec,
+	iovcnt: c_int,
+	offset_low: isize,
+	offset_high: isize,
 ) -> EResult<usize> {
 	#[allow(arithmetic_overflow)]
 	let offset = offset_low | (offset_high << 32);
-	do_readv(fd, iov, iovcnt, Some(offset), None, fds)
+	do_readv(fd, iov, iovcnt, Some(offset), None)
 }
 
 pub fn preadv2(
-	Args((fd, iov, iovcnt, offset, flags)): Args<(c_int, UserIOVec, c_int, isize, c_int)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
+	fd: c_int,
+	iov: UserIOVec,
+	iovcnt: c_int,
+	offset: isize,
+	flags: c_int,
 ) -> EResult<usize> {
-	do_readv(fd, iov, iovcnt, Some(offset), Some(flags), fds)
+	do_readv(fd, iov, iovcnt, Some(offset), Some(flags))
 }
 
-pub fn write(
-	Args((fd, buf, count)): Args<(c_int, *mut u8, usize)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-) -> EResult<usize> {
+pub fn write(fd: c_int, buf: *mut u8, count: usize) -> EResult<usize> {
 	let buf = UserSlice::from_user(buf, count)?;
 	// Validation
 	let len = min(count, i32::MAX as usize);
 	if len == 0 {
 		return Ok(0);
 	}
-	let file = fds.lock().get_fd(fd)?.get_file().clone();
+	let file = Process::current()
+		.file_descriptors()
+		.lock()
+		.get_fd(fd)?
+		.get_file()
+		.clone();
 	if file.get_type()? == FileType::Link {
 		return Err(errno!(EINVAL));
 	}
@@ -190,7 +191,6 @@ fn do_writev(
 	iovcnt: i32,
 	offset: Option<isize>,
 	_flags: Option<i32>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
 ) -> EResult<usize> {
 	// Validation
 	if iovcnt < 0 || iovcnt as usize > IOV_MAX {
@@ -202,7 +202,12 @@ fn do_writev(
 		Some(..-1) => return Err(errno!(EINVAL)),
 	};
 	// Get file
-	let file = fds.lock().get_fd(fd)?.get_file().clone();
+	let file = Process::current()
+		.file_descriptors()
+		.lock()
+		.get_fd(fd)?
+		.get_file()
+		.clone();
 	if file.get_type()? == FileType::Link {
 		return Err(errno!(EINVAL));
 	}
@@ -229,44 +234,44 @@ fn do_writev(
 	Ok(off)
 }
 
-pub fn writev(
-	Args((fd, iov, iovcnt)): Args<(c_int, UserIOVec, c_int)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-) -> EResult<usize> {
-	do_writev(fd, iov, iovcnt, None, None, fds)
+pub fn writev(fd: c_int, iov: UserIOVec, iovcnt: c_int) -> EResult<usize> {
+	do_writev(fd, iov, iovcnt, None, None)
 }
 
 pub fn pwritev(
-	Args((fd, iov, iovcnt, offset_low, offset_high)): Args<(
-		c_int,
-		UserIOVec,
-		c_int,
-		isize,
-		isize,
-	)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
+	fd: c_int,
+	iov: UserIOVec,
+	iovcnt: c_int,
+	offset_low: isize,
+	offset_high: isize,
 ) -> EResult<usize> {
 	#[allow(arithmetic_overflow)]
 	let offset = offset_low | (offset_high << 32);
-	do_writev(fd, iov, iovcnt, Some(offset), None, fds)
+	do_writev(fd, iov, iovcnt, Some(offset), None)
 }
 
 pub fn pwritev2(
-	Args((fd, iov, iovcnt, offset, flags)): Args<(c_int, UserIOVec, c_int, isize, c_int)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
+	fd: c_int,
+	iov: UserIOVec,
+	iovcnt: c_int,
+	offset: isize,
+	flags: c_int,
 ) -> EResult<usize> {
-	do_writev(fd, iov, iovcnt, Some(offset), Some(flags), fds)
+	do_writev(fd, iov, iovcnt, Some(offset), Some(flags))
 }
 
 fn do_lseek(
-	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
 	fd: c_uint,
 	offset: i64,
 	result: Option<UserPtr<u64>>,
 	whence: c_uint,
 ) -> EResult<usize> {
-	let fds = fds_mutex.lock();
-	let file = fds.get_fd(fd as _)?.get_file();
+	let file = Process::current()
+		.file_descriptors()
+		.lock()
+		.get_fd(fd as _)?
+		.get_file()
+		.clone();
 	// Compute the offset
 	let base = match whence {
 		SEEK_SET => 0,
@@ -296,45 +301,43 @@ fn do_lseek(
 }
 
 pub fn _llseek(
-	Args((fd, offset_high, offset_low, result, whence)): Args<(
-		c_uint,
-		i32,
-		i32,
-		UserPtr<u64>,
-		c_uint,
-	)>,
-	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
+	fd: c_uint,
+	offset_high: i32,
+	offset_low: i32,
+	result: UserPtr<u64>,
+	whence: c_uint,
 ) -> EResult<usize> {
 	let offset = ((offset_high as i64) << 32) | (offset_low as i64);
-	do_lseek(fds_mutex, fd, offset, Some(result), whence)?;
+	do_lseek(fd, offset, Some(result), whence)?;
 	Ok(0)
 }
 
-pub fn lseek(
-	Args((fd, offset, whence)): Args<(c_uint, i64, c_uint)>,
-	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
-) -> EResult<usize> {
-	do_lseek(fds_mutex, fd, offset, None, whence)
+pub fn lseek(fd: c_uint, offset: i64, whence: c_uint) -> EResult<usize> {
+	do_lseek(fd, offset, None, whence)
 }
 
-pub fn dup(Args(oldfd): Args<c_int>, fds: Arc<Mutex<FileDescriptorTable>>) -> EResult<usize> {
-	let (newfd_id, _) = fds
+pub fn dup(oldfd: c_int) -> EResult<usize> {
+	let (newfd_id, _) = Process::current().file_descriptors().lock().duplicate_fd(
+		oldfd as _,
+		NewFDConstraint::None,
+		false,
+	)?;
+	Ok(newfd_id as _)
+}
+
+pub fn dup2(oldfd: c_int, newfd: c_int) -> EResult<usize> {
+	let (newfd_id, _) = Process::current().file_descriptors().lock().duplicate_fd(
+		oldfd as _,
+		NewFDConstraint::Fixed(newfd as _),
+		false,
+	)?;
+	Ok(newfd_id as _)
+}
+
+pub fn close(fd: c_int) -> EResult<usize> {
+	Process::current()
+		.file_descriptors()
 		.lock()
-		.duplicate_fd(oldfd as _, NewFDConstraint::None, false)?;
-	Ok(newfd_id as _)
-}
-
-pub fn dup2(
-	Args((oldfd, newfd)): Args<(c_int, c_int)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-) -> EResult<usize> {
-	let (newfd_id, _) =
-		fds.lock()
-			.duplicate_fd(oldfd as _, NewFDConstraint::Fixed(newfd as _), false)?;
-	Ok(newfd_id as _)
-}
-
-pub fn close(Args(fd): Args<c_int>, fds: Arc<Mutex<FileDescriptorTable>>) -> EResult<usize> {
-	fds.lock().close_fd(fd as _)?;
+		.close_fd(fd as _)?;
 	Ok(0)
 }

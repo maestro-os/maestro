@@ -28,7 +28,6 @@ use crate::{
 	},
 	power,
 	process::PROCESSES,
-	syscall::Args,
 	time::clock::{Clock, current_time_sec},
 };
 use core::{
@@ -70,7 +69,7 @@ pub struct Utsname {
 	machine: [u8; UTSNAME_LENGTH],
 }
 
-pub fn uname(Args(buf): Args<UserPtr<Utsname>>) -> EResult<usize> {
+pub fn uname(buf: UserPtr<Utsname>) -> EResult<usize> {
 	let mut utsname = Utsname {
 		sysname: [0; UTSNAME_LENGTH],
 		nodename: [0; UTSNAME_LENGTH],
@@ -120,7 +119,7 @@ pub struct Sysinfo {
 	__reserved: [c_char; 256],
 }
 
-pub fn sysinfo(Args(info): Args<UserPtr<Sysinfo>>) -> EResult<usize> {
+pub fn sysinfo(info: UserPtr<Sysinfo>) -> EResult<usize> {
 	let mem_info = MEM_INFO.lock().clone();
 	info.copy_to_user(&Sysinfo {
 		uptime: current_time_sec(Clock::Boottime) as _,
@@ -141,16 +140,13 @@ pub fn sysinfo(Args(info): Args<UserPtr<Sysinfo>>) -> EResult<usize> {
 	Ok(0)
 }
 
-pub fn sethostname(
-	Args((name, len)): Args<(*mut u8, usize)>,
-	ap: AccessProfile,
-) -> EResult<usize> {
+pub fn sethostname(name: *mut u8, len: usize) -> EResult<usize> {
 	// Check the size of the hostname is in bounds
 	if unlikely(len > HOST_NAME_MAX) {
 		return Err(errno!(EINVAL));
 	}
 	// Check permission
-	if !ap.is_privileged() {
+	if !AccessProfile::cur_task().is_privileged() {
 		return Err(errno!(EPERM));
 	}
 	// Copy
@@ -160,15 +156,12 @@ pub fn sethostname(
 	Ok(0)
 }
 
-pub fn reboot(
-	Args((magic, magic2, cmd, _arg)): Args<(c_int, c_int, c_int, *const c_void)>,
-	ap: AccessProfile,
-) -> EResult<usize> {
+pub fn reboot(magic: c_int, magic2: c_int, cmd: c_int, _arg: *const c_void) -> EResult<usize> {
 	// Validation
 	if magic != MAGIC || magic2 != MAGIC2 {
 		return Err(errno!(EINVAL));
 	}
-	if !ap.is_privileged() {
+	if !AccessProfile::cur_task().is_privileged() {
 		return Err(errno!(EPERM));
 	}
 	// Debug commands: shutdown with QEMU

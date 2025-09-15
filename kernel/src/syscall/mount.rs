@@ -20,26 +20,24 @@
 
 use crate::{
 	file::{
-		FileType, fs, vfs,
-		vfs::{ResolutionSettings, mountpoint, mountpoint::MountSource},
+		FileType, fs,
+		perm::AccessProfile,
+		vfs,
+		vfs::{mountpoint, mountpoint::MountSource},
 	},
 	memory::user::{UserPtr, UserString},
-	syscall::Args,
 };
 use core::ffi::{c_int, c_ulong, c_void};
 use utils::{collections::path::PathBuf, errno, errno::EResult};
 
 pub fn mount(
-	Args((source, target, filesystemtype, mountflags, _data)): Args<(
-		UserString,
-		UserString,
-		UserString,
-		c_ulong,
-		UserPtr<c_void>,
-	)>,
-	rs: ResolutionSettings,
+	source: UserString,
+	target: UserString,
+	filesystemtype: UserString,
+	mountflags: c_ulong,
+	_data: UserPtr<c_void>,
 ) -> EResult<usize> {
-	if !rs.access_profile.is_privileged() {
+	if !AccessProfile::cur_task().is_privileged() {
 		return Err(errno!(EPERM));
 	}
 	// Read arguments
@@ -50,7 +48,7 @@ pub fn mount(
 	let filesystemtype_slice = filesystemtype.copy_from_user()?.ok_or(errno!(EFAULT))?;
 	let fs_type = fs::get_type(&filesystemtype_slice).ok_or(errno!(ENODEV))?;
 	// Get target file
-	let target = vfs::get_file_from_path(&target_path, &rs)?;
+	let target = vfs::get_file_from_path(&target_path, true)?;
 	// Check the target is a directory
 	if target.get_type()? != FileType::Directory {
 		return Err(errno!(ENOTDIR));
@@ -61,23 +59,20 @@ pub fn mount(
 	Ok(0)
 }
 
-pub fn umount(Args(target): Args<UserString>, rs: ResolutionSettings) -> EResult<usize> {
-	umount2(Args((target, 0)), rs)
+pub fn umount(target: UserString) -> EResult<usize> {
+	umount2(target, 0)
 }
 
-pub fn umount2(
-	Args((target, _flags)): Args<(UserString, c_int)>,
-	rs: ResolutionSettings,
-) -> EResult<usize> {
+pub fn umount2(target: UserString, _flags: c_int) -> EResult<usize> {
 	// TODO handle flags
 	// Check permission
-	if !rs.access_profile.is_privileged() {
+	if !AccessProfile::cur_task().is_privileged() {
 		return Err(errno!(EPERM));
 	}
 	// Get target directory
 	let target_slice = target.copy_from_user()?.ok_or(errno!(EFAULT))?;
 	let target_path = PathBuf::try_from(target_slice)?;
-	let target = vfs::get_file_from_path(&target_path, &rs)?;
+	let target = vfs::get_file_from_path(&target_path, true)?;
 	// Remove mountpoint
 	mountpoint::remove(target)?;
 	Ok(0)

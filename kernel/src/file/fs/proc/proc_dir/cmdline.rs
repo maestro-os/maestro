@@ -35,7 +35,7 @@ pub struct Cmdline(pub Pid);
 impl FileOps for Cmdline {
 	fn read(&self, _file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		let proc = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
-		let Some(mem_space) = proc.mem_space.as_ref() else {
+		let Some(mem_space) = proc.mem_space_opt() else {
 			return Ok(0);
 		};
 		let cmdline = read_memory(

@@ -24,7 +24,7 @@ use crate::{
 		FileType, fs,
 		fs::{Filesystem, FilesystemType},
 		vfs,
-		vfs::{EntryChild, ResolutionSettings},
+		vfs::EntryChild,
 	},
 	sync::mutex::Mutex,
 };
@@ -37,7 +37,7 @@ use utils::{
 		string::String,
 	},
 	errno,
-	errno::{AllocResult, ENOENT, EResult},
+	errno::{AllocResult, EResult},
 	ptr::arc::Arc,
 };
 
@@ -85,7 +85,7 @@ impl MountSource {
 	/// `string` might be either a kernfs name or an absolute path.
 	pub fn new(string: &[u8]) -> EResult<Self> {
 		let path = Path::new(string)?;
-		let result = vfs::get_file_from_path(path, &ResolutionSettings::kernel_follow());
+		let result = vfs::get_file_from_path(path, true);
 		match result {
 			Ok(ent) => {
 				let stat = ent.stat();
@@ -97,7 +97,9 @@ impl MountSource {
 					minor: stat.dev_minor,
 				}))
 			}
-			Err(err) if err.as_int() == ENOENT => Ok(Self::NoDev(String::try_from(string)?)),
+			Err(err) if err.as_int() == errno::ENOENT => {
+				Ok(Self::NoDev(String::try_from(string)?))
+			}
 			Err(err) => Err(err),
 		}
 	}
