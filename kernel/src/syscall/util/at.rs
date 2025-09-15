@@ -55,26 +55,20 @@ pub const AT_STATX_DONT_SYNC: c_int = 0x4000;
 /// Returns the file for the given path `path`.
 ///
 /// Arguments:
-/// - `rs` is the path resolution settings to use
 /// - `dirfd` is the file descriptor of the parent directory
 /// - `path` is the path relative to the parent directory
 /// - `flags` is the set of `AT_*` flags
-///
-/// **Note**: the `start` field of [`ResolutionSettings`] must be set as it is used as the current
-/// working directory.
+/// - `create`: if `true`, the function might return [`Resolved::Creatable`] if the file does not
+///   exist
+/// - `follow_link` if `true`, links are followed (unless bypassed by a flag)
 pub fn get_file(
-	mut rs: ResolutionSettings,
 	dirfd: c_int,
 	path: Option<&Path>,
 	flags: c_int,
+	create: bool,
+	follow_link: bool,
 ) -> EResult<Resolved> {
-	// Prepare resolution settings
-	let follow_link = if rs.follow_link {
-		flags & AT_SYMLINK_NOFOLLOW == 0
-	} else {
-		flags & AT_SYMLINK_FOLLOW != 0
-	};
-	rs.follow_link = follow_link;
+	let mut rs = ResolutionSettings::cur_task(create, follow_link);
 	// If not starting from current directory, get location
 	if dirfd != AT_FDCWD {
 		let cwd = Process::current()
@@ -88,7 +82,15 @@ pub fn get_file(
 		rs.cwd = Some(cwd);
 	}
 	match path {
-		Some(path) if !path.is_empty() => vfs::resolve_path(path, &rs),
+		Some(path) if !path.is_empty() => {
+			let follow_link = if rs.follow_link {
+				flags & AT_SYMLINK_NOFOLLOW == 0
+			} else {
+				flags & AT_SYMLINK_FOLLOW != 0
+			};
+			rs.follow_link = follow_link;
+			vfs::resolve_path(path, &rs)
+		}
 		// Empty path
 		Some(_) => {
 			// Validation

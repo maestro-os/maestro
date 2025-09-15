@@ -21,6 +21,7 @@
 //! This module implements management of such permissions.
 
 use super::Mode;
+use crate::process::Process;
 use utils::{errno, errno::EResult};
 
 /// Type representing a user ID.
@@ -124,6 +125,14 @@ impl AccessProfile {
 
 			suid: uid,
 			sgid: gid,
+		}
+	}
+
+	/// Returns the access profile of the current task.
+	pub fn cur_task() -> Self {
+		match &Process::current().fs {
+			Some(fs) => fs.lock().access_profile,
+			None => Self::KERNEL,
 		}
 	}
 

@@ -20,30 +20,26 @@
 
 use crate::{
 	file,
-	file::{File, fd::FileDescriptorTable, pipe::PipeBuffer},
+	file::{File, pipe::PipeBuffer},
 	memory::user::UserPtr,
-	sync::mutex::Mutex,
-	syscall::Args,
+	process::Process,
 };
 use core::ffi::c_int;
 use utils::{errno, errno::EResult, ptr::arc::Arc};
 
-pub fn pipe(
-	Args(pipefd): Args<UserPtr<[c_int; 2]>>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-) -> EResult<usize> {
+pub fn pipe(pipefd: UserPtr<[c_int; 2]>) -> EResult<usize> {
 	let ops = Arc::new(PipeBuffer::new()?)?;
 	let file0 = File::open_floating(ops.clone(), file::O_RDONLY)?;
 	let file1 = File::open_floating(ops, file::O_WRONLY)?;
-	let (fd0_id, fd1_id) = fds.lock().create_fd_pair(file0, file1)?;
+	let (fd0_id, fd1_id) = Process::current()
+		.file_descriptors()
+		.lock()
+		.create_fd_pair(file0, file1)?;
 	pipefd.copy_to_user(&[fd0_id as _, fd1_id as _])?;
 	Ok(0)
 }
 
-pub fn pipe2(
-	Args((pipefd, flags)): Args<(UserPtr<[c_int; 2]>, c_int)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-) -> EResult<usize> {
+pub fn pipe2(pipefd: UserPtr<[c_int; 2]>, flags: c_int) -> EResult<usize> {
 	// Validation
 	let accepted_flags = file::O_CLOEXEC | file::O_DIRECT | file::O_NONBLOCK;
 	if flags & !accepted_flags != 0 {
@@ -52,7 +48,10 @@ pub fn pipe2(
 	let ops = Arc::new(PipeBuffer::new()?)?;
 	let file0 = File::open_floating(ops.clone(), flags | file::O_RDONLY)?;
 	let file1 = File::open_floating(ops, flags | file::O_WRONLY)?;
-	let (fd0_id, fd1_id) = fds.lock().create_fd_pair(file0, file1)?;
+	let (fd0_id, fd1_id) = Process::current()
+		.file_descriptors()
+		.lock()
+		.create_fd_pair(file0, file1)?;
 	pipefd.copy_to_user(&[fd0_id as _, fd1_id as _])?;
 	Ok(0)
 }

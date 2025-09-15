@@ -35,7 +35,7 @@ impl NodeOps for Exe {
 	fn readlink(&self, _node: &Node, buf: UserSlice<u8>) -> EResult<usize> {
 		let proc = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
 		let path = proc
-			.mem_space
+			.mem_space_opt()
 			.as_ref()
 			.map(|mem_space| vfs::Entry::get_path(&mem_space.exe_info.exe))
 			.transpose()?

@@ -84,12 +84,12 @@ pub mod tty;
 
 use crate::{
 	arch::x86::{idt::IntFrame, smp},
-	file::{fs::initramfs, vfs, vfs::ResolutionSettings},
+	file::{fs::initramfs, vfs},
 	logger::LOGGER,
 	memory::{cache, vmem},
 	process::{
 		Process, exec,
-		exec::{ExecInfo, exec},
+		exec::exec,
 		scheduler,
 		scheduler::{
 			cpu::{CPU, per_cpu},
@@ -128,19 +128,14 @@ fn init(init_path: String) -> EResult<IntFrame> {
 	let mut frame = IntFrame::default();
 	{
 		let path = Path::new(&init_path)?;
-		let rs = ResolutionSettings::kernel_follow();
-		let ent = vfs::get_file_from_path(path, &rs)?;
+		let ent = vfs::get_file_from_path(path, true)?;
 		let program_image = exec::elf::exec(
 			ent,
-			ExecInfo {
-				path_resolution: &rs,
-				argv: vec![init_path]?,
-				envp: vec![
-					b"PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin"
-						.try_into()?,
-					b"TERM=maestro".try_into()?,
-				]?,
-			},
+			vec![init_path]?,
+			vec![
+				b"PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin".try_into()?,
+				b"TERM=maestro".try_into()?,
+			]?,
 		)?;
 		let proc = Process::init()?;
 		exec(&proc, &mut frame, program_image)?;

@@ -32,7 +32,7 @@ use crate::{
 		core_id,
 		x86::paging::{PAGE_FAULT_INSTRUCTION, PAGE_FAULT_WRITE},
 	},
-	file::{File, perm::AccessProfile, vfs},
+	file::{File, vfs},
 	memory::{
 		COMPAT_PROCESS_END, PROCESS_END, VirtAddr,
 		cache::RcFrame,
@@ -629,17 +629,10 @@ impl MemSpace {
 	/// - `addr` is the address to the beginning of the range to be set
 	/// - `len` is the length of the range in bytes
 	/// - `prot` is a set of mapping flags
-	/// - `access_profile` is the access profile to check permissions
 	///
 	/// If a mapping to be modified is associated with a file, and the file doesn't have the
 	/// matching permissions, the function returns an error.
-	pub fn set_prot(
-		&self,
-		_addr: *mut c_void,
-		_len: usize,
-		_prot: u8,
-		_access_profile: &AccessProfile,
-	) -> EResult<()> {
+	pub fn set_prot(&self, _addr: *mut c_void, _len: usize, _prot: u8) -> EResult<()> {
 		// TODO Iterate on mappings in the range:
 		//		If the mapping is shared and associated to a file, check file permissions match
 		// `prot` (only write)
