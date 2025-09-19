@@ -63,6 +63,37 @@ pub fn read(fd: c_int, buf: *mut u8, count: usize) -> EResult<usize> {
 	Ok(len as _)
 }
 
+pub fn pread64(fd: c_int, buf: *mut u8, count: usize, offset: u64) -> EResult<usize> {
+	let buf = UserSlice::from_user(buf, count)?;
+	// Validation
+	let len = min(count, i32::MAX as usize);
+	if len == 0 {
+		return Ok(0);
+	}
+	let file = Process::current()
+		.file_descriptors()
+		.lock()
+		.get_fd(fd)?
+		.get_file()
+		.clone();
+	if file.get_type()? == FileType::Link {
+		return Err(errno!(EINVAL));
+	}
+	let len = file.ops.read(&file, offset, buf)?;
+	Ok(len as _)
+}
+
+pub fn compat_pread64(
+	fd: c_int,
+	buf: *mut u8,
+	count: usize,
+	offset_low: u32,
+	offset_high: u32,
+) -> EResult<usize> {
+	let offset = ((offset_high as u64) << 32) | (offset_low as u64);
+	pread64(fd, buf, count, offset)
+}
+
 // FIXME: the operation has to be atomic
 /// Performs the readv operation.
 ///
@@ -174,6 +205,37 @@ pub fn write(fd: c_int, buf: *mut u8, count: usize) -> EResult<usize> {
 	let new_off = off.saturating_add(len as u64);
 	file.off.store(new_off, Release);
 	Ok(len)
+}
+
+pub fn pwrite64(fd: c_int, buf: *mut u8, count: usize, offset: u64) -> EResult<usize> {
+	let buf = UserSlice::from_user(buf, count)?;
+	// Validation
+	let len = min(count, i32::MAX as usize);
+	if len == 0 {
+		return Ok(0);
+	}
+	let file = Process::current()
+		.file_descriptors()
+		.lock()
+		.get_fd(fd)?
+		.get_file()
+		.clone();
+	if file.get_type()? == FileType::Link {
+		return Err(errno!(EINVAL));
+	}
+	let len = file.ops.write(&file, offset, buf)?;
+	Ok(len)
+}
+
+pub fn compat_pwrite64(
+	fd: c_int,
+	buf: *mut u8,
+	count: usize,
+	offset_low: u32,
+	offset_high: u32,
+) -> EResult<usize> {
+	let offset = ((offset_high as u64) << 32) | (offset_low as u64);
+	pwrite64(fd, buf, count, offset)
 }
 
 // FIXME: the operation has to be atomic
