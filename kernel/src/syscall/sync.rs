@@ -18,7 +18,11 @@
 
 //! Filesystem synchronization system calls.
 
-use crate::{file::vfs::mountpoint::FILESYSTEMS, memory::VirtAddr, process::Process};
+use crate::{
+	file::{fd::fd_to_file, vfs::mountpoint::FILESYSTEMS},
+	memory::VirtAddr,
+	process::Process,
+};
 use core::{ffi::c_int, hint::unlikely};
 use utils::{errno, errno::EResult, limits::PAGE_SIZE};
 
@@ -42,12 +46,7 @@ pub fn syncfs(fd: c_int) -> EResult<usize> {
 	if unlikely(fd < 0) {
 		return Err(errno!(EBADF));
 	}
-	let file = Process::current()
-		.file_descriptors()
-		.lock()
-		.get_fd(fd)?
-		.get_file()
-		.clone();
+	let file = fd_to_file(fd)?;
 	let Some(ent) = &file.vfs_entry else {
 		return Ok(0);
 	};
@@ -60,12 +59,7 @@ fn do_fsync(fd: c_int, metadata: bool) -> EResult<usize> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}
-	let file = Process::current()
-		.file_descriptors()
-		.lock()
-		.get_fd(fd)?
-		.get_file()
-		.clone();
+	let file = fd_to_file(fd)?;
 	let Some(node) = file.node() else {
 		return Ok(0);
 	};

@@ -19,11 +19,10 @@
 //! Kernel module system calls.
 
 use crate::{
-	file::perm::AccessProfile,
+	file::{fd::fd_to_file, perm::AccessProfile},
 	memory::user::{UserSlice, UserString},
 	module,
 	module::Module,
-	process::Process,
 };
 use core::{
 	ffi::{c_int, c_uint, c_ulong},
@@ -53,12 +52,7 @@ pub fn finit_module(fd: c_int, _param_values: UserString, _flags: c_int) -> ERes
 		return Err(errno!(EPERM));
 	}
 	// Read file
-	let file = Process::current()
-		.file_descriptors()
-		.lock()
-		.get_fd(fd)?
-		.get_file()
-		.clone();
+	let file = fd_to_file(fd)?;
 	let image = file.read_all()?;
 	let module = Module::load(&image)?;
 	module::add(module)?;

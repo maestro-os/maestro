@@ -19,12 +19,10 @@
 //! `*at` system calls allow to perform operations on files without having to redo the whole
 //! path-resolution each time.
 
-use crate::{
-	file::{
-		vfs,
-		vfs::{ResolutionSettings, Resolved},
-	},
-	process::Process,
+use crate::file::{
+	fd::fd_to_file,
+	vfs,
+	vfs::{ResolutionSettings, Resolved},
 };
 use core::ffi::c_int;
 use utils::{collections::path::Path, errno, errno::EResult};
@@ -71,11 +69,7 @@ pub fn get_file(
 	let mut rs = ResolutionSettings::cur_task(create, follow_link);
 	// If not starting from current directory, get location
 	if dirfd != AT_FDCWD {
-		let cwd = Process::current()
-			.file_descriptors()
-			.lock()
-			.get_fd(dirfd)?
-			.get_file()
+		let cwd = fd_to_file(dirfd)?
 			.vfs_entry
 			.clone()
 			.ok_or_else(|| errno!(ENOTDIR))?;

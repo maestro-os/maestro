@@ -24,7 +24,7 @@ use crate::{
 	file::{
 		File, FileType, O_CLOEXEC, O_CREAT, O_DIRECTORY, O_EXCL, O_NOCTTY, O_NOFOLLOW, O_RDONLY,
 		O_RDWR, O_TRUNC, O_WRONLY, Stat,
-		fd::FD_CLOEXEC,
+		fd::{FD_CLOEXEC, fd_to_file},
 		fs::StatSet,
 		perm::AccessProfile,
 		vfs,
@@ -42,13 +42,7 @@ use crate::{
 	},
 };
 use core::{ffi::c_int, hint::unlikely, sync::atomic::Ordering::Release};
-use utils::{
-	collections::path::{Path, PathBuf},
-	errno,
-	errno::EResult,
-	limits::SYMLINK_MAX,
-	ptr::arc::Arc,
-};
+use utils::{collections::path::Path, errno, errno::EResult, limits::SYMLINK_MAX, ptr::arc::Arc};
 
 /// `access` flag: Checks for existence of the file.
 const F_OK: i32 = 0;
@@ -69,8 +63,7 @@ pub fn creat(pathname: UserString, mode: c_int) -> EResult<usize> {
 }
 
 pub fn mkdir(pathname: UserString, mode: file::Mode) -> EResult<usize> {
-	let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
-	let path = PathBuf::try_from(path)?;
+	let path = pathname.copy_path_from_user()?;
 	// If the path is not empty, create
 	if let Some(name) = path.file_name() {
 		// Get parent directory
@@ -95,11 +88,10 @@ pub fn mkdir(pathname: UserString, mode: file::Mode) -> EResult<usize> {
 }
 
 pub fn mknod(pathname: UserString, mode: file::Mode, dev: u64) -> EResult<usize> {
-	let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
-	let path = PathBuf::try_from(path)?;
-	let parent_path = path.parent().unwrap_or(Path::root());
+	let pathname = pathname.copy_path_from_user()?;
+	let parent_path = pathname.parent().unwrap_or(Path::root());
 	// File name
-	let Some(name) = path.file_name() else {
+	let Some(name) = pathname.file_name() else {
 		return Err(errno!(EEXIST));
 	};
 	// Check file type and permissions
@@ -142,14 +134,8 @@ pub fn linkat(
 	newpath: UserString,
 	flags: c_int,
 ) -> EResult<usize> {
-	let oldpath = oldpath
-		.copy_from_user()?
-		.map(PathBuf::try_from)
-		.ok_or_else(|| errno!(EFAULT))??;
-	let newpath = newpath
-		.copy_from_user()?
-		.map(PathBuf::try_from)
-		.ok_or_else(|| errno!(EFAULT))??;
+	let oldpath = oldpath.copy_path_from_user()?;
+	let newpath = newpath.copy_path_from_user()?;
 	// Get old file
 	let Resolved::Found(old) = at::get_file(olddirfd, Some(&oldpath), flags, false, false)? else {
 		unreachable!();
@@ -175,15 +161,11 @@ pub fn symlink(target: UserString, linkpath: UserString) -> EResult<usize> {
 }
 
 pub fn symlinkat(target: UserString, newdirfd: c_int, linkpath: UserString) -> EResult<usize> {
-	let target_slice = target.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-	if target_slice.len() > SYMLINK_MAX {
+	let target = target.copy_path_from_user()?;
+	if target.len() > SYMLINK_MAX {
 		return Err(errno!(ENAMETOOLONG));
 	}
-	let target = PathBuf::try_from(target_slice)?;
-	let linkpath = linkpath
-		.copy_from_user()?
-		.map(PathBuf::try_from)
-		.transpose()?;
+	let linkpath = linkpath.copy_path_opt_from_user()?;
 	// Create link
 	let Resolved::Creatable {
 		parent,
@@ -209,9 +191,8 @@ pub fn symlinkat(target: UserString, newdirfd: c_int, linkpath: UserString) -> E
 
 pub fn readlink(pathname: UserString, buf: *mut u8, bufsiz: usize) -> EResult<usize> {
 	// Get file
-	let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
-	let path = PathBuf::try_from(path)?;
-	let ent = vfs::get_file_from_path(&path, false)?;
+	let pathname = pathname.copy_path_from_user()?;
+	let ent = vfs::get_file_from_path(&pathname, false)?;
 	// Validation
 	if ent.get_type()? != FileType::Link {
 		return Err(errno!(EINVAL));
@@ -282,10 +263,7 @@ pub fn do_openat(
 	mode: file::Mode,
 ) -> EResult<usize> {
 	let proc = Process::current();
-	let pathname = pathname
-		.copy_from_user()?
-		.map(PathBuf::try_from)
-		.ok_or_else(|| errno!(EFAULT))??;
+	let pathname = pathname.copy_path_from_user()?;
 	let mode = mode & !proc.umask();
 
 	// Get file
@@ -351,10 +329,7 @@ pub fn do_access(
 	mode: i32,
 	flags: i32,
 ) -> EResult<usize> {
-	let pathname = pathname
-		.copy_from_user()?
-		.map(PathBuf::try_from)
-		.transpose()?;
+	let pathname = pathname.copy_path_opt_from_user()?;
 	let Resolved::Found(file) = at::get_file(
 		dirfd.unwrap_or(AT_FDCWD),
 		pathname.as_deref(),
@@ -407,11 +382,7 @@ pub fn chmod(pathname: UserString, mode: file::Mode) -> EResult<usize> {
 }
 
 pub fn fchmod(fd: c_int, mode: file::Mode) -> EResult<usize> {
-	let file = Process::current()
-		.file_descriptors()
-		.lock()
-		.get_fd(fd)?
-		.get_file()
+	let file = fd_to_file(fd)?
 		.vfs_entry
 		.clone()
 		.ok_or_else(|| errno!(EROFS))?;
@@ -431,10 +402,7 @@ pub fn fchmodat(
 	mode: file::Mode,
 	flags: c_int,
 ) -> EResult<usize> {
-	let pathname = pathname
-		.copy_from_user()?
-		.map(PathBuf::try_from)
-		.transpose()?;
+	let pathname = pathname.copy_path_opt_from_user()?;
 	// Get file
 	let Resolved::Found(file) = at::get_file(dirfd, pathname.as_deref(), flags, false, true)?
 	else {
@@ -462,10 +430,7 @@ fn do_fchownat(
 		return Err(errno!(EINVAL));
 	}
 	let path = pathname
-		.map(|pathname| {
-			let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-			PathBuf::try_from(path)
-		})
+		.map(|pathname| pathname.copy_path_from_user())
 		.transpose()?;
 	// Get file
 	let Resolved::Found(ent) = at::get_file(dirfd, path.as_deref(), flags, false, true)? else {
@@ -520,8 +485,7 @@ pub fn getcwd(buf: *mut u8, size: usize) -> EResult<usize> {
 }
 
 pub fn chdir(path: UserString) -> EResult<usize> {
-	let path = path.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-	let path = PathBuf::try_from(path)?;
+	let path = path.copy_path_from_user()?;
 	// Get directory
 	let dir = vfs::get_file_from_path(&path, true)?;
 	// Validation
@@ -546,8 +510,7 @@ pub fn chroot(path: UserString) -> EResult<usize> {
 	if !rs.access_profile.is_privileged() {
 		return Err(errno!(EPERM));
 	}
-	let path = path.copy_from_user()?.ok_or(errno!(EFAULT))?;
-	let path = PathBuf::try_from(path)?;
+	let path = path.copy_path_from_user()?;
 	// Get file
 	let Resolved::Found(ent) = vfs::resolve_path(&path, &rs)? else {
 		unreachable!();
@@ -560,12 +523,7 @@ pub fn chroot(path: UserString) -> EResult<usize> {
 }
 
 pub fn fchdir(fd: c_int) -> EResult<usize> {
-	let proc = Process::current();
-	let file = proc
-		.file_descriptors()
-		.lock()
-		.get_fd(fd)?
-		.get_file()
+	let file = fd_to_file(fd)?
 		.vfs_entry
 		.clone()
 		.ok_or_else(|| errno!(ENOTDIR))?;
@@ -577,7 +535,7 @@ pub fn fchdir(fd: c_int) -> EResult<usize> {
 	if !AccessProfile::cur_task().can_list_directory(&stat) {
 		return Err(errno!(EACCES));
 	}
-	proc.fs().lock().cwd = file;
+	Process::current().fs().lock().cwd = file;
 	Ok(0)
 }
 
@@ -592,10 +550,7 @@ pub fn utimensat(
 	times: UserPtr<[Timespec; 2]>,
 	flags: c_int,
 ) -> EResult<usize> {
-	let pathname = pathname
-		.copy_from_user()?
-		.map(PathBuf::try_from)
-		.transpose()?;
+	let pathname = pathname.copy_path_opt_from_user()?;
 	let (atime, mtime) = times
 		.copy_from_user()?
 		.map(|[atime, mtime]| (atime.to_nano(), mtime.to_nano()))
@@ -633,18 +588,12 @@ pub(super) fn do_renameat2(
 	_flags: c_int,
 ) -> EResult<usize> {
 	// Get old file
-	let oldpath = oldpath
-		.copy_from_user()?
-		.map(PathBuf::try_from)
-		.ok_or_else(|| errno!(EFAULT))??;
+	let oldpath = oldpath.copy_path_from_user()?;
 	let Resolved::Found(old) = at::get_file(olddirfd, Some(&oldpath), 0, false, false)? else {
 		unreachable!();
 	};
 	// Get new file
-	let newpath = newpath
-		.copy_from_user()?
-		.map(PathBuf::try_from)
-		.ok_or_else(|| errno!(EFAULT))??;
+	let newpath = newpath.copy_path_from_user()?;
 	let res = at::get_file(newdirfd, Some(&newpath), 0, true, true)?;
 	match res {
 		Resolved::Found(new) => {
@@ -671,8 +620,7 @@ pub fn renameat2(
 }
 
 pub fn truncate(path: UserString, length: usize) -> EResult<usize> {
-	let path = path.copy_from_user()?.ok_or(errno!(EFAULT))?;
-	let path = PathBuf::try_from(path)?;
+	let path = path.copy_path_from_user()?;
 	let ent = vfs::get_file_from_path(&path, true)?;
 	// Permission check
 	if !AccessProfile::cur_task().can_write_file(&ent.stat()) {
@@ -690,10 +638,7 @@ pub fn unlink(pathname: UserString) -> EResult<usize> {
 
 /// Perform the `unlinkat` system call.
 pub fn do_unlinkat(dirfd: c_int, pathname: UserString, flags: c_int) -> EResult<usize> {
-	let pathname = pathname
-		.copy_from_user()?
-		.map(PathBuf::try_from)
-		.ok_or_else(|| errno!(EFAULT))??;
+	let pathname = pathname.copy_path_from_user()?;
 	// AT_EMPTY_PATH is required in case the path has only one component
 	let resolved = at::get_file(dirfd, Some(&pathname), flags | AT_EMPTY_PATH, false, false)?;
 	let Resolved::Found(ent) = resolved else {
@@ -708,8 +653,7 @@ pub fn unlinkat(dirfd: c_int, pathname: UserString, flags: c_int) -> EResult<usi
 }
 
 pub fn rmdir(pathname: UserString) -> EResult<usize> {
-	let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
-	let path = PathBuf::try_from(path)?;
+	let path = pathname.copy_path_from_user()?;
 	let entry = vfs::get_file_from_path(&path, true)?;
 	// Validation
 	let stat = entry.get_type()?;

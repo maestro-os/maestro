@@ -19,7 +19,7 @@
 //! Memory management system calls.
 
 use crate::{
-	file::FileType,
+	file::{FileType, fd::fd_to_file},
 	memory,
 	memory::{VirtAddr, user::UserSlice},
 	process::{
@@ -59,12 +59,7 @@ pub fn do_mmap(
 			return Err(errno!(EINVAL));
 		}
 		// Get file
-		let file = Process::current()
-			.file_descriptors()
-			.lock()
-			.get_fd(fd)?
-			.get_file()
-			.clone();
+		let file = fd_to_file(fd)?;
 		// Check permissions
 		if unlikely(file.stat()?.get_type() != Some(FileType::Regular)) {
 			return Err(errno!(EACCES));
