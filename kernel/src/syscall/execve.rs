@@ -30,11 +30,7 @@ use crate::{
 };
 use core::hint::unlikely;
 use utils::{
-	collections::{
-		path::{Path, PathBuf},
-		string::String,
-		vec::Vec,
-	},
+	collections::{path::Path, string::String, vec::Vec},
 	errno,
 	errno::{CollectResult, EResult},
 	ptr::arc::Arc,
@@ -141,8 +137,7 @@ pub fn execve(
 ) -> EResult<usize> {
 	// Use scope to drop everything before calling `init_ctx`
 	{
-		let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-		let path = PathBuf::try_from(path)?;
+		let path = pathname.copy_path_from_user()?;
 		let argv = argv.iter();
 		let (file, argv) = get_file(&path, argv)?;
 		let envp = envp.iter().collect::<EResult<CollectResult<Vec<_>>>>()?.0?;

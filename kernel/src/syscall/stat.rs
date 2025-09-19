@@ -20,16 +20,15 @@
 
 use crate::{
 	device::id::{major, makedev, minor},
-	file::{INode, Stat, fs::Statfs, vfs, vfs::Resolved},
+	file::{INode, Stat, fd::fd_to_file, fs::Statfs, vfs, vfs::Resolved},
 	memory::user::{UserPtr, UserString},
-	process::Process,
 	syscall::util::at,
 };
 use core::{
 	ffi::{c_int, c_uint},
 	hint::unlikely,
 };
-use utils::{collections::path::PathBuf, errno, errno::EResult};
+use utils::{errno, errno::EResult};
 
 /// Old structure representing the status of a file.
 #[derive(Debug)]
@@ -198,81 +197,60 @@ fn do_stat64(stat: Stat, entry: Option<&vfs::Entry>, statbuf: UserPtr<Stat64>) -
 }
 
 pub fn oldstat(pathname: UserString, statbuf: UserPtr<OldStat>) -> EResult<usize> {
-	let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EINVAL))?;
-	let pathname = PathBuf::try_from(pathname)?;
+	let pathname = pathname.copy_path_from_user()?;
 	let ent = vfs::get_file_from_path(&pathname, true)?;
 	do_oldstat(ent.stat(), Some(&ent), statbuf)?;
 	Ok(0)
 }
 
 pub fn oldfstat(fd: c_int, statbuf: UserPtr<OldStat>) -> EResult<usize> {
-	let file = Process::current()
-		.file_descriptors()
-		.lock()
-		.get_fd(fd)?
-		.get_file()
-		.clone();
+	let file = fd_to_file(fd)?;
 	do_oldstat(file.stat()?, file.vfs_entry.as_deref(), statbuf)?;
 	Ok(0)
 }
 
 pub fn oldlstat(pathname: UserString, statbuf: UserPtr<OldStat>) -> EResult<usize> {
-	let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EINVAL))?;
-	let pathname = PathBuf::try_from(pathname)?;
+	let pathname = pathname.copy_path_from_user()?;
 	let ent = vfs::get_file_from_path(&pathname, false)?;
 	do_oldstat(ent.stat(), Some(&ent), statbuf)?;
 	Ok(0)
 }
 
 pub fn stat(pathname: UserString, statbuf: UserPtr<Stat32>) -> EResult<usize> {
-	let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EINVAL))?;
-	let pathname = PathBuf::try_from(pathname)?;
+	let pathname = pathname.copy_path_from_user()?;
 	let ent = vfs::get_file_from_path(&pathname, true)?;
 	do_stat32(ent.stat(), Some(&ent), statbuf)?;
 	Ok(0)
 }
 
 pub fn stat64(pathname: UserString, statbuf: UserPtr<Stat64>) -> EResult<usize> {
-	let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EINVAL))?;
-	let pathname = PathBuf::try_from(pathname)?;
+	let pathname = pathname.copy_path_from_user()?;
 	let ent = vfs::get_file_from_path(&pathname, true)?;
 	do_stat64(ent.stat(), Some(&ent), statbuf)?;
 	Ok(0)
 }
 
 pub fn fstat(fd: c_int, statbuf: UserPtr<Stat32>) -> EResult<usize> {
-	let file = Process::current()
-		.file_descriptors()
-		.lock()
-		.get_fd(fd)?
-		.get_file()
-		.clone();
+	let file = fd_to_file(fd)?;
 	do_stat32(file.stat()?, file.vfs_entry.as_deref(), statbuf)?;
 	Ok(0)
 }
 
 pub fn fstat64(fd: c_int, statbuf: UserPtr<Stat64>) -> EResult<usize> {
-	let file = Process::current()
-		.file_descriptors()
-		.lock()
-		.get_fd(fd)?
-		.get_file()
-		.clone();
+	let file = fd_to_file(fd)?;
 	do_stat64(file.stat()?, file.vfs_entry.as_deref(), statbuf)?;
 	Ok(0)
 }
 
 pub fn lstat(pathname: UserString, statbuf: UserPtr<Stat32>) -> EResult<usize> {
-	let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EINVAL))?;
-	let pathname = PathBuf::try_from(pathname)?;
+	let pathname = pathname.copy_path_from_user()?;
 	let ent = vfs::get_file_from_path(&pathname, false)?;
 	do_stat32(ent.stat(), Some(&ent), statbuf)?;
 	Ok(0)
 }
 
 pub fn lstat64(pathname: UserString, statbuf: UserPtr<Stat64>) -> EResult<usize> {
-	let pathname = pathname.copy_from_user()?.ok_or_else(|| errno!(EINVAL))?;
-	let pathname = PathBuf::try_from(pathname)?;
+	let pathname = pathname.copy_path_from_user()?;
 	let ent = vfs::get_file_from_path(&pathname, false)?;
 	do_stat64(ent.stat(), Some(&ent), statbuf)?;
 	Ok(0)
@@ -284,7 +262,7 @@ pub fn fstatat64(
 	statbuf: UserPtr<Stat64>,
 	flags: c_int,
 ) -> EResult<usize> {
-	let path = path.copy_from_user()?.map(PathBuf::try_from).transpose()?;
+	let path = path.copy_path_opt_from_user()?;
 	let Resolved::Found(ent) = at::get_file(dirfd, path.as_deref(), flags, false, true)? else {
 		unreachable!();
 	};
@@ -388,10 +366,7 @@ pub fn statx(
 	}
 	// TODO Implement all flags
 	// Get the file
-	let pathname = pathname
-		.copy_from_user()?
-		.map(PathBuf::try_from)
-		.transpose()?;
+	let pathname = pathname.copy_path_opt_from_user()?;
 	let Resolved::Found(file) = at::get_file(dirfd, pathname.as_deref(), flags, false, true)?
 	else {
 		unreachable!();
@@ -455,8 +430,7 @@ pub fn statx(
 }
 
 pub(super) fn do_statfs(path: UserString, buf: UserPtr<Statfs>) -> EResult<usize> {
-	let path = path.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-	let path = PathBuf::try_from(path)?;
+	let path = path.copy_path_from_user()?;
 	let stat = vfs::get_file_from_path(&path, false)?
 		.node()
 		.fs
@@ -480,11 +454,7 @@ pub fn statfs64(path: UserString, _sz: usize, buf: UserPtr<Statfs>) -> EResult<u
 /// Performs the `fstatfs` system call.
 pub fn do_fstatfs(fd: c_int, _sz: usize, buf: UserPtr<Statfs>) -> EResult<usize> {
 	// TODO use `sz`
-	let stat = Process::current()
-		.file_descriptors()
-		.lock()
-		.get_fd(fd)?
-		.get_file()
+	let stat = fd_to_file(fd)?
 		.vfs_entry
 		.as_ref()
 		.ok_or_else(|| errno!(ENOSYS))?

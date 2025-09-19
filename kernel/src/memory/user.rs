@@ -29,7 +29,7 @@ use core::{
 	ptr::NonNull,
 };
 use utils::{
-	collections::{string::String, vec::Vec},
+	collections::{path::PathBuf, string::String, vec::Vec},
 	errno,
 	errno::EResult,
 	limits::PAGE_SIZE,
@@ -336,7 +336,9 @@ impl UserString {
 		self.0.map(NonNull::as_ptr).unwrap_or_default()
 	}
 
-	/// Returns an immutable reference to the string.
+	/// Copies a string from userspace.
+	///
+	/// If the pointer is `NULL`, the function returns `None`.
 	///
 	/// If the string is not accessible, the function returns an error.
 	pub fn copy_from_user(&self) -> EResult<Option<String>> {
@@ -373,6 +375,23 @@ impl UserString {
 			}
 		}
 		Ok(Some(buf.into()))
+	}
+
+	/// Copies a [`PathBuf`] from userspace.
+	///
+	/// If the pointer is `NULL`, the function returns `None`.
+	///
+	/// If the string is not accessible, the function returns an error.
+	pub fn copy_path_opt_from_user(&self) -> EResult<Option<PathBuf>> {
+		self.copy_from_user()?.map(PathBuf::try_from).transpose()
+	}
+
+	/// Copies a [`PathBuf`] from userspace.
+	///
+	/// If the string is not accessible, the function returns an error.
+	pub fn copy_path_from_user(&self) -> EResult<PathBuf> {
+		self.copy_path_opt_from_user()?
+			.ok_or_else(|| errno!(EFAULT))
 	}
 }
 

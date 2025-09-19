@@ -20,7 +20,7 @@
 
 use crate::{
 	file,
-	file::{File, perm::AccessProfile, socket::Socket},
+	file::{File, fd::fd_to_file, perm::AccessProfile, socket::Socket},
 	memory::user::{UserPtr, UserSlice},
 	net::{SocketDesc, SocketDomain, SocketType},
 	process::Process,
@@ -91,12 +91,7 @@ pub fn socketpair(
 
 pub fn getsockname(sockfd: c_int, addr: *mut u8, addrlen: UserPtr<isize>) -> EResult<usize> {
 	// Get socket
-	let file = Process::current()
-		.file_descriptors()
-		.lock()
-		.get_fd(sockfd)?
-		.get_file()
-		.clone();
+	let file = fd_to_file(sockfd)?;
 	let sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
 	// Read and check buffer length
 	let addrlen_val = addrlen.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
@@ -119,12 +114,7 @@ pub fn getsockopt(
 	optlen: usize,
 ) -> EResult<usize> {
 	// Get socket
-	let file = Process::current()
-		.file_descriptors()
-		.lock()
-		.get_fd(sockfd)?
-		.get_file()
-		.clone();
+	let file = fd_to_file(sockfd)?;
 	let sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
 	let val = sock.get_opt(level, optname)?;
 	// Write
@@ -143,12 +133,7 @@ pub fn setsockopt(
 ) -> EResult<usize> {
 	let optval = UserSlice::from_user(optval, optlen)?;
 	// Get socket
-	let file = Process::current()
-		.file_descriptors()
-		.lock()
-		.get_fd(sockfd)?
-		.get_file()
-		.clone();
+	let file = fd_to_file(sockfd)?;
 	let sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
 	// Set opt
 	let optval = optval.copy_from_user_vec(0)?.ok_or(errno!(EFAULT))?;
@@ -161,12 +146,7 @@ pub fn connect(sockfd: c_int, addr: *mut u8, addrlen: isize) -> EResult<usize> {
 		return Err(errno!(EINVAL));
 	}
 	// Get socket
-	let file = Process::current()
-		.file_descriptors()
-		.lock()
-		.get_fd(sockfd)?
-		.get_file()
-		.clone();
+	let file = fd_to_file(sockfd)?;
 	let _sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
 	let addr = UserSlice::from_user(addr, addrlen as _)?;
 	let _addr = addr.copy_from_user_vec(0)?.ok_or_else(|| errno!(EFAULT))?;
@@ -180,12 +160,7 @@ pub fn bind(sockfd: c_int, addr: *mut u8, addrlen: isize) -> EResult<usize> {
 		return Err(errno!(EINVAL));
 	}
 	// Get socket
-	let file = Process::current()
-		.file_descriptors()
-		.lock()
-		.get_fd(sockfd)?
-		.get_file()
-		.clone();
+	let file = fd_to_file(sockfd)?;
 	let sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
 	let addr = UserSlice::from_user(addr, addrlen as _)?;
 	let addr = addr.copy_from_user_vec(0)?.ok_or_else(|| errno!(EFAULT))?;
@@ -209,12 +184,7 @@ pub fn sendto(
 		return Err(errno!(EINVAL));
 	}
 	// Get socket
-	let file = Process::current()
-		.file_descriptors()
-		.lock()
-		.get_fd(sockfd)?
-		.get_file()
-		.clone();
+	let file = fd_to_file(sockfd)?;
 	let _sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
 	// Get slices
 	let _buf_slice = buf.copy_from_user_vec(0)?.ok_or(errno!(EFAULT))?;
@@ -224,12 +194,7 @@ pub fn sendto(
 
 pub fn shutdown(sockfd: c_int, how: c_int) -> EResult<usize> {
 	// Get socket
-	let file = Process::current()
-		.file_descriptors()
-		.lock()
-		.get_fd(sockfd)?
-		.get_file()
-		.clone();
+	let file = fd_to_file(sockfd)?;
 	let sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
 	// Do shutdown
 	match how {

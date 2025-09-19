@@ -20,9 +20,8 @@
 //! directory.
 
 use crate::{
-	file::{DT_UNKNOWN, DirContext, DirEntry, FileType},
+	file::{DT_UNKNOWN, DirContext, DirEntry, FileType, fd::fd_to_file},
 	memory::user::UserSlice,
-	process::Process,
 };
 use core::{
 	ffi::{c_int, c_uint},
@@ -66,12 +65,7 @@ fn do_getdents<F: FnMut(&DirEntry) -> EResult<bool>>(fd: c_int, mut write: F) ->
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}
-	let file = Process::current()
-		.file_descriptors()
-		.lock()
-		.get_fd(fd as _)?
-		.get_file()
-		.clone();
+	let file = fd_to_file(fd)?;
 	if file.stat()?.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
 	}

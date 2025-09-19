@@ -28,7 +28,7 @@ use crate::{
 	memory::user::{UserPtr, UserString},
 };
 use core::ffi::{c_int, c_ulong, c_void};
-use utils::{collections::path::PathBuf, errno, errno::EResult};
+use utils::{errno, errno::EResult};
 
 pub fn mount(
 	source: UserString,
@@ -43,12 +43,11 @@ pub fn mount(
 	// Read arguments
 	let source_slice = source.copy_from_user()?.ok_or(errno!(EFAULT))?;
 	let mount_source = MountSource::new(&source_slice)?;
-	let target_slice = target.copy_from_user()?.ok_or(errno!(EFAULT))?;
-	let target_path = PathBuf::try_from(target_slice)?;
+	let target = target.copy_path_from_user()?;
 	let filesystemtype_slice = filesystemtype.copy_from_user()?.ok_or(errno!(EFAULT))?;
 	let fs_type = fs::get_type(&filesystemtype_slice).ok_or(errno!(ENODEV))?;
 	// Get target file
-	let target = vfs::get_file_from_path(&target_path, true)?;
+	let target = vfs::get_file_from_path(&target, true)?;
 	// Check the target is a directory
 	if target.get_type()? != FileType::Directory {
 		return Err(errno!(ENOTDIR));
@@ -70,9 +69,8 @@ pub fn umount2(target: UserString, _flags: c_int) -> EResult<usize> {
 		return Err(errno!(EPERM));
 	}
 	// Get target directory
-	let target_slice = target.copy_from_user()?.ok_or(errno!(EFAULT))?;
-	let target_path = PathBuf::try_from(target_slice)?;
-	let target = vfs::get_file_from_path(&target_path, true)?;
+	let target = target.copy_path_from_user()?;
+	let target = vfs::get_file_from_path(&target, true)?;
 	// Remove mountpoint
 	mountpoint::remove(target)?;
 	Ok(0)
