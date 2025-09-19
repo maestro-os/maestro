@@ -21,7 +21,7 @@
 //! A file descriptor is an ID held by a process pointing to an entry in the
 //! open file description table.
 
-use crate::file::File;
+use crate::{file::File, process::Process};
 use core::{cmp::max, ffi::c_int, mem};
 use utils::{
 	collections::vec::Vec,
@@ -295,6 +295,20 @@ impl Drop for FileDescriptorTable {
 			let _ = fd.close();
 		}
 	}
+}
+
+/// Returns a reference to the file associated with the file descriptor `fd` on the current
+/// process.
+///
+/// If the file descriptor does not exist, the function returns [`errno::EBADF`].
+pub fn fd_to_file(fd: c_int) -> EResult<Arc<File>> {
+	let file = Process::current()
+		.file_descriptors()
+		.lock()
+		.get_fd(fd)?
+		.get_file()
+		.clone();
+	Ok(file)
 }
 
 #[cfg(test)]

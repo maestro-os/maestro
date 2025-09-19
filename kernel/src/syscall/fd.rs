@@ -19,7 +19,10 @@
 //! File descriptors handling system calls.
 
 use crate::{
-	file::{FileType, fd::NewFDConstraint},
+	file::{
+		FileType,
+		fd::{NewFDConstraint, fd_to_file},
+	},
 	memory::user::{UserIOVec, UserPtr, UserSlice},
 	process::Process,
 };
@@ -45,12 +48,7 @@ pub fn read(fd: c_int, buf: *mut u8, count: usize) -> EResult<usize> {
 	if len == 0 {
 		return Ok(0);
 	}
-	let file = Process::current()
-		.file_descriptors()
-		.lock()
-		.get_fd(fd)?
-		.get_file()
-		.clone();
+	let file = fd_to_file(fd)?;
 	if file.get_type()? == FileType::Link {
 		return Err(errno!(EINVAL));
 	}
@@ -70,12 +68,7 @@ pub fn pread64(fd: c_int, buf: *mut u8, count: usize, offset: u64) -> EResult<us
 	if len == 0 {
 		return Ok(0);
 	}
-	let file = Process::current()
-		.file_descriptors()
-		.lock()
-		.get_fd(fd)?
-		.get_file()
-		.clone();
+	let file = fd_to_file(fd)?;
 	if file.get_type()? == FileType::Link {
 		return Err(errno!(EINVAL));
 	}
@@ -120,12 +113,7 @@ fn do_readv(
 		Some(..-1) => return Err(errno!(EINVAL)),
 	};
 	// TODO Handle flags
-	let file = Process::current()
-		.file_descriptors()
-		.lock()
-		.get_fd(fd)?
-		.get_file()
-		.clone();
+	let file = fd_to_file(fd)?;
 	if file.get_type()? == FileType::Link {
 		return Err(errno!(EINVAL));
 	}
@@ -189,12 +177,7 @@ pub fn write(fd: c_int, buf: *mut u8, count: usize) -> EResult<usize> {
 	if len == 0 {
 		return Ok(0);
 	}
-	let file = Process::current()
-		.file_descriptors()
-		.lock()
-		.get_fd(fd)?
-		.get_file()
-		.clone();
+	let file = fd_to_file(fd)?;
 	if file.get_type()? == FileType::Link {
 		return Err(errno!(EINVAL));
 	}
@@ -214,12 +197,7 @@ pub fn pwrite64(fd: c_int, buf: *mut u8, count: usize, offset: u64) -> EResult<u
 	if len == 0 {
 		return Ok(0);
 	}
-	let file = Process::current()
-		.file_descriptors()
-		.lock()
-		.get_fd(fd)?
-		.get_file()
-		.clone();
+	let file = fd_to_file(fd)?;
 	if file.get_type()? == FileType::Link {
 		return Err(errno!(EINVAL));
 	}
@@ -264,12 +242,7 @@ fn do_writev(
 		Some(..-1) => return Err(errno!(EINVAL)),
 	};
 	// Get file
-	let file = Process::current()
-		.file_descriptors()
-		.lock()
-		.get_fd(fd)?
-		.get_file()
-		.clone();
+	let file = fd_to_file(fd)?;
 	if file.get_type()? == FileType::Link {
 		return Err(errno!(EINVAL));
 	}
@@ -328,12 +301,7 @@ fn do_lseek(
 	result: Option<UserPtr<u64>>,
 	whence: c_uint,
 ) -> EResult<usize> {
-	let file = Process::current()
-		.file_descriptors()
-		.lock()
-		.get_fd(fd as _)?
-		.get_file()
-		.clone();
+	let file = fd_to_file(fd as _)?;
 	// Compute the offset
 	let base = match whence {
 		SEEK_SET => 0,
