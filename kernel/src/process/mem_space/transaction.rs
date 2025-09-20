@@ -24,7 +24,10 @@ use crate::{
 		VirtAddr,
 		vmem::{VMem, shootdown_range},
 	},
-	sync::mutex::MutexGuard,
+	sync::{
+		mutex::MutexGuard,
+		rwlock::{INT_READ, INT_WRITE, WriteGuard},
+	},
 };
 use core::{alloc::AllocError, hash::Hash, mem};
 use utils::{
@@ -101,7 +104,7 @@ pub(super) struct MemSpaceTransaction<'m> {
 	/// The virtual memory context
 	pub vmem: MutexGuard<'m, VMem, false>,
 	/// The memory space state on which the transaction applies.
-	pub state: MutexGuard<'m, MemSpaceState, false>,
+	pub state: WriteGuard<'m, MemSpaceState, { INT_READ | INT_WRITE }>,
 
 	/// The complement used to restore `gaps` on rollback.
 	gaps_complement: HashMap<VirtAddr, Option<MemGap>>,
@@ -120,7 +123,7 @@ pub(super) struct MemSpaceTransaction<'m> {
 impl<'m> MemSpaceTransaction<'m> {
 	/// Begins a new transaction for the given memory space.
 	pub fn new(mem_space: &'m MemSpace) -> Self {
-		let state = mem_space.state.lock();
+		let state = mem_space.state.write();
 		let vmem = mem_space.vmem.lock();
 		let vmem_usage = state.vmem_usage;
 		Self {
