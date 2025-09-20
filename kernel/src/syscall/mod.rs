@@ -84,8 +84,8 @@ use crate::{
 		process::{getpriority, nice, setpriority},
 		select::{_newselect, poll, pselect6, select},
 		signal::{
-			compat_rt_sigaction, kill, rt_sigaction, rt_sigprocmask, rt_sigreturn, signal,
-			sigreturn, tkill,
+			compat_rt_sigaction, compat_sigaltstack, kill, rt_sigaction, rt_sigprocmask,
+			rt_sigreturn, sigaltstack, signal, sigreturn, tkill,
 		},
 		socket::{
 			bind, connect, getsockname, getsockopt, sendto, setsockopt, shutdown, socket,
@@ -439,7 +439,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		0x0b7 => syscall!(getcwd, frame),
 		// TODO 0x0b8 => syscall!(capget, frame),
 		// TODO 0x0b9 => syscall!(capset, frame),
-		// TODO 0x0ba => syscall!(sigaltstack, frame),
+		0x0ba => syscall!(compat_sigaltstack, frame),
 		// TODO 0x0bb => syscall!(sendfile, frame),
 		// 0x0bc: unimplemented (getpmsg),
 		// 0x0bd: unimplemented (putpmsg),
@@ -832,7 +832,7 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		// TODO 0x080 => syscall!(rt_sigtimedwait, frame),
 		// TODO 0x081 => syscall!(rt_sigqueueinfo, frame),
 		// TODO 0x082 => syscall!(rt_sigsuspend, frame),
-		// TODO 0x083 => syscall!(sigaltstack, frame),
+		0x083 => syscall!(sigaltstack, frame),
 		// TODO 0x084 => syscall!(utime, frame),
 		0x085 => syscall!(mknod, frame),
 		// TODO 0x086 => syscall!(useli, frame),
