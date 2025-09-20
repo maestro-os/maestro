@@ -30,10 +30,9 @@ pub mod vga;
 
 use crate::{
 	device::serial,
-	file::wait_queue::WaitQueue,
 	memory::{user::UserSlice, vmem},
 	process::{Process, pid::Pid, signal::Signal},
-	sync::spin::IntSpin,
+	sync::{spin::IntSpin, wait_queue::WaitQueue},
 	tty::{
 		ansi::{ANSIBuffer, ESCAPE},
 		termios::{Termios, consts::*},
