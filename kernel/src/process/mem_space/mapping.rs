@@ -34,7 +34,7 @@ use crate::{
 	process::mem_space::{
 		COPY_BUFFER, MAP_ANONYMOUS, MAP_PRIVATE, MAP_SHARED, MemSpace, PROT_EXEC, PROT_WRITE, Page,
 	},
-	sync::mutex::Mutex,
+	sync::spin::Spin,
 	time::clock::{Clock, current_time_ms},
 };
 use core::{num::NonZeroUsize, ops::Deref, sync::atomic::Ordering::Release};
@@ -174,7 +174,7 @@ pub struct MemMapping {
 
 	// TODO use a sparse array?
 	/// The list of allocated physical pages
-	pub(super) pages: Mutex<Vec<Option<MappedFrame>>>,
+	pub(super) pages: Spin<Vec<Option<MappedFrame>>>,
 }
 
 impl MemMapping {
@@ -208,7 +208,7 @@ impl MemMapping {
 			file,
 			off,
 
-			pages: Mutex::new(pages),
+			pages: Spin::new(pages),
 		})
 	}
 
@@ -313,7 +313,7 @@ impl MemMapping {
 					file: self.file.clone(),
 					off: self.off,
 
-					pages: Mutex::new(Vec::try_from(&pages[..size.get()])?),
+					pages: Spin::new(Vec::try_from(&pages[..size.get()])?),
 				})
 			})
 			.transpose()?;
@@ -338,7 +338,7 @@ impl MemMapping {
 					file: self.file.clone(),
 					off: self.off + end as u64,
 
-					pages: Mutex::new(Vec::try_from(&pages[end..])?),
+					pages: Spin::new(Vec::try_from(&pages[end..])?),
 				})
 			})
 			.transpose()?;
@@ -389,7 +389,7 @@ impl TryClone for MemMapping {
 			file: self.file.clone(),
 			off: self.off,
 
-			pages: Mutex::new(pages.try_clone()?),
+			pages: Spin::new(pages.try_clone()?),
 		})
 	}
 }

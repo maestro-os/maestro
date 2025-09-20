@@ -446,7 +446,7 @@ const fn get_min_chunk_size() -> usize {
 /// Checks the chunks inside each free lists.
 #[cfg(config_debug_malloc_check)]
 fn check_free_lists() {
-	// Safe because the usage of the malloc API is secured by a Mutex
+	// Safe because the usage of the malloc API is secured by a spinlock
 	// FIXME: this is dirty
 	let free_lists = unsafe { &mut *addr_of_mut!(FREE_LISTS) };
 	for free_list in free_lists {
@@ -469,7 +469,7 @@ fn get_free_list(
 ) -> Option<&'static mut Option<NonNull<FreeChunk>>> {
 	#[cfg(config_debug_malloc_check)]
 	check_free_lists();
-	// Safe because the usage of the malloc API is secured by a Mutex
+	// Safe because the usage of the malloc API is secured by a spinlock
 	// FIXME: this is dirty
 	let free_lists = unsafe { &mut *addr_of_mut!(FREE_LISTS) };
 	let i = min(

@@ -25,7 +25,7 @@
 //! size of a frame in pages.
 
 use super::{PhysAddr, VirtAddr, oom, stats};
-use crate::sync::{atomic::AtomicU64, mutex::IntMutex};
+use crate::sync::{atomic::AtomicU64, spin::IntSpin};
 use core::{
 	alloc::AllocError,
 	hint::unlikely,
@@ -370,7 +370,7 @@ impl Frame {
 }
 
 /// The array of buddy allocator zones.
-pub(crate) static ZONES: IntMutex<[Zone; ZONES_COUNT]> = IntMutex::new([
+pub(crate) static ZONES: IntSpin<[Zone; ZONES_COUNT]> = IntSpin::new([
 	Zone::placeholder(),
 	Zone::placeholder(),
 	Zone::placeholder(),

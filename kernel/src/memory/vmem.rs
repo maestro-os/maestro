@@ -33,7 +33,7 @@ use crate::{
 	memory::{KERNEL_BEGIN, PhysAddr, VirtAddr, buddy, memmap::mmap_iter},
 	multiboot::{MEMORY_ACPI_RECLAIMABLE, MEMORY_AVAILABLE, MEMORY_RESERVED},
 	process::scheduler::defer,
-	sync::{mutex::Mutex, once::OnceInit},
+	sync::{once::OnceInit, spin::Spin},
 	tty::vga,
 };
 use core::{ptr::NonNull, sync::atomic::Ordering::Release};
@@ -275,7 +275,7 @@ pub unsafe fn smap_disable<F: FnOnce() -> T, T>(f: F) -> T {
 }
 
 /// The kernel's virtual memory context.
-pub static KERNEL_VMEM: OnceInit<Mutex<VMem>> = unsafe { OnceInit::new() };
+pub static KERNEL_VMEM: OnceInit<Spin<VMem>> = unsafe { OnceInit::new() };
 
 /// Initializes virtual memory management.
 pub(crate) fn init() {
@@ -361,7 +361,7 @@ pub(crate) fn init() {
 	}
 	kernel_vmem.bind();
 	unsafe {
-		OnceInit::init(&KERNEL_VMEM, Mutex::new(kernel_vmem));
+		OnceInit::init(&KERNEL_VMEM, Spin::new(kernel_vmem));
 	}
 }
 

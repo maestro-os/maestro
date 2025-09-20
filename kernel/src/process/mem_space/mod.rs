@@ -46,7 +46,7 @@ use crate::{
 			critical,
 		},
 	},
-	sync::{mutex::IntMutex, rwlock::IntRwLock},
+	sync::{rwlock::IntRwLock, spin::IntSpin},
 };
 use core::{
 	alloc::AllocError, cmp::min, ffi::c_void, fmt, hint::unlikely, mem, num::NonZeroUsize,
@@ -226,7 +226,7 @@ pub struct MemSpace {
 	///
 	/// We use it as a cache which can be invalidated by unmapping. When a page fault occurs, this
 	/// field is corrected by the [`MemSpace`].
-	vmem: IntMutex<VMem>,
+	vmem: IntSpin<VMem>,
 
 	/// Executable program information
 	pub exe_info: ExeInfo,
@@ -249,7 +249,7 @@ impl MemSpace {
 				brk: brk_init,
 				..Default::default()
 			}),
-			vmem: IntMutex::new(unsafe { VMem::new() }),
+			vmem: IntSpin::new(unsafe { VMem::new() }),
 
 			exe_info: ExeInfo {
 				exe,
@@ -624,7 +624,7 @@ impl MemSpace {
 
 				vmem_usage: state.vmem_usage,
 			}),
-			vmem: IntMutex::new(unsafe { VMem::new() }),
+			vmem: IntSpin::new(unsafe { VMem::new() }),
 
 			exe_info: self.exe_info.clone(),
 

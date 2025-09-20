@@ -52,7 +52,7 @@ use crate::{
 		signal::{AltStack, SIGNALS_COUNT, SigSet},
 	},
 	register_get,
-	sync::{atomic::AtomicU64, mutex::Mutex, rwlock::IntRwLock},
+	sync::{atomic::AtomicU64, rwlock::IntRwLock, spin::Spin},
 	syscall::FromSyscallArg,
 	time::timer::TimerManager,
 };
@@ -257,7 +257,7 @@ impl Clone for ProcessFs {
 /// A process's signal management information.
 pub struct ProcessSignal {
 	/// The list of signal handlers
-	pub handlers: Arc<Mutex<[SignalHandler; SIGNALS_COUNT]>>,
+	pub handlers: Arc<Spin<[SignalHandler; SIGNALS_COUNT]>>,
 	/// The alternative signal stack
 	pub altstack: AltStack,
 	/// A bitfield storing the set of blocked signals
@@ -329,7 +329,7 @@ pub struct Process {
 	/// If `true`, the parent can resume after a `vfork`.
 	pub vfork_done: AtomicBool,
 	/// The links to other processes.
-	pub links: Mutex<ProcessLinks>,
+	pub links: Spin<ProcessLinks>,
 
 	/// The node in the scheduler's run queue.
 	sched_node: ListNode,
@@ -341,7 +341,7 @@ pub struct Process {
 	/// Kernel stack pointer of saved context.
 	kernel_sp: AtomicPtr<u8>,
 	/// The process's FPU state.
-	fpu: Mutex<FxState>,
+	fpu: Spin<FxState>,
 
 	/// FS segment selector
 	fs_selector: AtomicU16,
@@ -352,25 +352,25 @@ pub struct Process {
 	/// GS segment hidden base
 	gs_base: AtomicU64,
 	/// TLS entries.
-	pub tls: Mutex<[gdt::Entry; TLS_ENTRIES_COUNT]>, // TODO rwlock
+	pub tls: Spin<[gdt::Entry; TLS_ENTRIES_COUNT]>, // TODO rwlock
 
 	/// The virtual memory of the process.
 	mem_space: UnsafeMut<Option<Arc<MemSpace>>>,
 	/// Filesystem access information.
-	pub fs: Option<Mutex<ProcessFs>>, // TODO rwlock
+	pub fs: Option<Spin<ProcessFs>>, // TODO rwlock
 	/// The process's current umask.
 	pub umask: AtomicU32,
 	/// The list of open file descriptors with their respective ID.
-	fd_table: UnsafeMut<Option<Arc<Mutex<FileDescriptorTable>>>>,
+	fd_table: UnsafeMut<Option<Arc<Spin<FileDescriptorTable>>>>,
 	/// Process's timers, shared between all threads of the same process.
-	pub timer_manager: Arc<Mutex<TimerManager>>,
+	pub timer_manager: Arc<Spin<TimerManager>>,
 	/// The process's signal management structure.
-	pub signal: Mutex<ProcessSignal>, // TODO rwlock
+	pub signal: Spin<ProcessSignal>, // TODO rwlock
 	/// Events to be notified to the parent process upon `wait`.
 	pub parent_event: AtomicU8,
 
 	/// The process's resources usage.
-	pub rusage: Mutex<Rusage>,
+	pub rusage: Spin<Rusage>,
 }
 
 /// The list of all processes on the system.
@@ -521,7 +521,7 @@ impl Process {
 
 			kernel_stack,
 			kernel_sp: AtomicPtr::new(kernel_sp),
-			fpu: Mutex::new(FxState([0; 512])),
+			fpu: Spin::new(FxState([0; 512])),
 
 			fs_selector: Default::default(),
 			gs_selector: Default::default(),
@@ -534,8 +534,8 @@ impl Process {
 			fs: None,
 			umask: Default::default(),
 			fd_table: Default::default(),
-			timer_manager: Arc::new(Mutex::new(TimerManager::new(0)?))?,
-			signal: Mutex::new(ProcessSignal::new()?),
+			timer_manager: Arc::new(Spin::new(TimerManager::new(0)?))?,
+			signal: Spin::new(ProcessSignal::new()?),
 			parent_event: Default::default(),
 
 			rusage: Default::default(),
@@ -584,14 +584,14 @@ impl Process {
 
 			state: AtomicU8::new(State::Running as _),
 			vfork_done: AtomicBool::new(false),
-			links: Mutex::new(ProcessLinks::default()),
+			links: Spin::new(ProcessLinks::default()),
 
 			sched_node: ListNode::default(),
 			nice: AtomicI8::new(0),
 
 			kernel_stack: KernelStack::new()?,
 			kernel_sp: AtomicPtr::default(),
-			fpu: Mutex::new(FxState([0; 512])),
+			fpu: Spin::new(FxState([0; 512])),
 
 			fs_selector: Default::default(),
 			gs_selector: Default::default(),
@@ -600,15 +600,15 @@ impl Process {
 			tls: Default::default(),
 
 			mem_space: UnsafeMut::new(None),
-			fs: Some(Mutex::new(ProcessFs {
+			fs: Some(Spin::new(ProcessFs {
 				access_profile: AccessProfile::KERNEL,
 				cwd: root_dir.clone(),
 				chroot: root_dir,
 			})),
 			umask: AtomicU32::new(DEFAULT_UMASK),
-			fd_table: UnsafeMut::new(Some(Arc::new(Mutex::new(fd_table))?)),
-			timer_manager: Arc::new(Mutex::new(TimerManager::new(INIT_PID)?))?,
-			signal: Mutex::new(ProcessSignal {
+			fd_table: UnsafeMut::new(Some(Arc::new(Spin::new(fd_table))?)),
+			timer_manager: Arc::new(Spin::new(TimerManager::new(INIT_PID)?))?,
+			signal: Spin::new(ProcessSignal {
 				handlers: Arc::new(Default::default())?,
 				altstack: Default::default(),
 				sigmask: Default::default(),
@@ -880,7 +880,7 @@ impl Process {
 				.map(|fds| -> EResult<_> {
 					let fds = fds.lock();
 					let new_fds = fds.duplicate(false)?;
-					Ok(Arc::new(Mutex::new(new_fds))?)
+					Ok(Arc::new(Spin::new(new_fds))?)
 				})
 				.transpose()?
 		};
@@ -891,7 +891,7 @@ impl Process {
 				signal_manager.handlers.clone()
 			} else {
 				let handlers = signal_manager.handlers.lock().clone();
-				Arc::new(Mutex::new(handlers))?
+				Arc::new(Spin::new(handlers))?
 			}
 		};
 		let group_leader = parent
@@ -914,7 +914,7 @@ impl Process {
 
 			state: AtomicU8::new(State::Running as _),
 			vfork_done: AtomicBool::new(false),
-			links: Mutex::new(ProcessLinks {
+			links: Spin::new(ProcessLinks {
 				parent: Some(parent.clone()),
 				group_leader: Some(group_leader.clone()),
 				..Default::default()
@@ -925,21 +925,21 @@ impl Process {
 
 			kernel_stack,
 			kernel_sp: AtomicPtr::new(kernel_sp),
-			fpu: Mutex::new(parent.fpu.lock().clone()),
+			fpu: Spin::new(parent.fpu.lock().clone()),
 
 			fs_selector: Default::default(),
 			gs_selector: Default::default(),
 			fs_base: Default::default(),
 			gs_base: Default::default(),
-			tls: Mutex::new(*parent.tls.lock()),
+			tls: Spin::new(*parent.tls.lock()),
 
 			mem_space: UnsafeMut::new(Some(mem_space)),
-			fs: Some(Mutex::new(parent.fs().lock().clone())),
+			fs: Some(Spin::new(parent.fs().lock().clone())),
 			umask: AtomicU32::new(parent.umask.load(Relaxed)),
 			fd_table: UnsafeMut::new(file_descriptors),
 			// TODO if creating a thread: timer_manager: parent.timer_manager.clone(),
-			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid_int)?))?,
-			signal: Mutex::new(ProcessSignal {
+			timer_manager: Arc::new(Spin::new(TimerManager::new(pid_int)?))?,
+			signal: Spin::new(ProcessSignal {
 				handlers: signal_handlers,
 				altstack: Default::default(),
 				sigmask: parent.signal.lock().sigmask,
@@ -988,7 +988,7 @@ impl Process {
 	///
 	/// If the process is a kernel thread, the function panics.
 	#[inline]
-	pub fn fs(&self) -> &Mutex<ProcessFs> {
+	pub fn fs(&self) -> &Spin<ProcessFs> {
 		self.fs
 			.as_ref()
 			.expect("kernel threads don't have ProcessFS structures")
@@ -1002,7 +1002,7 @@ impl Process {
 
 	/// Returns a reference to the file descriptors table
 	#[inline]
-	pub fn file_descriptors(&self) -> Arc<Mutex<FileDescriptorTable>> {
+	pub fn file_descriptors(&self) -> Arc<Spin<FileDescriptorTable>> {
 		self.fd_table
 			.get()
 			.clone()

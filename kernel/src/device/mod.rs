@@ -55,7 +55,7 @@ use crate::{
 		cache::{FrameOwner, MappedNode, RcFrame},
 		user::UserSlice,
 	},
-	sync::mutex::Mutex,
+	sync::spin::Spin,
 	syscall::ioctl,
 };
 use core::{ffi::c_void, fmt, hint::likely, num::NonZeroU64};
@@ -100,10 +100,6 @@ impl DeviceType {
 /// - `perms` is the permissions of the device file
 ///
 /// If the file already exist, the function does nothing.
-///
-/// The function takes a mutex guard because it needs to unlock the device
-/// in order to create the file without a deadlock since the VFS accesses a device to write on
-/// the filesystem.
 pub fn create_file(id: &DeviceID, dev_type: DeviceType, path: &Path, perms: Mode) -> EResult<()> {
 	// Create the parent directory in which the device file is located
 	let parent_path = path.parent().unwrap_or(Path::root());
@@ -315,9 +311,9 @@ impl Drop for CharDev {
 }
 
 /// The list of registered block devices.
-pub static BLK_DEVICES: Mutex<HashMap<DeviceID, Arc<BlkDev>>> = Mutex::new(HashMap::new());
+pub static BLK_DEVICES: Spin<HashMap<DeviceID, Arc<BlkDev>>> = Spin::new(HashMap::new());
 /// The list of registered character devices.
-pub static CHAR_DEVICES: Mutex<HashMap<DeviceID, Arc<CharDev>>> = Mutex::new(HashMap::new());
+pub static CHAR_DEVICES: Spin<HashMap<DeviceID, Arc<CharDev>>> = Spin::new(HashMap::new());
 
 /// Helper to insert a block device.
 #[inline]

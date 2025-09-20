@@ -18,7 +18,7 @@
 
 //! This module handles minor/major numbers, including their allocation.
 
-use crate::{device::DeviceType, sync::mutex::Mutex};
+use crate::{device::DeviceType, sync::spin::Spin};
 use core::cell::OnceCell;
 use utils::{collections::id_allocator::IDAllocator, errno::AllocResult};
 
@@ -106,10 +106,10 @@ impl Drop for MajorBlock {
 	}
 }
 
-/// The major numbers allocator.
-static BLOCK_MAJOR_ALLOCATOR: Mutex<OnceCell<IDAllocator>> = Mutex::new(OnceCell::new());
-/// The major numbers allocator.
-static CHAR_MAJOR_ALLOCATOR: Mutex<OnceCell<IDAllocator>> = Mutex::new(OnceCell::new());
+/// The major number allocator
+static BLOCK_MAJOR_ALLOCATOR: Spin<OnceCell<IDAllocator>> = Spin::new(OnceCell::new());
+/// The major number allocator
+static CHAR_MAJOR_ALLOCATOR: Spin<OnceCell<IDAllocator>> = Spin::new(OnceCell::new());
 
 /// Allocates a major number.
 ///

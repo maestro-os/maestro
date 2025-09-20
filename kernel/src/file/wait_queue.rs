@@ -21,7 +21,7 @@
 
 use crate::{
 	process::{Process, State, pid::Pid, scheduler::schedule},
-	sync::mutex::{IntMutex, Mutex},
+	sync::spin::{IntSpin, Spin},
 };
 use core::mem;
 use utils::{collections::vec::Vec, errno, errno::EResult};
@@ -32,12 +32,12 @@ use utils::{collections::vec::Vec, errno, errno::EResult};
 ///
 /// **Note**: dropping this structure while processes are waiting on it makes them starve.
 #[derive(Debug, Default)]
-pub struct WaitQueue(IntMutex<Vec<Pid>>); // TODO use a VecDeque
+pub struct WaitQueue(IntSpin<Vec<Pid>>); // TODO use a VecDeque
 
 impl WaitQueue {
 	/// Creates a new empty queue.
 	pub const fn new() -> Self {
-		Self(Mutex::new(Vec::new()))
+		Self(Spin::new(Vec::new()))
 	}
 
 	/// Makes the current process wait until the given closure returns `Some`.

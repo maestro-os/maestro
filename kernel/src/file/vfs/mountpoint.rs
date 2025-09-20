@@ -26,7 +26,7 @@ use crate::{
 		vfs,
 		vfs::EntryChild,
 	},
-	sync::mutex::Mutex,
+	sync::spin::Spin,
 };
 use core::fmt;
 use utils::{
@@ -127,7 +127,7 @@ impl fmt::Display for MountSource {
 }
 
 /// The list of loaded filesystems associated with their respective sources.
-pub static FILESYSTEMS: Mutex<HashMap<DeviceID, Arc<Filesystem>>> = Mutex::new(HashMap::new());
+pub static FILESYSTEMS: Spin<HashMap<DeviceID, Arc<Filesystem>>> = Spin::new(HashMap::new());
 
 /// Returns the loaded filesystem with the given source `source`. If not loaded, the function loads
 /// it.
@@ -209,8 +209,8 @@ impl Drop for MountPoint {
 }
 
 /// The list of mountpoints with their respective ID.
-pub static MOUNT_POINTS: Mutex<HashMap<*const vfs::Entry, Arc<MountPoint>>> =
-	Mutex::new(HashMap::new());
+pub static MOUNT_POINTS: Spin<HashMap<*const vfs::Entry, Arc<MountPoint>>> =
+	Spin::new(HashMap::new());
 
 /// Creates a new mountpoint.
 ///

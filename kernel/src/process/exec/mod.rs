@@ -31,7 +31,7 @@ use crate::{
 	arch::x86::idt::IntFrame,
 	memory::VirtAddr,
 	process::{Process, mem_space::MemSpace, scheduler::cpu::per_cpu},
-	sync::mutex::Mutex,
+	sync::spin::Spin,
 };
 use utils::{errno::EResult, ptr::arc::Arc};
 
@@ -60,7 +60,7 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 		.map(|fds_mutex| -> EResult<_> {
 			let fds = fds_mutex.lock();
 			let new_fds = fds.duplicate(true)?;
-			Ok(Arc::new(Mutex::new(new_fds))?)
+			Ok(Arc::new(Spin::new(new_fds))?)
 		})
 		.transpose()?;
 	let signal_handlers = Arc::new(Default::default())?;

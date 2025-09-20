@@ -29,7 +29,7 @@ pub mod tcp;
 use crate::{
 	file::perm::AccessProfile,
 	net::sockaddr::{SockAddrIn, SockAddrIn6},
-	sync::mutex::Mutex,
+	sync::spin::Spin,
 };
 use buf::BufList;
 use core::{cmp::Ordering, mem::size_of};
@@ -183,10 +183,9 @@ impl Route {
 }
 
 /// The list of network interfaces.
-pub static INTERFACES: Mutex<HashMap<String, Arc<Mutex<dyn Interface>>>> =
-	Mutex::new(HashMap::new());
+pub static INTERFACES: Spin<HashMap<String, Arc<Spin<dyn Interface>>>> = Spin::new(HashMap::new());
 /// The routing table.
-pub static ROUTING_TABLE: Mutex<Vec<Route>> = Mutex::new(Vec::new());
+pub static ROUTING_TABLE: Spin<Vec<Route>> = Spin::new(Vec::new());
 
 /// Registers the given network interface.
 ///
@@ -196,7 +195,7 @@ pub static ROUTING_TABLE: Mutex<Vec<Route>> = Mutex::new(Vec::new());
 pub fn register_iface<I: 'static + Interface>(name: String, iface: I) -> EResult<()> {
 	let mut interfaces = INTERFACES.lock();
 
-	let i = Arc::new(Mutex::new(iface))?;
+	let i = Arc::new(Spin::new(iface))?;
 	interfaces.insert(name, i)?;
 
 	Ok(())
@@ -211,12 +210,12 @@ pub fn unregister_iface(name: &[u8]) {
 /// Returns the network interface with the given name.
 ///
 /// If the interface doesn't exist, thhe function returns `None`.
-pub fn get_iface(name: &[u8]) -> Option<Arc<Mutex<dyn Interface>>> {
+pub fn get_iface(name: &[u8]) -> Option<Arc<Spin<dyn Interface>>> {
 	INTERFACES.lock().get(name).cloned()
 }
 
 /// Returns the network interface to be used to transmit a packet to the given destination address.
-pub fn get_iface_for(addr: Address) -> Option<Arc<Mutex<dyn Interface>>> {
+pub fn get_iface_for(addr: Address) -> Option<Arc<Spin<dyn Interface>>> {
 	let routing_table = ROUTING_TABLE.lock();
 	let route = routing_table
 		.iter()

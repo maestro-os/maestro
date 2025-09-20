@@ -20,7 +20,7 @@
 
 use crate::{
 	process::{Process, scheduler::cpu::PerCpu},
-	sync::{mutex::Mutex, once::OnceInit},
+	sync::{once::OnceInit, spin::Spin},
 };
 use core::{cell::UnsafeCell, hint::likely, ptr};
 use utils::{boxed::Box, collections::vec::Vec, errno::AllocResult};
@@ -52,7 +52,7 @@ impl TopologyNode {
 		cpu: Option<&'static PerCpu>,
 	) -> AllocResult<&'static Self> {
 		// Lock to prevent several cores from adding their topology at the same time
-		static LOCK: Mutex<()> = Mutex::new(());
+		static LOCK: Spin<()> = Spin::new(());
 		let _guard = LOCK.lock();
 		let children = unsafe { &mut *self.children.get() };
 		// Looks for a node with the same ID

@@ -36,7 +36,7 @@ use crate::{
 		buddy::{FrameOrder, ZONE_KERNEL},
 		cache::{FrameOwner, RcFrame},
 	},
-	sync::mutex::Mutex,
+	sync::spin::Spin,
 };
 use core::{hint::unlikely, num::NonZeroU64};
 use utils::{bytes::slice_from_bytes, errno, errno::EResult, limits::PAGE_SIZE};
@@ -147,8 +147,8 @@ pub struct PATAInterface {
 	/// The number of sectors on the disk.
 	sectors_count: u64,
 
-	/// Mutex preventing data race on read/write operations.
-	lock: Mutex<()>,
+	/// Spinlock preventing data race on read/write operations.
+	lock: Spin<()>,
 }
 
 impl PATAInterface {

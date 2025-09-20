@@ -26,7 +26,7 @@ use crate::{
 		pid::Pid,
 		signal::{SIGEV_NONE, SIGEV_SIGNAL, SIGEV_THREAD, SigEvent, Signal},
 	},
-	sync::mutex::IntMutex,
+	sync::spin::IntSpin,
 	time::{
 		clock::{Clock, current_time_ns},
 		unit::{TimeUnit, Timespec32, Timestamp},
@@ -62,7 +62,7 @@ struct TimerInner {
 	sevp: SigEvent,
 
 	/// Timer setting.
-	spec: IntMutex<TimerSpec>,
+	spec: IntSpin<TimerSpec>,
 }
 
 impl TimerInner {
@@ -281,8 +281,8 @@ impl TimerManager {
 /// The key has the following elements:
 /// - the timestamp, in nanoseconds, at which the timer will fire next
 /// - a pointer to the timer
-static TIMERS_QUEUE: IntMutex<BTreeMap<(Timestamp, *const TimerInner), ()>> =
-	IntMutex::new(BTreeMap::new());
+static TIMERS_QUEUE: IntSpin<BTreeMap<(Timestamp, *const TimerInner), ()>> =
+	IntSpin::new(BTreeMap::new());
 
 /// Triggers all expired timers.
 pub(super) fn tick() {

@@ -26,7 +26,7 @@ use crate::{
 		user::{UserPtr, UserSlice},
 	},
 	process::{Process, signal::Signal},
-	sync::mutex::Mutex,
+	sync::spin::Spin,
 	syscall::{FromSyscallArg, ioctl},
 };
 use core::{
@@ -54,7 +54,7 @@ struct PipeInner {
 #[derive(Debug)]
 pub struct PipeBuffer {
 	/// Inner with locking.
-	inner: Mutex<PipeInner>,
+	inner: Spin<PipeInner>,
 	/// The queue of processing waiting to read from the pipe.
 	rd_queue: WaitQueue,
 	/// The queue of processing waiting to write to the pipe.
@@ -65,7 +65,7 @@ impl PipeBuffer {
 	/// Creates a new instance.
 	pub fn new() -> AllocResult<Self> {
 		Ok(Self {
-			inner: Mutex::new(PipeInner {
+			inner: Spin::new(PipeInner {
 				buffer: RingBuffer::new(NonZeroUsize::new(PIPE_BUF).unwrap())?,
 				readers: 0,
 				writers: 0,

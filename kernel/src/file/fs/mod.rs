@@ -34,7 +34,7 @@ use crate::{
 	device::BlkDev,
 	file::vfs::node::Node,
 	memory::{cache::RcFrame, user::UserSlice},
-	sync::mutex::Mutex,
+	sync::spin::Spin,
 	syscall::ioctl,
 	time::unit::Timestamp,
 };
@@ -477,9 +477,9 @@ pub struct Filesystem {
 	pub ops: Box<dyn FilesystemOps>,
 
 	/// Cached [`Node`]s, to avoid duplications when several entries point to the same node
-	nodes: Mutex<HashSet<NodeWrapper>>,
+	nodes: Spin<HashSet<NodeWrapper>>,
 	/// Active buffers on the filesystem
-	buffers: Mutex<HashMap<INode, Arc<dyn FileOps>>>,
+	buffers: Spin<HashMap<INode, Arc<dyn FileOps>>>,
 }
 
 impl Filesystem {
@@ -589,7 +589,7 @@ pub trait FilesystemType {
 }
 
 /// The list of filesystem types.
-static FS_TYPES: Mutex<HashMap<String, Arc<dyn FilesystemType>>> = Mutex::new(HashMap::new());
+static FS_TYPES: Spin<HashMap<String, Arc<dyn FilesystemType>>> = Spin::new(HashMap::new());
 
 /// Registers a new filesystem type.
 pub fn register<T: 'static + FilesystemType>(fs_type: T) -> EResult<()> {
