@@ -36,7 +36,7 @@ use crate::{
 			kernfs::{
 				EitherOps, StaticDir, StaticEntry, StaticLink, box_file, box_node, static_dir_stat,
 			},
-			proc::proc_dir::environ::Environ,
+			proc::proc_dir::{environ::Environ, maps::Maps},
 		},
 		perm::{Gid, Uid},
 		vfs,
@@ -188,7 +188,7 @@ impl NodeOps for RootDir {
 							StaticEntry {
 								name: b"cmdline",
 								stat: |pid| {
-									proc_file_stat(pid, FileType::Regular.to_mode() | 0o444)
+									proc_file_stat(pid, FileType::Regular.to_mode() | 0o400)
 								},
 								init: EitherOps::File(|pid| box_file(Cmdline(pid))),
 							},
@@ -210,23 +210,30 @@ impl NodeOps for RootDir {
 								init: EitherOps::Node(|pid| box_node(Exe(pid))),
 							},
 							StaticEntry {
+								name: b"maps",
+								stat: |pid| {
+									proc_file_stat(pid, FileType::Regular.to_mode() | 0o400)
+								},
+								init: EitherOps::File(|pid| box_file(Maps(pid))),
+							},
+							StaticEntry {
 								name: b"mounts",
 								stat: |pid| {
-									proc_file_stat(pid, FileType::Regular.to_mode() | 0o444)
+									proc_file_stat(pid, FileType::Regular.to_mode() | 0o400)
 								},
 								init: EitherOps::File(|pid| box_file(Mounts(pid))),
 							},
 							StaticEntry {
 								name: b"stat",
 								stat: |pid| {
-									proc_file_stat(pid, FileType::Regular.to_mode() | 0o444)
+									proc_file_stat(pid, FileType::Regular.to_mode() | 0o400)
 								},
 								init: EitherOps::File(|pid| box_file(StatNode(pid))),
 							},
 							StaticEntry {
 								name: b"status",
 								stat: |pid| {
-									proc_file_stat(pid, FileType::Regular.to_mode() | 0o444)
+									proc_file_stat(pid, FileType::Regular.to_mode() | 0o400)
 								},
 								init: EitherOps::File(|pid| box_file(Status(pid))),
 							},
