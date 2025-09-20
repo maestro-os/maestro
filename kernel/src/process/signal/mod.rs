@@ -102,7 +102,6 @@ impl Default for Stack32 {
 	}
 }
 
-#[cfg(target_pointer_width = "64")]
 impl From<Stack64> for Stack32 {
 	fn from(ss: Stack64) -> Self {
 		Self {
@@ -114,7 +113,6 @@ impl From<Stack64> for Stack32 {
 }
 
 /// 64-bit version of `stack_t`
-#[cfg(target_pointer_width = "64")]
 #[repr(C)]
 #[derive(Clone, Debug)]
 pub struct Stack64 {
@@ -126,7 +124,6 @@ pub struct Stack64 {
 	pub ss_size: usize,
 }
 
-#[cfg(target_pointer_width = "64")]
 impl Default for Stack64 {
 	fn default() -> Self {
 		Self {

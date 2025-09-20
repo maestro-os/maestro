@@ -86,7 +86,7 @@ pub struct PerCpu {
 
 	/// Attached memory space
 	///
-	/// The pointer stored by this field is returned by [`Arc::into_raw`]
+	/// The pointer stored by this field is returned by `Arc::into_raw`
 	pub mem_space: AtomicOptionalArc<MemSpace>,
 
 	/// Queue of deferred calls to be executed on this core
