@@ -732,12 +732,10 @@ impl Process {
 		});
 	}
 
-	/// Wakes up the process if in [`Sleeping`] state.
-	///
-	/// Contrary to [`Self::set_state`], this function does not send a `SIGCHLD` signal
+	/// Wakes up the process if in [`State::Sleeping`] state.
 	pub fn wake(this: &Arc<Self>) {
 		this.lock_state(|old_state| {
-			if unlikely(old_state != State::Sleeping) {
+			if old_state != State::Sleeping {
 				return;
 			}
 			this.state.store(STATE_LOCK | State::Running as u8, Relaxed);
