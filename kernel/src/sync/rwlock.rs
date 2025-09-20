@@ -320,7 +320,7 @@ impl<T: ?Sized, const INT: u8> Drop for WriteGuard<'_, T, INT> {
 
 /// Type alias on [`RwLock`] representing a rwlock which masks interrupts (both while reading and
 /// writing).
-pub type IntRwLock<T> = RwLock<T, 0>;
+pub type IntRwLock<T> = RwLock<T, { INT_READ | INT_WRITE }>;
 /// Type alias on [`IntReadGuard`] representing a read mutex guard which masks interrupts.
 pub type IntReadGuard<'m, T> = ReadGuard<'m, T, 0>;
 /// Type alias on [`IntReadGuard`] representing a write mutex guard which masks interrupts.

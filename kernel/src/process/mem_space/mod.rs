@@ -24,7 +24,7 @@
 //! - Gap: A chunk of virtual memory that is available to be allocated
 
 mod gap;
-mod mapping;
+pub mod mapping;
 mod transaction;
 
 use crate::{
@@ -46,7 +46,7 @@ use crate::{
 			critical,
 		},
 	},
-	sync::mutex::IntMutex,
+	sync::{mutex::IntMutex, rwlock::IntRwLock},
 };
 use core::{
 	alloc::AllocError, cmp::min, ffi::c_void, fmt, hint::unlikely, mem, num::NonZeroUsize,
@@ -221,7 +221,7 @@ pub struct ExeInfo {
 /// A virtual memory space.
 pub struct MemSpace {
 	/// The memory space's structure, used as a model for `vmem`
-	state: IntMutex<MemSpaceState>,
+	state: IntRwLock<MemSpaceState>,
 	/// Architecture-specific virtual memory context handler
 	///
 	/// We use it as a cache which can be invalidated by unmapping. When a page fault occurs, this
@@ -244,7 +244,7 @@ impl MemSpace {
 	/// - `compat` tells whether the memory space be used in compat mode
 	pub fn new(exe: Arc<vfs::Entry>, brk_init: VirtAddr, compat: bool) -> AllocResult<Arc<Self>> {
 		let s = Self {
-			state: IntMutex::new(MemSpaceState {
+			state: IntRwLock::new(MemSpaceState {
 				brk_init,
 				brk: brk_init,
 				..Default::default()
@@ -281,7 +281,14 @@ impl MemSpace {
 	/// Returns the number of virtual memory pages in the memory space.
 	#[inline]
 	pub fn get_vmem_usage(&self) -> usize {
-		self.state.lock().vmem_usage
+		self.state.read().vmem_usage
+	}
+
+	/// Locks the list of mappings while executing `f`, passing it as parameter.
+	#[inline]
+	pub fn mappings<T, F: FnOnce(&BTreeMap<VirtAddr, MemMapping>) -> T>(&self, f: F) -> T {
+		let state = self.state.read();
+		f(&state.mappings)
 	}
 
 	fn map_impl(
@@ -392,7 +399,7 @@ impl MemSpace {
 			return Err(AllocError);
 		};
 		let mut transaction = MemSpaceTransaction::new(self);
-		let mut map = Self::map_impl(
+		let map = Self::map_impl(
 			&mut transaction,
 			VirtAddr::default(),
 			len,
@@ -404,6 +411,7 @@ impl MemSpace {
 		.map_err(|_| AllocError)?;
 		// Populate
 		map.pages
+			.lock()
 			.iter_mut()
 			.zip(pages.iter().cloned())
 			.for_each(|(dst, src)| *dst = Some(MappedFrame::new(src)));
@@ -422,14 +430,15 @@ impl MemSpace {
 	/// - `size` is the number of pages, and bytes in `res`
 	/// - `res` is a bitmap in which the result is written
 	pub fn mincore(&self, addr: VirtAddr, size: usize, res: UserSlice<u8>) -> EResult<()> {
-		let state = self.state.lock();
+		let state = self.state.read();
 		for i in 0..size {
 			let addr = addr + size * PAGE_SIZE;
 			let resident = state
 				.get_mapping_for_addr(addr)
 				.map(|mapping| {
 					let page_offset = (addr.0 - mapping.addr.0) / PAGE_SIZE;
-					let page = mapping.pages.get(page_offset);
+					let pages = mapping.pages.lock();
+					let page = pages.get(page_offset);
 					matches!(page, Some(Some(_)))
 				})
 				.unwrap_or(false);
@@ -596,7 +605,7 @@ impl MemSpace {
 	pub fn fork(&self) -> AllocResult<MemSpace> {
 		let bound_cpus = init_bitmap(false)?;
 		// Lock
-		let state = self.state.lock();
+		let state = self.state.read();
 		let mut vmem = self.vmem.lock();
 		// Clone first to mark as shared
 		let mappings = state.mappings.try_clone()?;
@@ -606,7 +615,7 @@ impl MemSpace {
 			shootdown_range(m.addr, m.size.get(), self.bound_cpus());
 		}
 		Ok(Self {
-			state: IntMutex::new(MemSpaceState {
+			state: IntRwLock::new(MemSpaceState {
 				gaps: state.gaps.try_clone()?,
 				mappings,
 
@@ -701,7 +710,7 @@ impl MemSpace {
 	/// - `pages` is the number of pages in the range
 	/// - `sync` tells whether the synchronization should be performed synchronously
 	pub fn sync(&self, addr: VirtAddr, pages: usize, sync: bool) -> EResult<()> {
-		let state = self.state.lock();
+		let state = self.state.read();
 		let vmem = self.vmem.lock();
 		// Iterate over mappings
 		let mut i = 0;
@@ -726,8 +735,8 @@ impl MemSpace {
 	///
 	/// If the process should continue, the function returns `true`, else `false`.
 	pub fn handle_page_fault(&self, addr: VirtAddr, code: u32) -> EResult<bool> {
-		let mut state = self.state.lock();
-		let Some(mapping) = state.get_mut_mapping_for_addr(addr) else {
+		let state = self.state.read();
+		let Some(mapping) = state.get_mapping_for_addr(addr) else {
 			return Ok(false);
 		};
 		// Check permissions
@@ -747,13 +756,14 @@ impl MemSpace {
 
 impl fmt::Debug for MemSpace {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		fmt::Debug::fmt(&self.state, f)
+		let state = self.state.read();
+		fmt::Debug::fmt(&*state, f)
 	}
 }
 
 impl Drop for MemSpace {
 	fn drop(&mut self) {
-		let mut state = self.state.lock();
+		let mut state = self.state.write();
 		let vmem = self.vmem.lock();
 		// Synchronize all mappings to disk
 		let mappings = mem::take(&mut state.mappings);

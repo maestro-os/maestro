@@ -34,6 +34,7 @@ use crate::{
 	process::mem_space::{
 		COPY_BUFFER, MAP_ANONYMOUS, MAP_PRIVATE, MAP_SHARED, MemSpace, PROT_EXEC, PROT_WRITE, Page,
 	},
+	sync::mutex::Mutex,
 	time::clock::{Clock, current_time_ms},
 };
 use core::{num::NonZeroUsize, ops::Deref, sync::atomic::Ordering::Release};
@@ -158,22 +159,22 @@ fn init_page(
 #[derive(Debug)]
 pub struct MemMapping {
 	/// Address on the virtual memory to the beginning of the mapping
-	pub(super) addr: VirtAddr,
+	pub addr: VirtAddr,
 	/// The size of the mapping in pages
-	pub(super) size: NonZeroUsize,
+	pub size: NonZeroUsize,
 	/// Memory protection
-	pub(super) prot: u8,
+	pub prot: u8,
 	/// Mapping flags
-	pub(super) flags: i32,
+	pub flags: i32,
 
 	/// The mapped file, if any
-	file: Option<Arc<File>>,
+	pub file: Option<Arc<File>>,
 	/// The offset in the mapped file. If no file is mapped, this field is not relevant
-	off: u64,
+	pub off: u64,
 
 	// TODO use a sparse array?
 	/// The list of allocated physical pages
-	pub(super) pages: Vec<Option<MappedFrame>>,
+	pub(super) pages: Mutex<Vec<Option<MappedFrame>>>,
 }
 
 impl MemMapping {
@@ -187,7 +188,7 @@ impl MemMapping {
 	/// - `flags` the mapping's flags
 	/// - `file` is the mapped file. If `None`, no file is mapped
 	/// - `off` is the offset in `file`, if applicable
-	pub fn new(
+	pub(super) fn new(
 		addr: VirtAddr,
 		size: NonZeroUsize,
 		prot: u8,
@@ -207,7 +208,7 @@ impl MemMapping {
 			file,
 			off,
 
-			pages,
+			pages: Mutex::new(pages),
 		})
 	}
 
@@ -224,10 +225,11 @@ impl MemMapping {
 	///
 	/// Upon allocation failure, or failure to read a page from the disk, the function returns an
 	/// error.
-	pub fn map(&mut self, mem_space: &MemSpace, offset: usize, write: bool) -> EResult<()> {
+	pub(super) fn map(&self, mem_space: &MemSpace, offset: usize, write: bool) -> EResult<()> {
 		let virtaddr = self.addr + offset * PAGE_SIZE;
 		let mut vmem = mem_space.vmem.lock();
-		if let Some(page) = &self.pages[offset] {
+		let mut pages = self.pages.lock();
+		if let Some(page) = &pages[offset] {
 			// A page is already present, use it
 			let mut phys_addr = page.phys_addr();
 			let pending_cow = self.flags & MAP_SHARED == 0 && page.is_shared();
@@ -236,7 +238,7 @@ impl MemMapping {
 				// reading or writing)
 				let page = init_page(&mut vmem, self.prot, Some(page), virtaddr)?;
 				phys_addr = page.phys_addr();
-				self.pages[offset] = Some(MappedFrame::new(page));
+				pages[offset] = Some(MappedFrame::new(page));
 			}
 			// Map the page
 			let flags = vmem_flags(self.prot, false);
@@ -250,7 +252,7 @@ impl MemMapping {
 				let phys_addr = if write {
 					let page = init_page(&mut vmem, self.prot, None, virtaddr)?;
 					let phys_addr = page.phys_addr();
-					self.pages[offset] = Some(MappedFrame::new(page));
+					pages[offset] = Some(MappedFrame::new(page));
 					phys_addr
 				} else {
 					// Lazy allocation: map the zeroed page
@@ -271,7 +273,7 @@ impl MemMapping {
 					page = init_page(&mut vmem, self.prot, Some(&page), virtaddr)?;
 				}
 				let phys_addr = page.phys_addr();
-				self.pages[offset] = Some(MappedFrame::new(page));
+				pages[offset] = Some(MappedFrame::new(page));
 				// Map
 				let flags = vmem_flags(self.prot, !write);
 				vmem.map(phys_addr, virtaddr, flags);
@@ -294,11 +296,12 @@ impl MemMapping {
 	/// The newly created gap corresponds to the unmapped portion.
 	///
 	/// If the mapping is completely unmapped, the function returns no new mappings.
-	pub fn split(
+	pub(super) fn split(
 		&self,
 		begin: usize,
 		size: usize,
 	) -> AllocResult<(Option<Self>, Option<MemGap>, Option<Self>)> {
+		let pages = self.pages.lock();
 		let prev = NonZeroUsize::new(begin)
 			.map(|size| {
 				Ok(MemMapping {
@@ -310,7 +313,7 @@ impl MemMapping {
 					file: self.file.clone(),
 					off: self.off,
 
-					pages: Vec::try_from(&self.pages[..size.get()])?,
+					pages: Mutex::new(Vec::try_from(&pages[..size.get()])?),
 				})
 			})
 			.transpose()?;
@@ -335,7 +338,7 @@ impl MemMapping {
 					file: self.file.clone(),
 					off: self.off + end as u64,
 
-					pages: Vec::try_from(&self.pages[end..])?,
+					pages: Mutex::new(Vec::try_from(&pages[end..])?),
 				})
 			})
 			.transpose()?;
@@ -353,7 +356,7 @@ impl MemMapping {
 	/// - The mapping is not associated with a file
 	///
 	/// If the mapping is locked, the function returns [`utils::errno::EBUSY`].
-	pub fn sync(&self, vmem: &VMem, sync: bool) -> EResult<()> {
+	pub(super) fn sync(&self, vmem: &VMem, sync: bool) -> EResult<()> {
 		if self.flags & (MAP_ANONYMOUS | MAP_PRIVATE) != 0 {
 			return Ok(());
 		}
@@ -362,7 +365,8 @@ impl MemMapping {
 			return Ok(());
 		}
 		let ts = current_time_ms(Clock::Boottime);
-		for frame in self.pages.iter().flatten() {
+		let pages = self.pages.lock();
+		for frame in pages.iter().flatten() {
 			vmem.poll_dirty(self.addr, self.size.get());
 			if sync {
 				// TODO warn on error?
@@ -375,6 +379,7 @@ impl MemMapping {
 
 impl TryClone for MemMapping {
 	fn try_clone(&self) -> AllocResult<Self> {
+		let pages = self.pages.lock();
 		Ok(Self {
 			addr: self.addr,
 			size: self.size,
@@ -384,7 +389,7 @@ impl TryClone for MemMapping {
 			file: self.file.clone(),
 			off: self.off,
 
-			pages: self.pages.try_clone()?,
+			pages: Mutex::new(pages.try_clone()?),
 		})
 	}
 }
