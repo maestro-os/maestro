@@ -38,7 +38,7 @@ use kernel::{
 	int,
 	int::{CallbackHook, CallbackResult},
 	println,
-	sync::mutex::Mutex,
+	sync::spin::Spin,
 };
 
 kernel::module!([]);
@@ -240,7 +240,7 @@ fn handle_input(key: KeyboardKey, action: KeyboardAction) {
 }
 
 /// Global variable containing the module's instance.
-static PS2_KEYBOAD: Mutex<PS2Keyboard> = Mutex::new(PS2Keyboard {
+static PS2_KEYBOAD: Spin<PS2Keyboard> = Spin::new(PS2Keyboard {
 	keyboard_interrupt_callback_hook: None,
 
 	scancode_set: ScancodeSet::Set2,

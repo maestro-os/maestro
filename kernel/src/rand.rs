@@ -20,7 +20,7 @@
 
 use crate::{
 	memory::{ring_buffer::RingBuffer, user::UserSlice},
-	sync::mutex::IntMutex,
+	sync::spin::IntSpin,
 };
 use core::{
 	cmp::min,
@@ -151,7 +151,7 @@ impl EntropyPool {
 }
 
 /// The entropy pool.
-pub static ENTROPY_POOL: IntMutex<Option<EntropyPool>> = IntMutex::new(None);
+pub static ENTROPY_POOL: IntSpin<Option<EntropyPool>> = IntSpin::new(None);
 
 /// Writes entropy to `buf`.
 ///

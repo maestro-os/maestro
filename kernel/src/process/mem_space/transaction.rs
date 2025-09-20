@@ -25,8 +25,8 @@ use crate::{
 		vmem::{VMem, shootdown_range},
 	},
 	sync::{
-		mutex::MutexGuard,
 		rwlock::{INT_READ, INT_WRITE, WriteGuard},
+		spin::SpinGuard,
 	},
 };
 use core::{alloc::AllocError, hash::Hash, mem};
@@ -102,7 +102,7 @@ pub(super) struct MemSpaceTransaction<'m> {
 	// It is important that `vmem` is placed before `state` since they are dropped according to
 	// the order of declaration. This is important for interrupt masking
 	/// The virtual memory context
-	pub vmem: MutexGuard<'m, VMem, false>,
+	pub vmem: SpinGuard<'m, VMem, false>,
 	/// The memory space state on which the transaction applies.
 	pub state: WriteGuard<'m, MemSpaceState, { INT_READ | INT_WRITE }>,
 

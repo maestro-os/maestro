@@ -21,7 +21,7 @@
 //! Each process must have a unique PID, thus they have to be allocated.
 //! A bitfield is used to store the used PIDs.
 
-use crate::sync::mutex::Mutex;
+use crate::sync::spin::Spin;
 use core::{alloc::AllocError, ops::Deref};
 use utils::{collections::id_allocator::IDAllocator, errno::AllocResult};
 
@@ -37,7 +37,7 @@ pub const IDLE_PID: Pid = 0;
 pub const INIT_PID: Pid = 1;
 
 /// The PID allocator.
-static ALLOCATOR: Mutex<Option<IDAllocator>> = Mutex::new(None);
+static ALLOCATOR: Spin<Option<IDAllocator>> = Spin::new(None);
 
 /// Perform an operation with the allocator.
 fn allocator_do<F: Fn(&mut IDAllocator) -> AllocResult<T>, T>(f: F) -> AllocResult<T> {

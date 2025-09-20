@@ -44,7 +44,7 @@ use crate::{
 	},
 	memory::user::UserSlice,
 	net::{SocketDesc, SocketDomain, SocketType},
-	sync::{atomic::AtomicU64, mutex::Mutex, once::OnceInit},
+	sync::{atomic::AtomicU64, once::OnceInit, spin::Spin},
 	time::{
 		clock::{Clock, current_time_sec},
 		unit::Timestamp,
@@ -345,7 +345,7 @@ pub struct File {
 	/// Handle for file operations.
 	pub ops: FileOpsWrapper,
 	/// Open file description flags.
-	pub flags: Mutex<i32>,
+	pub flags: Spin<i32>,
 	/// The current offset in the file.
 	pub off: AtomicU64,
 }
@@ -391,7 +391,7 @@ impl File {
 		let file = Self {
 			vfs_entry: Some(entry),
 			ops,
-			flags: Mutex::new(flags),
+			flags: Spin::new(flags),
 			off: Default::default(),
 		};
 		file.ops.acquire(&file);
@@ -403,7 +403,7 @@ impl File {
 		let file = Self {
 			vfs_entry: None,
 			ops: FileOpsWrapper::Owned(ops),
-			flags: Mutex::new(flags),
+			flags: Spin::new(flags),
 			off: Default::default(),
 		};
 		file.ops.acquire(&file);

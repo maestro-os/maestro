@@ -21,7 +21,7 @@
 //! If the logger is set as silent, logs will not show up on screen, but will be kept in memory
 //! anyway.
 
-use crate::{sync::mutex::IntMutex, tty::TTY};
+use crate::{sync::spin::IntSpin, tty::TTY};
 use core::{
 	cmp::{Ordering, min},
 	fmt,
@@ -32,7 +32,7 @@ use core::{
 const LOGS_SIZE: usize = 1048576;
 
 /// The kernel's logger.
-pub static LOGGER: IntMutex<Logger> = IntMutex::new(Logger::new());
+pub static LOGGER: IntSpin<Logger> = IntSpin::new(Logger::new());
 
 /// Kernel logger, used to print/store kernel logs.
 ///

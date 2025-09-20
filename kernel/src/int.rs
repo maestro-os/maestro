@@ -28,7 +28,7 @@ use crate::{
 	power::{halt, halting},
 	process::scheduler::{alter_flow, preempt_check_resched},
 	rand,
-	sync::mutex::IntMutex,
+	sync::spin::IntSpin,
 };
 use core::{hint::unlikely, ptr};
 use utils::{bytes::as_bytes, collections::vec::Vec, errno::AllocResult};
@@ -81,11 +81,11 @@ impl Drop for CallbackHook {
 	}
 }
 
-/// The default value for `CALLBACKS`.
+/// The default value for [`CALLBACKS`]
 #[allow(clippy::declare_interior_mutable_const)]
-const CALLBACKS_INIT: IntMutex<Vec<Callback>> = IntMutex::new(Vec::new());
-/// List containing vectors that store callbacks for every interrupt watchdogs.
-static CALLBACKS: [IntMutex<Vec<Callback>>; idt::ENTRIES_COUNT as _] =
+const CALLBACKS_INIT: IntSpin<Vec<Callback>> = IntSpin::new(Vec::new());
+/// List containing vectors that store callbacks for every interrupt watchdogs
+static CALLBACKS: [IntSpin<Vec<Callback>>; idt::ENTRIES_COUNT as _] =
 	[CALLBACKS_INIT; idt::ENTRIES_COUNT as _];
 
 /// Registers the given callback and returns a reference to it.

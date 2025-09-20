@@ -97,7 +97,7 @@ use crate::{
 			switch::idle_task,
 		},
 	},
-	sync::mutex::Mutex,
+	sync::spin::Spin,
 	tty::TTY,
 };
 use core::ffi::c_void;
@@ -117,7 +117,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 const INIT_PATH: &[u8] = b"/sbin/init";
 
 /// The current hostname of the system.
-pub static HOSTNAME: Mutex<Vec<u8>> = Mutex::new(Vec::new());
+pub static HOSTNAME: Spin<Vec<u8>> = Spin::new(Vec::new());
 
 /// Launches the init process.
 ///

@@ -39,7 +39,7 @@ use crate::{
 	},
 	module::relocation::RelocationError,
 	println,
-	sync::mutex::Mutex,
+	sync::spin::Spin,
 };
 use core::{
 	borrow::Borrow,
@@ -370,7 +370,7 @@ impl Drop for Module {
 
 /// The list of modules. The key is the name of the module and the value is the
 /// module itself.
-static MODULES: Mutex<HashSet<NameHash>> = Mutex::new(HashSet::new());
+static MODULES: Spin<HashSet<NameHash>> = Spin::new(HashSet::new());
 
 /// Adds the given module to the modules list.
 ///
