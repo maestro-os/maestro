@@ -49,7 +49,7 @@ use crate::{
 			critical, dequeue, enqueue, switch,
 			switch::{KThreadEntry, idle_task, save_segments},
 		},
-		signal::{SIGNALS_COUNT, SigSet},
+		signal::{AltStack, SIGNALS_COUNT, SigSet},
 	},
 	register_get,
 	sync::{atomic::AtomicU64, mutex::Mutex, rwlock::IntRwLock},
@@ -256,16 +256,18 @@ impl Clone for ProcessFs {
 
 /// A process's signal management information.
 pub struct ProcessSignal {
-	/// The list of signal handlers.
+	/// The list of signal handlers
 	pub handlers: Arc<Mutex<[SignalHandler; SIGNALS_COUNT]>>,
-	/// A bitfield storing the set of blocked signals.
+	/// The alternative signal stack
+	pub altstack: AltStack,
+	/// A bitfield storing the set of blocked signals
 	pub sigmask: SigSet,
-	/// A bitfield storing the set of pending signals.
+	/// A bitfield storing the set of pending signals
 	sigpending: SigSet,
 
-	/// The exit status of the process after exiting.
+	/// The exit status of the process after exiting
 	pub exit_status: ExitStatus,
-	/// The terminating signal.
+	/// The terminating signal
 	pub termsig: u8,
 }
 
@@ -274,6 +276,7 @@ impl ProcessSignal {
 	pub fn new() -> AllocResult<Self> {
 		Ok(ProcessSignal {
 			handlers: Arc::new(Default::default())?,
+			altstack: AltStack::default(),
 			sigmask: Default::default(),
 			sigpending: Default::default(),
 
@@ -607,6 +610,7 @@ impl Process {
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(INIT_PID)?))?,
 			signal: Mutex::new(ProcessSignal {
 				handlers: Arc::new(Default::default())?,
+				altstack: Default::default(),
 				sigmask: Default::default(),
 				sigpending: Default::default(),
 
@@ -937,6 +941,7 @@ impl Process {
 			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid_int)?))?,
 			signal: Mutex::new(ProcessSignal {
 				handlers: signal_handlers,
+				altstack: Default::default(),
 				sigmask: parent.signal.lock().sigmask,
 				sigpending: Default::default(),
 
