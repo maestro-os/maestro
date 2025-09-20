@@ -35,7 +35,7 @@ use crate::{
 		Process, State,
 		scheduler::{cpu::per_cpu, switch::switch},
 	},
-	sync::mutex::IntMutex,
+	sync::spin::IntSpin,
 	time::{clock::Clock, sleep_for},
 };
 use core::{
@@ -68,7 +68,7 @@ struct RunQueue {
 /// Each CPU core has its own scheduler.
 pub struct Scheduler {
 	/// Run queue
-	run_queue: IntMutex<RunQueue>,
+	run_queue: IntSpin<RunQueue>,
 	/// The currently running process
 	cur_proc: AtomicArc<Process>,
 

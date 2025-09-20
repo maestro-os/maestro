@@ -21,7 +21,7 @@
 mod block;
 mod chunk;
 
-use crate::{memory, memory::malloc::ptr::NonNull, sync::mutex::IntMutex};
+use crate::{memory, memory::malloc::ptr::NonNull, sync::spin::IntSpin};
 use block::Block;
 use chunk::Chunk;
 use core::{
@@ -34,8 +34,8 @@ use core::{
 };
 use utils::errno::AllocResult;
 
-/// The allocator's mutex.
-static MUTEX: IntMutex<()> = IntMutex::new(());
+/// The allocator's spinlock.
+static SPINLOCK: IntSpin<()> = IntSpin::new(());
 
 unsafe fn alloc_impl(n: NonZeroUsize) -> AllocResult<NonNull<u8>> {
 	// Get free chunk
@@ -54,7 +54,7 @@ unsafe fn alloc_impl(n: NonZeroUsize) -> AllocResult<NonNull<u8>> {
 }
 
 unsafe fn alloc(n: NonZeroUsize) -> AllocResult<NonNull<u8>> {
-	let _guard = MUTEX.lock();
+	let _guard = SPINLOCK.lock();
 	let ptr = alloc_impl(n)?;
 	#[cfg(feature = "memtrace")]
 	super::trace::sample(
@@ -67,7 +67,7 @@ unsafe fn alloc(n: NonZeroUsize) -> AllocResult<NonNull<u8>> {
 }
 
 unsafe fn realloc(ptr: NonNull<u8>, n: NonZeroUsize) -> AllocResult<NonNull<u8>> {
-	let _guard = MUTEX.lock();
+	let _guard = SPINLOCK.lock();
 	// Get chunk
 	let chunk = Chunk::from_ptr(ptr.as_ptr());
 	assert!(chunk.used);
@@ -123,7 +123,7 @@ unsafe fn free_impl(mut ptr: NonNull<u8>) {
 }
 
 unsafe fn free(ptr: NonNull<u8>) {
-	let _guard = MUTEX.lock();
+	let _guard = SPINLOCK.lock();
 	free_impl(ptr);
 	#[cfg(feature = "memtrace")]
 	super::trace::sample("malloc", super::trace::SampleOp::Free, ptr.as_ptr() as _, 0);

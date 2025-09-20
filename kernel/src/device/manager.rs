@@ -19,7 +19,7 @@
 //! The device manager is the structure which links the physical devices to
 //! device files.
 
-use crate::{device::bar::BAR, sync::mutex::Mutex};
+use crate::{device::bar::BAR, sync::spin::Spin};
 use core::any::{Any, TypeId};
 use utils::{collections::hashmap::HashMap, errno::EResult, ptr::arc::Arc};
 
@@ -72,12 +72,12 @@ pub trait DeviceManager: Any {
 }
 
 /// The list of device managers.
-static DEVICE_MANAGERS: Mutex<HashMap<TypeId, Arc<Mutex<dyn DeviceManager>>>> =
-	Mutex::new(HashMap::new());
+static DEVICE_MANAGERS: Spin<HashMap<TypeId, Arc<Spin<dyn DeviceManager>>>> =
+	Spin::new(HashMap::new());
 
 /// Registers the given device manager.
 pub fn register<M: DeviceManager>(manager: M) -> EResult<()> {
-	let m = Arc::new(Mutex::new(manager))?;
+	let m = Arc::new(Spin::new(manager))?;
 	let mut device_managers = DEVICE_MANAGERS.lock();
 	device_managers.insert(TypeId::of::<M>(), m)?;
 	Ok(())
@@ -85,7 +85,7 @@ pub fn register<M: DeviceManager>(manager: M) -> EResult<()> {
 
 /// Returns the device manager with the given type. If the manager is not registered, the function
 /// returns `None`.
-pub fn get<M: DeviceManager>() -> Option<Arc<Mutex<dyn DeviceManager>>> {
+pub fn get<M: DeviceManager>() -> Option<Arc<Spin<dyn DeviceManager>>> {
 	let device_managers = DEVICE_MANAGERS.lock();
 	device_managers.get(&TypeId::of::<M>()).cloned()
 }

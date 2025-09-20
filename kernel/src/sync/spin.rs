@@ -18,12 +18,12 @@
 
 //! Mutually exclusive access primitive based on a spinlock.
 //!
-//! A [`Mutex`] protects its wrapped data from being accessed concurrently, avoid data races.
+//! A [`Spin`] protects its wrapped data from being accessed concurrently, avoid data races.
 //!
 //! One particularity with kernel development is that multi-threading is not the
 //! only way to get concurrency issues. An interruption may be triggered at any moment.
 //!
-//! For this reason, mutexes in the kernel are equipped with an option allowing to disable
+//! For this reason, spinlocks in the kernel are equipped with an option allowing to disable
 //! non-maskable interrupts while being locked.
 
 use crate::arch::{
@@ -48,55 +48,55 @@ fn lock(lock: &AtomicBool) {
 	}
 }
 
-/// Unlocks the associated [`Mutex`] when dropped.
-pub struct MutexGuard<'m, T: ?Sized, const INT: bool> {
-	mutex: &'m Mutex<T, INT>,
+/// Unlocks the associated [`Spin`] when dropped.
+pub struct SpinGuard<'m, T: ?Sized, const INT: bool> {
+	spin: &'m Spin<T, INT>,
 	/// The interrupt status before locking. This field is relevant only if `INT == false`
 	int_state: bool,
 }
 
-impl<T: ?Sized, const INT: bool> Deref for MutexGuard<'_, T, INT> {
+impl<T: ?Sized, const INT: bool> Deref for SpinGuard<'_, T, INT> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
-		unsafe { &*self.mutex.data.get() }
+		unsafe { &*self.spin.data.get() }
 	}
 }
 
-impl<T: ?Sized, const INT: bool> DerefMut for MutexGuard<'_, T, INT> {
+impl<T: ?Sized, const INT: bool> DerefMut for SpinGuard<'_, T, INT> {
 	fn deref_mut(&mut self) -> &mut Self::Target {
-		unsafe { &mut *self.mutex.data.get() }
+		unsafe { &mut *self.spin.data.get() }
 	}
 }
 
-impl<T: ?Sized, const INT: bool> !Send for MutexGuard<'_, T, INT> {}
+impl<T: ?Sized, const INT: bool> !Send for SpinGuard<'_, T, INT> {}
 
-unsafe impl<T: ?Sized + Sync, const INT: bool> Sync for MutexGuard<'_, T, INT> {}
+unsafe impl<T: ?Sized + Sync, const INT: bool> Sync for SpinGuard<'_, T, INT> {}
 
-impl<T: ?Sized + fmt::Debug, const INT: bool> fmt::Debug for MutexGuard<'_, T, INT> {
+impl<T: ?Sized + fmt::Debug, const INT: bool> fmt::Debug for SpinGuard<'_, T, INT> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		fmt::Debug::fmt(self.deref(), f)
 	}
 }
 
-impl<T: ?Sized, const INT: bool> Drop for MutexGuard<'_, T, INT> {
+impl<T: ?Sized, const INT: bool> Drop for SpinGuard<'_, T, INT> {
 	fn drop(&mut self) {
 		unsafe {
-			self.mutex.unlock(self.int_state);
+			self.spin.unlock(self.int_state);
 		}
 	}
 }
 
-/// The value wrapped in a `Mutex` can be accessed by only one context at a time.
+/// Wraps a value which be accessed by only one context at a time.
 ///
-/// The `INT` generic parameter tells whether interrupts are allowed while
-/// the mutex is locked. The default value is `true`.
-pub struct Mutex<T: ?Sized, const INT: bool = true> {
+/// The `INT` generic parameter tells whether interrupts are allowed while locked. The default
+/// value is `true`.
+pub struct Spin<T: ?Sized, const INT: bool = true> {
 	spin: AtomicBool,
 	data: UnsafeCell<T>,
 }
 
-impl<T, const INT: bool> Mutex<T, INT> {
+impl<T, const INT: bool> Spin<T, INT> {
 	/// Creates a new instance wrapping the given `data`.
 	pub const fn new(data: T) -> Self {
 		Self {
@@ -106,20 +106,20 @@ impl<T, const INT: bool> Mutex<T, INT> {
 	}
 }
 
-impl<T: Default, const INT: bool> Default for Mutex<T, INT> {
+impl<T: Default, const INT: bool> Default for Spin<T, INT> {
 	fn default() -> Self {
 		Self::new(Default::default())
 	}
 }
 
-impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
+impl<T: ?Sized, const INT: bool> Spin<T, INT> {
 	/// Acquires the spinlock.
 	///
 	/// If the spinlock is already acquired, the thread loops until it becomes available.
 	///
-	/// The function returns a [`MutexGuard`] associated with `self`. When dropped, the spinlock is
-	/// unlocked.
-	pub fn lock(&self) -> MutexGuard<T, INT> {
+	/// The function returns a [`SpinGuard`] associated with `self`. When dropped, the spinlock
+	/// is unlocked.
+	pub fn lock(&self) -> SpinGuard<T, INT> {
 		let int_state = if !INT {
 			let enabled = x86::is_interrupt_enabled();
 			cli();
@@ -129,8 +129,8 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 			false
 		};
 		lock(&self.spin);
-		MutexGuard {
-			mutex: self,
+		SpinGuard {
+			spin: self,
 			int_state,
 		}
 	}
@@ -153,7 +153,7 @@ impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
 	}
 }
 
-impl<T, const INT: bool> Mutex<T, INT> {
+impl<T, const INT: bool> Spin<T, INT> {
 	/// Acquires the spinlock, consumes it and returns the inner value.
 	///
 	/// The function does not disable nor enable interruptions.
@@ -163,16 +163,16 @@ impl<T, const INT: bool> Mutex<T, INT> {
 	}
 }
 
-unsafe impl<T, const INT: bool> Sync for Mutex<T, INT> {}
+unsafe impl<T, const INT: bool> Sync for Spin<T, INT> {}
 
-impl<T: ?Sized + fmt::Debug, const INT: bool> fmt::Debug for Mutex<T, INT> {
+impl<T: ?Sized + fmt::Debug, const INT: bool> fmt::Debug for Spin<T, INT> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		let guard = self.lock();
 		fmt::Debug::fmt(&*guard, f)
 	}
 }
 
-/// Type alias on [`Mutex`] representing a spinlock which masks interrupts.
-pub type IntMutex<T> = Mutex<T, false>;
-/// Type alias on [`MutexGuard`] representing a spinlock guard which masks interrupts.
-pub type IntMutexGuard<'m, T> = MutexGuard<'m, T, false>;
+/// Type alias on [`Spin`] representing a spinlock which masks interrupts.
+pub type IntSpin<T> = Spin<T, false>;
+/// Type alias on [`SpinGuard`] representing a spinlock guard which masks interrupts.
+pub type IntSpinGuard<'m, T> = SpinGuard<'m, T, false>;

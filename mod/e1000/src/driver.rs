@@ -23,7 +23,7 @@ use core::{any::Any, convert::TryInto};
 use kernel::{
 	device::{bus::pci::PCIManager, manager, manager::PhysicalDevice},
 	net,
-	sync::mutex::Mutex,
+	sync::spin::Spin,
 	utils::ptr::arc::Arc,
 };
 
@@ -76,7 +76,7 @@ impl Driver for E1000Driver {
 						// TODO do not unwrap errors
 						// TODO figure out how to get the name of the interface
 						let name = b"TODO".try_into().unwrap();
-						let iface = Arc::new(Mutex::new(nic)).unwrap();
+						let iface = Arc::new(Spin::new(nic)).unwrap();
 
 						let mut ifaces = net::INTERFACES.lock();
 						ifaces.insert(name, iface).unwrap();

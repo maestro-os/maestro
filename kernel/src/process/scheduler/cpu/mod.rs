@@ -24,7 +24,7 @@ use super::{RunQueue, Scheduler, defer::DeferredCallQueue};
 use crate::{
 	arch::x86::{gdt::Gdt, tss::Tss},
 	process::{Process, mem_space::MemSpace},
-	sync::{atomic::AtomicU64, mutex::IntMutex, once::OnceInit},
+	sync::{atomic::AtomicU64, once::OnceInit, spin::IntSpin},
 };
 use core::{
 	cell::UnsafeCell,
@@ -114,7 +114,7 @@ impl PerCpu {
 			tss: Default::default(),
 
 			sched: Scheduler {
-				run_queue: IntMutex::new(RunQueue {
+				run_queue: IntSpin::new(RunQueue {
 					queue: list!(Process, sched_node),
 					len: 0,
 				}),

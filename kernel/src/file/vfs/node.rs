@@ -24,7 +24,7 @@ use crate::{
 		fs::{FileOps, Filesystem, NodeOps},
 	},
 	memory::{cache::MappedNode, user::UserSlice},
-	sync::mutex::Mutex,
+	sync::spin::Spin,
 };
 use core::ptr;
 use utils::{
@@ -47,7 +47,7 @@ pub struct Node {
 	///
 	/// From the user of this structure's point of view, this is a read-only cache. It is updated
 	/// only by the VFS
-	pub stat: Mutex<Stat>,
+	pub stat: Spin<Stat>,
 
 	/// Handle for node operations
 	pub node_ops: Box<dyn NodeOps>,
@@ -55,7 +55,7 @@ pub struct Node {
 	pub file_ops: Box<dyn FileOps>,
 
 	/// A lock to be used by the filesystem implementation
-	pub lock: Mutex<()>,
+	pub lock: Spin<()>,
 	/// The node as mapped
 	pub mapped: MappedNode,
 
@@ -83,7 +83,7 @@ impl Node {
 			inode,
 			fs,
 
-			stat: Mutex::new(stat),
+			stat: Spin::new(stat),
 
 			node_ops,
 			file_ops,
