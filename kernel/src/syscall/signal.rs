@@ -25,13 +25,16 @@ use crate::{
 	process::{
 		PROCESSES, Process, State,
 		pid::{INIT_PID, Pid},
-		signal::{CompatSigAction, SigAction, SigSet, Signal, SignalHandler, ucontext},
+		signal::{
+			AltStack, CompatSigAction, SS_AUTODISARM, SS_DISABLE, SigAction, SigSet, Signal,
+			SignalHandler, Stack32, Stack64, ucontext,
+		},
 	},
 	syscall::FromSyscallArg,
 };
 use core::{
 	ffi::{c_int, c_void},
-	fmt::Debug,
+	fmt,
 	hint::unlikely,
 	mem,
 };
@@ -44,6 +47,35 @@ const SIG_UNBLOCK: i32 = 1;
 /// Sets the mask with the given one.
 const SIG_SETMASK: i32 = 2;
 
+fn do_sigaltstack<S: fmt::Debug + From<AltStack> + Into<AltStack>>(
+	ss: UserPtr<S>,
+	old_ss: UserPtr<S>,
+) -> EResult<usize> {
+	let proc = Process::current();
+	let mut sig = proc.signal.lock();
+	// Write old
+	let old: S = sig.altstack.clone().into();
+	old_ss.copy_to_user(&old)?;
+	// Read new
+	if let Some(ss) = ss.copy_from_user()? {
+		let ss: AltStack = ss.into();
+		// Validate flags
+		if unlikely(ss.ss_flags & !(SS_DISABLE | SS_AUTODISARM) != 0) {
+			return Err(errno!(EINVAL));
+		}
+		sig.altstack = ss;
+	}
+	Ok(0)
+}
+
+pub fn compat_sigaltstack(ss: UserPtr<Stack32>, old_ss: UserPtr<Stack32>) -> EResult<usize> {
+	do_sigaltstack(ss, old_ss)
+}
+
+pub fn sigaltstack(ss: UserPtr<Stack64>, old_ss: UserPtr<Stack64>) -> EResult<usize> {
+	do_sigaltstack(ss, old_ss)
+}
+
 pub fn signal(signum: c_int, handler: *const c_void) -> EResult<usize> {
 	let proc = Process::current();
 	let signals = proc.signal.lock();
@@ -53,7 +85,7 @@ pub fn signal(signum: c_int, handler: *const c_void) -> EResult<usize> {
 	Ok(old_handler.to_legacy() as _)
 }
 
-fn do_rt_sigaction<S: Debug + From<SigAction> + Into<SigAction>>(
+fn do_rt_sigaction<S: fmt::Debug + From<SigAction> + Into<SigAction>>(
 	signum: c_int,
 	act: UserPtr<S>,
 	oldact: UserPtr<S>,
@@ -122,14 +154,14 @@ pub fn sigreturn(frame: &mut IntFrame) -> EResult<usize> {
 		let ctx = UserPtr::<ucontext::UContext32>::from_ptr(stack_ptr)
 			.copy_from_user()?
 			.ok_or_else(|| errno!(EFAULT))?;
-		ctx.restore_regs(&proc, frame);
+		ctx.restore(&proc, frame);
 	} else {
 		#[cfg(target_arch = "x86_64")]
 		{
 			let ctx = UserPtr::<ucontext::UContext64>::from_ptr(stack_ptr)
 				.copy_from_user()?
 				.ok_or_else(|| errno!(EFAULT))?;
-			let res = ctx.restore_regs(&proc, frame);
+			let res = ctx.restore(&proc, frame);
 			if unlikely(res.is_err()) {
 				proc.kill(Signal::SIGSEGV);
 			}
