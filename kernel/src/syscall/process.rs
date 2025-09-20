@@ -211,7 +211,6 @@ fn wait_vfork_done(child_pid: Pid) {
 		// Use a scope to avoid holding references that could be lost, since `schedule` could never
 		// return
 		{
-			let proc = Process::current();
 			let Some(child) = Process::get_by_pid(child_pid) else {
 				// Child disappeared for some reason, stop
 				break;
@@ -221,10 +220,10 @@ fn wait_vfork_done(child_pid: Pid) {
 				break;
 			}
 			// Sleep until done
-			Process::set_state(&proc, State::Sleeping);
+			process::set_state(State::Sleeping);
 			// If vfork has completed in between, cancel sleeping
 			if unlikely(child.is_vfork_done()) {
-				Process::set_state(&proc, State::Running);
+				process::set_state(State::Running);
 				break;
 			}
 		}
@@ -491,19 +490,14 @@ pub fn sched_yield() -> EResult<usize> {
 /// Arguments:
 /// - `status` is the exit status.
 /// - `thread_group`: if `true`, the function exits the whole process group.
-/// - `proc` is the current process.
 pub fn do_exit(status: u32, thread_group: bool) -> ! {
 	// Disable interruptions to prevent execution from being stopped before the reference to
 	// `Process` is dropped
 	cli();
 	{
-		let proc = Process::current();
-		Process::exit(&proc, status);
-		let _pid = proc.get_pid();
-		let _tid = proc.tid;
+		process::exit(status);
 		if thread_group {
-			// TODO Iterate on every process of thread group `tid`, except the
-			// process with pid `pid`
+			// TODO Iterate on every task of thread group, except the current task
 		}
 	}
 	schedule();

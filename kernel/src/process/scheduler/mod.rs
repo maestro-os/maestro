@@ -400,7 +400,7 @@ fn alter_flow_impl(frame: &mut IntFrame) -> bool {
 		(sig, handler)
 	};
 	// Prepare for execution of signal handler
-	handler.exec(sig, &proc, frame);
+	handler.exec(sig, frame);
 	// If the process is still running, continue execution
 	proc.get_state() != State::Running
 }

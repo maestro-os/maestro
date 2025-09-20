@@ -20,6 +20,7 @@
 
 use crate::{
 	memory::user::UserPtr,
+	process,
 	process::{Process, State, pid::Pid, rusage::Rusage, scheduler::schedule},
 };
 use core::{
@@ -45,14 +46,13 @@ pub const WNOWAIT: i32 = 0x1000000;
 /// Returns an iterator over the IDs of the processes to be watched according to the given
 /// constraint.
 ///
-/// Arguments:
-/// - `curr_proc` is the current process.
-/// - `pid` is the constraint given to the system call.
-fn iter_targets(curr_proc: &Process, pid: i32) -> impl Iterator<Item = Pid> + '_ {
+/// `pid` is the constraint given to the system call.
+fn iter_targets(pid: i32) -> impl Iterator<Item = Pid> {
+	let proc = Process::current();
 	let mut i = 0;
 	iter::from_fn(move || {
-		// FIXME: select only process that are children of `curr_proc`
-		let links = curr_proc.links.lock();
+		// FIXME: select only process that are children of the current process
+		let links = proc.links.lock();
 		let res = match pid {
 			// FIXME: must wait for any child process whose pgid is equal to -pid
 			..-1 => links.process_group.get(i).cloned(),
@@ -88,13 +88,11 @@ fn get_wstatus(proc: &Process) -> i32 {
 /// `None`.
 ///
 /// Arguments:
-/// - `curr_proc` is the current process.
 /// - `pid` is the constraint given to the system call.
 /// - `wstatus` is the pointer to the wait status.
 /// - `options` is a set of flags.
 /// - `rusage` is the pointer to the resource usage structure.
 fn get_waitable(
-	curr_proc: &Process,
 	pid: i32,
 	wstatus: UserPtr<i32>,
 	options: i32,
@@ -102,7 +100,7 @@ fn get_waitable(
 ) -> EResult<Option<Pid>> {
 	let mut empty = true;
 	// Find a waitable process
-	let proc = iter_targets(curr_proc, pid)
+	let proc = iter_targets(pid)
 		.inspect(|_| empty = false)
 		.filter_map(Process::get_by_pid)
 		// Select a waitable process
@@ -145,8 +143,7 @@ pub fn do_waitpid(
 ) -> EResult<usize> {
 	loop {
 		{
-			let proc = Process::current();
-			let result = get_waitable(&proc, pid, wstatus, options, rusage.clone())?;
+			let result = get_waitable(pid, wstatus, options, rusage.clone())?;
 			// On success, return
 			if let Some(p) = result {
 				return Ok(p as _);
@@ -157,7 +154,7 @@ pub fn do_waitpid(
 			}
 			// When a child process has its state changed by a signal, SIGCHLD is sent to the
 			// current process to wake it up
-			Process::set_state(&proc, State::Sleeping);
+			process::set_state(State::Sleeping);
 		}
 		schedule();
 	}
