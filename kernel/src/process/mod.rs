@@ -406,7 +406,7 @@ pub(crate) fn init() -> EResult<()> {
 				let opcode = ptr.copy_from_user();
 				// If the instruction is `hlt`, exit
 				if opcode == Ok(Some(HLT_INSTRUCTION)) {
-					Process::exit(&proc, frame.get_syscall_id() as _);
+					exit(frame.get_syscall_id() as _);
 				} else {
 					proc.kill(Signal::SIGSEGV);
 				}
@@ -732,72 +732,6 @@ impl Process {
 		});
 	}
 
-	/// Sets the process's state to `new_state`.
-	///
-	/// If the transition from the previous state to `new_state` is invalid, the function does
-	/// nothing.
-	pub fn set_state(this: &Arc<Self>, new_state: State) {
-		this.lock_state(|old_state| {
-			let valid = matches!(
-				(old_state, new_state),
-				(State::Running | State::Sleeping, _) | (State::Stopped, State::Running)
-			);
-			if !valid {
-				return;
-			}
-			if new_state == old_state {
-				return;
-			}
-			// Update state
-			this.state.store(STATE_LOCK | new_state as u8, Relaxed);
-			#[cfg(feature = "strace")]
-			println!(
-				"[strace {pid}] changed state: {old_state:?} -> {new_state:?}",
-				pid = this.get_pid()
-			);
-			// Enqueue or dequeue the process
-			if new_state == State::Running {
-				enqueue(this);
-			} else if old_state == State::Running {
-				dequeue(this);
-			}
-			if new_state == State::Zombie {
-				if this.is_init() {
-					panic!("Terminated init process!");
-				}
-				// Remove the memory space and file descriptors table to reclaim memory
-				unsafe {
-					//this.mem_space = None; // TODO Handle the case where the memory space is
-					// bound
-					*this.fd_table.get_mut() = None;
-				}
-				// Attach every child to the init process
-				let init_proc = Process::get_by_pid(INIT_PID).unwrap();
-				let children = mem::take(&mut this.links.lock().children);
-				for child_pid in children {
-					// Check just in case
-					if child_pid == *this.pid {
-						continue;
-					}
-					// TODO do the same for process group members
-					if let Some(child) = Process::get_by_pid(child_pid) {
-						child.links.lock().parent = Some(init_proc.clone());
-						oom::wrap(|| init_proc.add_child(child_pid));
-					}
-				}
-				// Set vfork as done just in case
-				this.vfork_wake();
-			}
-			// Send SIGCHLD
-			if matches!(new_state, State::Running | State::Stopped | State::Zombie) {
-				let links = this.links.lock();
-				if let Some(parent) = &links.parent {
-					parent.kill(Signal::SIGCHLD);
-				}
-			}
-		});
-	}
-
 	/// Wakes up the process if in [`Sleeping`] state.
 	///
 	/// Contrary to [`Self::set_state`], this function does not send a `SIGCHLD` signal
@@ -821,7 +755,7 @@ impl Process {
 		self.vfork_done.store(true, Release);
 		let links = self.links.lock();
 		if let Some(parent) = &links.parent {
-			Process::set_state(parent, State::Running);
+			Process::wake(parent);
 		}
 	}
 
@@ -1056,19 +990,6 @@ impl Process {
 		nice0.cmp(&nice1).reverse() // niceness and priority are opposites
 	}
 
-	/// Exits the process with the given `status`.
-	///
-	/// This function changes the process's status to `Zombie`.
-	pub fn exit(this: &Arc<Self>, status: u32) {
-		#[cfg(feature = "strace")]
-		println!(
-			"[strace {pid}] exited with status `{status}`",
-			pid = *this.pid
-		);
-		this.signal.lock().exit_status = status as ExitStatus;
-		Process::set_state(this, State::Zombie);
-	}
-
 	/// Removes all references to the process in order to free the structure.
 	///
 	/// The process is unlinked from:
@@ -1126,4 +1047,84 @@ impl Drop for Process {
 			panic!("Terminated init process!");
 		}
 	}
+}
+
+/// Sets the current process's state to `new_state`.
+///
+/// If the transition from the previous state to `new_state` is invalid, the function does
+/// nothing.
+pub fn set_state(new_state: State) {
+	let proc = Process::current();
+	proc.lock_state(|old_state| {
+		let valid = matches!(
+			(old_state, new_state),
+			(State::Running | State::Sleeping, _) | (State::Stopped, State::Running)
+		);
+		if !valid {
+			return;
+		}
+		if new_state == old_state {
+			return;
+		}
+		// Update state
+		proc.state.store(STATE_LOCK | new_state as u8, Relaxed);
+		#[cfg(feature = "strace")]
+		println!(
+			"[strace {pid}] changed state: {old_state:?} -> {new_state:?}",
+			pid = proc.get_pid()
+		);
+		// Enqueue or dequeue the process
+		if new_state == State::Running {
+			enqueue(&proc);
+		} else if old_state == State::Running {
+			dequeue(&proc);
+		}
+		if new_state == State::Zombie {
+			if unlikely(proc.is_init()) {
+				panic!("Terminated init process!");
+			}
+			// Remove the memory space and file descriptors table to reclaim memory
+			unsafe {
+				//proc.mem_space = None; // TODO the memory space is bound
+				*proc.fd_table.get_mut() = None;
+			}
+			// Attach every child to the init process
+			let init_proc = Process::get_by_pid(INIT_PID).unwrap();
+			let children = mem::take(&mut proc.links.lock().children);
+			for child_pid in children {
+				// Check just in case
+				if child_pid == *proc.pid {
+					continue;
+				}
+				// TODO do the same for process group members
+				if let Some(child) = Process::get_by_pid(child_pid) {
+					child.links.lock().parent = Some(init_proc.clone());
+					oom::wrap(|| init_proc.add_child(child_pid));
+				}
+			}
+			// Set vfork as done just in case
+			proc.vfork_wake();
+		}
+		// Send SIGCHLD
+		if matches!(new_state, State::Running | State::Stopped | State::Zombie) {
+			let links = proc.links.lock();
+			if let Some(parent) = &links.parent {
+				parent.kill(Signal::SIGCHLD);
+			}
+		}
+	});
+}
+
+/// Exits the current process with the given `status`.
+///
+/// This function changes the process's status to `Zombie`.
+pub fn exit(status: u32) {
+	let proc = Process::current();
+	#[cfg(feature = "strace")]
+	println!(
+		"[strace {pid}] exited with status `{status}`",
+		pid = *proc.pid
+	);
+	proc.signal.lock().exit_status = status as ExitStatus;
+	set_state(State::Zombie);
 }

@@ -20,6 +20,7 @@
 //! the resource is available.
 
 use crate::{
+	process,
 	process::{Process, State, pid::Pid, scheduler::schedule},
 	sync::spin::{IntSpin, Spin},
 };
@@ -50,9 +51,8 @@ impl WaitQueue {
 			}
 			// Queue
 			{
-				let proc = Process::current();
-				self.0.lock().push(proc.get_pid())?;
-				Process::set_state(&proc, State::Sleeping);
+				self.0.lock().push(Process::current().get_pid())?;
+				process::set_state(State::Sleeping);
 			}
 			schedule();
 			// TODO try to remove the process from the queue (since it might get woken up by

@@ -35,6 +35,7 @@ use crate::{
 	},
 	int,
 	int::CallbackResult,
+	process,
 	process::{
 		Process, State,
 		scheduler::schedule,
@@ -76,14 +77,11 @@ pub fn sleep_for(clock: Clock, delay: Timestamp, remain: &mut Timestamp) -> ERes
 			break;
 		}
 		// The timer has not expired, we need to sleep
-		{
-			let proc = Process::current();
-			if proc.has_pending_signal() {
-				*remain = timer.get_time().it_value.to_nano();
-				return Err(errno!(EINTR));
-			}
-			Process::set_state(&proc, State::Sleeping);
+		if Process::current().has_pending_signal() {
+			*remain = timer.get_time().it_value.to_nano();
+			return Err(errno!(EINTR));
 		}
+		process::set_state(State::Sleeping);
 		schedule();
 	}
 	Ok(())

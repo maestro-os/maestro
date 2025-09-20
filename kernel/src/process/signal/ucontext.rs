@@ -72,7 +72,7 @@ pub struct UContext32 {
 
 impl UContext32 {
 	/// Creates a context structure from the current.
-	pub fn new(uc_stack: Stack32, process: &Process, frame: &IntFrame) -> Self {
+	pub fn new(uc_stack: Stack32, uc_sigmask: SigSet, frame: &IntFrame) -> Self {
 		Self {
 			uc_flags: 0, // TODO
 			uc_link: 0,
@@ -103,7 +103,7 @@ impl UContext32 {
 				oldmask: 0, // TODO
 				cr2: 0,
 			},
-			uc_sigmask: process.signal.lock().sigmask,
+			uc_sigmask,
 			// TODO
 			__fpregs_mem: FpState32 {
 				cw: 0,
@@ -238,7 +238,7 @@ mod long {
 
 	impl UContext64 {
 		/// Creates a context structure from the current.
-		pub fn new(uc_stack: Stack64, process: &Process, frame: &IntFrame) -> Self {
+		pub fn new(uc_stack: Stack64, uc_sigmask: SigSet, frame: &IntFrame) -> Self {
 			Self {
 				uc_flags: 0, // TODO
 				uc_link: 0,
@@ -272,7 +272,7 @@ mod long {
 					fpregs: 0, // TODO
 					__reserved1: [0; 8],
 				},
-				uc_sigmask: process.signal.lock().sigmask,
+				uc_sigmask,
 				// TODO
 				__fpregs_mem: FpState64 {
 					cwd: 0,
