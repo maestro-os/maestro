@@ -19,10 +19,10 @@
 //! This file implements sockets.
 
 use crate::{
-	file::{File, FileType, Stat, fs::FileOps, wait_queue::WaitQueue},
+	file::{File, FileType, Stat, fs::FileOps},
 	memory::{ring_buffer::RingBuffer, user::UserSlice},
 	net::{SocketDesc, osi},
-	sync::spin::Spin,
+	sync::{spin::Spin, wait_queue::WaitQueue},
 	syscall::ioctl,
 };
 use core::{

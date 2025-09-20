@@ -104,6 +104,14 @@ impl<T, const INT: bool> Spin<T, INT> {
 			data: UnsafeCell::new(data),
 		}
 	}
+
+	/// Acquires the spinlock, consumes it and returns the inner value.
+	///
+	/// The function does not disable nor enable interruptions.
+	pub fn into_inner(self) -> T {
+		lock(&self.spin);
+		self.data.into_inner()
+	}
 }
 
 impl<T: Default, const INT: bool> Default for Spin<T, INT> {
@@ -150,16 +158,6 @@ impl<T: ?Sized, const INT: bool> Spin<T, INT> {
 		if !INT && int_state {
 			sti();
 		}
-	}
-}
-
-impl<T, const INT: bool> Spin<T, INT> {
-	/// Acquires the spinlock, consumes it and returns the inner value.
-	///
-	/// The function does not disable nor enable interruptions.
-	pub fn into_inner(self) -> T {
-		lock(&self.spin);
-		self.data.into_inner()
 	}
 }
 

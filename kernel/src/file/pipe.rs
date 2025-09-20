@@ -20,13 +20,13 @@
 //! and another writing, with a buffer in between.
 
 use crate::{
-	file::{File, FileType, O_NONBLOCK, Stat, fs::FileOps, wait_queue::WaitQueue},
+	file::{File, FileType, O_NONBLOCK, Stat, fs::FileOps},
 	memory::{
 		ring_buffer::RingBuffer,
 		user::{UserPtr, UserSlice},
 	},
 	process::{Process, signal::Signal},
-	sync::spin::Spin,
+	sync::{spin::Spin, wait_queue::WaitQueue},
 	syscall::{FromSyscallArg, ioctl},
 };
 use core::{

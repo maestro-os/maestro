@@ -31,7 +31,6 @@ pub mod pipe;
 pub mod socket;
 pub mod util;
 pub mod vfs;
-pub mod wait_queue;
 
 use crate::{
 	device::{BLK_DEVICES, BlkDev, BlkDevFileOps, CHAR_DEVICES, DeviceID, DeviceType},
