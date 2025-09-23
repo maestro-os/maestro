@@ -95,4 +95,6 @@ fn main() {
 		"cargo:rustc-link-arg=-T{}",
 		target.get_linker_script_path().display()
 	);
+	// Prevent the linker from using very large alignments
+	println!("cargo:rustc-link-arg=-zmax-page-size=0x1000");
 }
