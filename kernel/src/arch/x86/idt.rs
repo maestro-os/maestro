@@ -380,7 +380,7 @@ static mut IDT_ENTRIES: [InterruptDescriptor; ENTRIES_COUNT] =
 ///
 /// This function saves the state of the interrupt flag and restores it before
 /// returning.
-pub fn wrap_disable_interrupts<T, F: FnOnce() -> T>(f: F) -> T {
+pub fn disable_int<T, F: FnOnce() -> T>(f: F) -> T {
 	let int = is_interrupt_enabled();
 	// Here is assumed that no interruption will change flags register. Which could cause a
 	// race condition

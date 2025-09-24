@@ -90,13 +90,13 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 	#[cfg(target_arch = "x86_64")]
 	{
 		use crate::{
-			arch::{x86, x86::idt::wrap_disable_interrupts},
+			arch::{x86, x86::idt::disable_int},
 			process::scheduler::cpu::store_per_cpu,
 		};
 		use core::{arch::asm, sync::atomic::Ordering::Relaxed};
 
 		// Disable interrupts to prevent data races on `gs`
-		wrap_disable_interrupts(|| {
+		disable_int(|| {
 			// Reset segment selector
 			unsafe {
 				asm!(
