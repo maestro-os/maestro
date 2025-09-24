@@ -359,9 +359,8 @@ impl SigEvent {
 	pub fn is_valid(&self) -> bool {
 		// TODO check sigev_notify_thread_id
 		match self.sigev_notify {
-			SIGEV_NONE => true,
+			SIGEV_NONE | SIGEV_THREAD => true,
 			SIGEV_SIGNAL => Signal::try_from(self.sigev_signo).is_ok(),
-			SIGEV_THREAD => true,
 			_ => false,
 		}
 	}
