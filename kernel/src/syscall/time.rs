@@ -28,6 +28,7 @@ use crate::{
 	time::{
 		clock::{Clock, current_time_ns, current_time_sec},
 		sleep_for,
+		timer::TimerManager,
 		unit::{ClockIdT, ITimerspec32, TimeUnit, TimerT, Timespec, Timespec32},
 	},
 };
@@ -103,25 +104,21 @@ pub fn timer_create(
 ) -> EResult<usize> {
 	let clock = Clock::from_id(clockid).ok_or_else(|| errno!(EINVAL))?;
 	let timerid_val = timerid.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-	let proc = Process::current();
 	let sevp_val = sevp.copy_from_user()?.unwrap_or_else(|| SigEvent {
 		sigev_notify: SIGEV_SIGNAL,
 		sigev_signo: Signal::SIGALRM as _,
 		sigev_value: timerid_val,
 		sigev_notify_function: None,
 		sigev_notify_attributes: None,
-		sigev_notify_thread_id: proc.tid,
+		sigev_notify_thread_id: Process::current().tid,
 	});
-	let id = proc.timer_manager.lock().create_timer(clock, sevp_val)?;
+	let id = TimerManager::create_timer(clock, sevp_val)?;
 	timerid.copy_to_user(&(id as _))?;
 	Ok(0)
 }
 
 pub fn timer_delete(timerid: TimerT) -> EResult<usize> {
-	Process::current()
-		.timer_manager
-		.lock()
-		.delete_timer(timerid)?;
+	TimerManager::delete_timer(timerid)?;
 	Ok(0)
 }
 
