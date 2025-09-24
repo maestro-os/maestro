@@ -30,7 +30,12 @@ mod scancode;
 use crate::scancode::ScancodeSet;
 use core::any::Any;
 use kernel::{
-	arch::x86::{apic, apic::lapic_id, idt, idt::IntFrame, io},
+	arch::x86::{
+		apic,
+		apic::lapic_id,
+		idt::{IntFrame, disable_int},
+		io,
+	},
 	device::{
 		keyboard::{Keyboard, KeyboardAction, KeyboardKey, KeyboardLED, KeyboardManager},
 		manager,
@@ -282,7 +287,7 @@ fn init_in() -> Result<(), ()> {
 
 	let mut kbd = PS2_KEYBOAD.lock();
 
-	idt::wrap_disable_interrupts(|| {
+	disable_int(|| {
 		disable_devices();
 		clear_buffer();
 
