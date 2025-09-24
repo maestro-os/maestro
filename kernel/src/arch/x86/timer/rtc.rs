@@ -19,7 +19,7 @@
 //! RTC (Real Time Clock) implementation.
 
 use crate::arch::x86::{
-	idt,
+	idt::disable_int,
 	io::{inb, outb},
 };
 
@@ -40,7 +40,7 @@ pub const INTERRUPT_VECTOR: u8 = 0x28;
 
 /// Enables or disables the RTC.
 pub fn set_enabled(enable: bool) {
-	idt::wrap_disable_interrupts(|| unsafe {
+	disable_int(|| unsafe {
 		outb(SELECT_PORT, STATUS_B_REGISTER | 0x80);
 		let prev = inb(VALUE_PORT);
 		outb(SELECT_PORT, STATUS_B_REGISTER | 0x80);
@@ -55,7 +55,7 @@ pub fn set_enabled(enable: bool) {
 /// Sets the RTC's frequency.
 pub fn set_frequency(freq: u32) {
 	let rate = (32768u32 / freq).trailing_zeros() as u8 + 1;
-	idt::wrap_disable_interrupts(|| unsafe {
+	disable_int(|| unsafe {
 		outb(SELECT_PORT, STATUS_A_REGISTER | 0x80);
 		let prev = inb(VALUE_PORT);
 		outb(SELECT_PORT, STATUS_A_REGISTER | 0x80);
