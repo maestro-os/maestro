@@ -20,7 +20,7 @@
 
 use crate::arch::{
 	disable_irq, enable_irq,
-	x86::{idt, io::outb},
+	x86::{idt::disable_int, io::outb},
 };
 
 /// PIT channel number 0.
@@ -52,7 +52,7 @@ pub const INTERRUPT_VECTOR: u8 = 0x20;
 
 /// Initializes the PIT.
 pub fn init(freq: u32) {
-	idt::wrap_disable_interrupts(|| unsafe {
+	disable_int(|| unsafe {
 		outb(
 			PIT_COMMAND,
 			SELECT_CHANNEL_0 | ACCESS_LOBYTE_HIBYTE | MODE_3,
@@ -81,7 +81,7 @@ pub fn set_frequency(freq: u32) {
 		count = 0;
 	}
 	// Update frequency divider's value
-	idt::wrap_disable_interrupts(|| unsafe {
+	disable_int(|| unsafe {
 		outb(CHANNEL_0, (count & 0xff) as u8);
 		outb(CHANNEL_0, ((count >> 8) & 0xff) as u8);
 	});
