@@ -23,8 +23,7 @@ use crate::{
 	memory::oom,
 	process::{
 		Process,
-		pid::Pid,
-		signal::{SIGEV_NONE, SIGEV_SIGNAL, SIGEV_THREAD, SigEvent, Signal},
+		signal::{SIGEV_SIGNAL, SIGEV_THREAD, SigEvent, Signal},
 	},
 	sync::spin::IntSpin,
 	time::{
@@ -45,24 +44,21 @@ use utils::{
 
 #[derive(Default)]
 struct TimerSpec {
-	/// The timer's interval, in nanoseconds.
+	/// The timer's interval, in nanoseconds
 	interval: Timestamp,
-	/// The next timestamp, in nanoseconds, at which the timer will expire.
+	/// The next timestamp, in nanoseconds, at which the timer will expire
 	///
-	/// If zero, the timer is unarmed.
+	/// If zero, the timer is unarmed
 	next: Option<Timestamp>,
 }
 
 struct TimerInner {
-	/// The clock to user.
+	/// The clock to use
 	clock: Clock,
-	/// PID of the process to notify.
-	pid: Pid,
-	/// Definition of the action to perform when the timer is triggered.
-	sevp: SigEvent,
-
-	/// Timer setting.
+	/// Timer setting
 	spec: IntSpin<TimerSpec>,
+	/// The function to execute when the timer expires
+	f: Box<dyn Fn()>,
 }
 
 impl TimerInner {
@@ -82,25 +78,6 @@ impl TimerInner {
 	#[inline]
 	fn is_oneshot(&self) -> bool {
 		self.spec.lock().interval == 0
-	}
-
-	/// Fires the timer.
-	fn fire(&self) {
-		let Some(proc) = Process::get_by_pid(self.pid) else {
-			return;
-		};
-		match self.sevp.sigev_notify {
-			SIGEV_NONE => Process::wake(&proc),
-			SIGEV_SIGNAL => {
-				let Ok(signal) = Signal::try_from(self.sevp.sigev_signo) else {
-					return;
-				};
-				// TODO on sigint_t, set si_code to SI_TIMER
-				proc.kill(signal);
-			}
-			SIGEV_THREAD => todo!(),
-			_ => {}
-		}
 	}
 
 	/// Resets the timer to be fired again.
@@ -139,20 +116,13 @@ impl Timer {
 	/// Creates a timer.
 	///
 	/// Arguments:
-	/// - `clock` is the clock to use.
-	/// - `pid` is the PID of the process to notify.
-	/// - `sevp` describes the event to be triggered by the clock.
-	pub fn new(clock: Clock, pid: Pid, sevp: SigEvent) -> EResult<Self> {
-		// Validation
-		if unlikely(!sevp.is_valid()) {
-			return Err(errno!(EINVAL));
-		}
+	/// - `clock` is the clock to use
+	/// - `f` is the function to execute when the timer fires
+	pub fn new<F: 'static + Fn()>(clock: Clock, f: F) -> AllocResult<Self> {
 		Ok(Self(Box::new(TimerInner {
 			clock,
-			pid,
-			sevp,
-
 			spec: Default::default(),
+			f: Box::new(f)?,
 		})?))
 	}
 
@@ -218,64 +188,79 @@ impl Drop for Timer {
 
 /// Manager for a process's timers.
 pub struct TimerManager {
-	/// The PID of the process to which the manager is associated.
-	pid: Pid,
-
-	/// ID allocator for timers.
+	/// ID allocator for timers
 	id_allocator: IDAllocator,
-	/// The list of timers for the process. The key is the ID of the timer.
-	timers: HashMap<u32, Timer>,
+	/// The list of timers for the process. The key is the ID of the timer
+	timers: HashMap<TimerT, Timer>,
 }
 
 impl TimerManager {
 	/// Creates a new instance.
-	///
-	/// `pid` is the PID of the process owning the timers.
-	pub fn new(pid: Pid) -> AllocResult<Self> {
+	pub(crate) fn new() -> AllocResult<Self> {
 		Ok(Self {
-			pid,
-
 			id_allocator: IDAllocator::new(TIMER_MAX as _)?,
 			timers: HashMap::new(),
 		})
 	}
 
-	/// Creates a timer.
+	/// Returns a mutable reference to the timer with the given ID.
+	///
+	/// If the timer doesn't exist, the function returns `None`.
+	#[inline]
+	pub fn get_timer_mut(&mut self, id: TimerT) -> Option<&mut Timer> {
+		self.timers.get_mut(&id)
+	}
+
+	/// Creates a timer for the current process.
 	///
 	/// Arguments:
-	/// - `clock` is the clock to use.
-	/// - `sevp` describes the event to be triggered by the clock.
+	/// - `clock` is the clock to use
+	/// - `sevp` describes the event to be triggered by the clock
 	///
 	/// On success, the function returns the ID of the newly created timer.
-	pub fn create_timer(&mut self, clock: Clock, sevp: SigEvent) -> EResult<u32> {
-		let timer = Timer::new(clock, self.pid, sevp)?;
-		let id = self.id_allocator.alloc(None)?;
-		if let Err(e) = self.timers.insert(id, timer) {
+	pub fn create_timer(clock: Clock, sevp: SigEvent) -> EResult<u32> {
+		if unlikely(!sevp.is_valid()) {
+			return Err(errno!(EINVAL));
+		}
+		let sig = Signal::try_from(sevp.sigev_signo)?;
+		let proc = Process::current();
+		let f = move || {
+			match sevp.sigev_notify {
+				SIGEV_SIGNAL => {
+					// TODO on sigint_t, set si_code to SI_TIMER
+					proc.kill(sig);
+				}
+				SIGEV_THREAD => todo!(),
+				_ => {}
+			}
+		};
+		let timer = Timer::new(clock, f)?;
+		let proc = Process::current();
+		let mut this = proc.timer_manager.lock();
+		let id = this.id_allocator.alloc(None)?;
+		if let Err(e) = this.timers.insert(id as _, timer) {
 			// Allocation error: rollback
-			self.id_allocator.free(id);
+			this.id_allocator.free(id);
 			return Err(e.into());
 		}
 		Ok(id)
 	}
 
-	/// Returns a mutable reference to the timer with the given ID.
-	///
-	/// If the timer doesn't exist, the function returns `None`.
-	pub fn get_timer_mut(&mut self, id: TimerT) -> Option<&mut Timer> {
-		self.timers.get_mut(&(id as _))
-	}
-
 	/// Deletes the timer with the given ID.
 	///
 	/// If the timer does not exist, the function returns an error.
-	pub fn delete_timer(&mut self, id: TimerT) -> EResult<()> {
-		self.timers
-			.remove(&(id as _))
+	pub fn delete_timer(id: TimerT) -> EResult<()> {
+		Process::current()
+			.timer_manager
+			.lock()
+			.timers
+			.remove(&id)
 			.ok_or_else(|| errno!(EINVAL))?;
 		Ok(())
 	}
 }
 
+// TODO use intrusive binary trees in order to avoid memory allocations
 /// The queue of timers to be fired next.
 ///
 /// The key has the following elements:
@@ -300,7 +285,7 @@ pub(super) fn tick() {
 			// If this timer has not expired, all the following timers won't be expired either
 			break;
 		}
-		timer.fire();
+		(timer.f)();
 		if timer.is_oneshot() {
 			queue.pop_first();
 		} else {

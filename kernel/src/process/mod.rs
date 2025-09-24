@@ -335,6 +335,8 @@ pub struct Process {
 	sched_node: ListNode,
 	/// Process's niceness (`-20..=19`). Defines its scheduling priority (lower = higher priority)
 	pub nice: AtomicI8,
+	/// A queue the process is inserted in when waiting on a resource
+	pub(crate) wait_queue: ListNode,
 
 	/// A pointer to the kernelspace stack.
 	kernel_stack: KernelStack,
@@ -518,6 +520,7 @@ impl Process {
 
 			sched_node: ListNode::default(),
 			nice: AtomicI8::new(nice),
+			wait_queue: ListNode::default(),
 
 			kernel_stack,
 			kernel_sp: AtomicPtr::new(kernel_sp),
@@ -534,7 +537,7 @@ impl Process {
 			fs: None,
 			umask: Default::default(),
 			fd_table: Default::default(),
-			timer_manager: Arc::new(Spin::new(TimerManager::new(0)?))?,
+			timer_manager: Arc::new(Spin::new(TimerManager::new()?))?,
 			signal: Spin::new(ProcessSignal::new()?),
 			parent_event: Default::default(),
 
@@ -588,6 +591,7 @@ impl Process {
 
 			sched_node: ListNode::default(),
 			nice: AtomicI8::new(0),
+			wait_queue: ListNode::default(),
 
 			kernel_stack: KernelStack::new()?,
 			kernel_sp: AtomicPtr::default(),
@@ -607,7 +611,7 @@ impl Process {
 			})),
 			umask: AtomicU32::new(DEFAULT_UMASK),
 			fd_table: UnsafeMut::new(Some(Arc::new(Spin::new(fd_table))?)),
-			timer_manager: Arc::new(Spin::new(TimerManager::new(INIT_PID)?))?,
+			timer_manager: Arc::new(Spin::new(TimerManager::new()?))?,
 			signal: Spin::new(ProcessSignal {
 				handlers: Arc::new(Default::default())?,
 				altstack: Default::default(),
@@ -854,6 +858,7 @@ impl Process {
 
 			sched_node: ListNode::default(),
 			nice: AtomicI8::new(0),
+			wait_queue: ListNode::default(),
 
 			kernel_stack,
 			kernel_sp: AtomicPtr::new(kernel_sp),
@@ -870,7 +875,7 @@ impl Process {
 			umask: AtomicU32::new(parent.umask.load(Relaxed)),
 			fd_table: UnsafeMut::new(file_descriptors),
 			// TODO if creating a thread: timer_manager: parent.timer_manager.clone(),
-			timer_manager: Arc::new(Spin::new(TimerManager::new(pid_int)?))?,
+			timer_manager: Arc::new(Spin::new(TimerManager::new()?))?,
 			signal: Spin::new(ProcessSignal {
 				handlers: signal_handlers,
 				altstack: Default::default(),

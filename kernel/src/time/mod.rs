@@ -36,11 +36,7 @@ use crate::{
 	int,
 	int::CallbackResult,
 	process,
-	process::{
-		Process, State,
-		scheduler::schedule,
-		signal::{SIGEV_NONE, SigEvent},
-	},
+	process::{Process, State, scheduler::schedule},
 	time::{
 		clock::{Clock, current_time_ns},
 		timer::Timer,
@@ -58,17 +54,9 @@ use utils::{errno, errno::EResult};
 /// If the current process is interrupted by a signal, the function returns [`errno::EINTR`] and
 /// sets the remaining time in `remain`.
 pub fn sleep_for(clock: Clock, delay: Timestamp, remain: &mut Timestamp) -> EResult<()> {
-	// Setup timer
-	let pid = Process::current().get_pid();
+	let proc = Process::current();
 	// FIXME: there can be allocation failures here
-	let mut timer = Timer::new(
-		clock,
-		pid,
-		SigEvent {
-			sigev_notify: SIGEV_NONE,
-			..Default::default()
-		},
-	)?;
+	let mut timer = Timer::new(clock, move || Process::wake(&proc))?;
 	timer.set_time(0, delay)?;
 	// Loop until the timer expires
 	loop {
@@ -77,7 +65,7 @@ pub fn sleep_for(clock: Clock, delay: Timestamp, remain: &mut Timestamp) -> ERes
 			break;
 		}
 		// The timer has not expired, we need to sleep
-		if Process::current().has_pending_signal() {
+		if unlikely(Process::current().has_pending_signal()) {
 			*remain = timer.get_time().it_value.to_nano();
 			return Err(errno!(EINTR));
 		}

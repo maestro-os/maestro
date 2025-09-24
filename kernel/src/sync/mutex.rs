@@ -23,47 +23,42 @@
 
 use crate::{
 	process,
-	process::{State, scheduler::schedule},
+	process::{Process, State, scheduler::schedule},
+	sync::spin::IntSpin,
 };
 use core::{
 	cell::UnsafeCell,
 	fmt,
 	fmt::Formatter,
-	hint,
 	ops::{Deref, DerefMut},
-	sync::atomic::{
-		AtomicBool,
-		Ordering::{Acquire, Release},
-	},
 };
+use utils::{list, list_type};
 
-// TODO insert the task in a queue before sleeping so that it can get woken up
-fn lock(spin: &AtomicBool) {
-	// Fast path
-	for _ in 0..100 {
-		if !spin.swap(true, Acquire) {
+fn lock(queue: &IntSpin<Queue>) {
+	{
+		let mut q = queue.lock();
+		q.acquired += 1;
+		// If no one else has acquired the mutex, return
+		if q.acquired == 1 {
 			return;
 		}
-		hint::spin_loop();
-	}
-	// Slow path
-	while spin.swap(true, Acquire) {
-		// Sleep
+		// At least one other task has acquired the mutex: we must sleep. The process is dequeued
+		// when the mutex is released by the previous task that acquired it
+		q.wait_queue.insert_back(Process::current());
+		// Put to sleep before releasing the spinlock to make sure another process releasing
+		// the mutex does not try to wake us up before we sleep
 		process::set_state(State::Sleeping);
-		// If unlocked in between, cancel sleeping
-		if !spin.swap(true, Acquire) {
-			process::set_state(State::Running);
-			return;
-		}
-		// Wait until woken up
-		schedule();
 	}
+	schedule();
+	// TODO if interruptible sleep, and woken up by a signal, remove from the queue and return
+	// EINTR
 }
 
 /// Unlocks the associated [`Mutex`] when dropped.
 pub struct MutexGuard<'m, T: ?Sized> {
 	mutex: &'m Mutex<T>,
 }
+
 impl<T: ?Sized> Deref for MutexGuard<'_, T> {
 	type Target = T;
 
@@ -96,9 +91,14 @@ impl<T: ?Sized> Drop for MutexGuard<'_, T> {
 	}
 }
 
+struct Queue {
+	acquired: usize,
+	wait_queue: list_type!(Process, wait_queue),
+}
+
 /// Sleeping mutex.
 pub struct Mutex<T: ?Sized> {
-	spin: AtomicBool,
+	queue: IntSpin<Queue>,
 	data: UnsafeCell<T>,
 }
 
@@ -112,14 +112,17 @@ impl<T> Mutex<T> {
 	/// Creates a new instance wrapping the given `data`.
 	pub const fn new(data: T) -> Self {
 		Self {
-			spin: AtomicBool::new(false),
+			queue: IntSpin::new(Queue {
+				acquired: 0,
+				wait_queue: list!(Process, wait_queue),
+			}),
 			data: UnsafeCell::new(data),
 		}
 	}
 
 	/// Acquires the mutex, consumes it and returns the inner value.
 	pub fn into_inner(self) -> T {
-		lock(&self.spin);
+		lock(&self.queue);
 		self.data.into_inner()
 	}
 }
@@ -132,7 +135,7 @@ impl<T: ?Sized> Mutex<T> {
 	/// The function returns a [`MutexGuard`] associated with `self`. When dropped, the mutex
 	/// is unlocked.
 	pub fn lock(&self) -> MutexGuard<T> {
-		lock(&self.spin);
+		lock(&self.queue);
 		MutexGuard {
 			mutex: self,
 		}
@@ -144,10 +147,17 @@ impl<T: ?Sized> Mutex<T> {
 	/// # Safety
 	///
 	/// Releasing while the resource is being used is undefined.
-	#[inline]
 	pub unsafe fn unlock(&self) {
-		self.spin.store(false, Release);
-		// TODO wake up a queued task
+		let next = {
+			let mut q = self.queue.lock();
+			debug_assert_ne!(q.acquired, 0);
+			q.acquired -= 1;
+			// If at least one other task is waiting, wake it up
+			q.wait_queue.remove_front()
+		};
+		if let Some(next) = next {
+			Process::wake(&next);
+		}
 	}
 }
 
