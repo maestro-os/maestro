@@ -391,16 +391,11 @@ fn alter_flow_impl(frame: &mut IntFrame) -> bool {
 		return true;
 	}
 	// Get signal handler to execute, if any
-	let (sig, handler) = {
-		let mut signal_manager = proc.signal.lock();
-		let Some(sig) = signal_manager.next_signal() else {
-			return false;
-		};
-		let handler = signal_manager.handlers.lock()[sig as usize].clone();
-		(sig, handler)
+	let Some(sig) = proc.signal.lock().next_signal() else {
+		return false;
 	};
 	// Prepare for execution of signal handler
-	handler.exec(sig, frame);
+	proc.sig_handlers.lock()[sig as usize].exec(sig, frame);
 	// If the process is still running, continue execution
 	proc.get_state() != State::Running
 }
