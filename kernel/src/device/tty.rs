@@ -54,15 +54,14 @@ impl TTYDeviceHandle {
 		if proc.is_in_orphan_process_group() {
 			return Err(errno!(EIO));
 		}
-		{
-			let signal_manager = proc.signal.lock();
-			if signal_manager.is_signal_blocked(Signal::SIGTTIN) {
-				return Err(errno!(EIO));
-			}
-			let handler = signal_manager.handlers.lock()[Signal::SIGTTIN as usize].clone();
-			if matches!(handler, SignalHandler::Ignore) {
-				return Err(errno!(EIO));
-			}
+		if proc.signal.lock().is_signal_blocked(Signal::SIGTTIN) {
+			return Err(errno!(EIO));
+		}
+		if matches!(
+			proc.sig_handlers.lock()[Signal::SIGTTIN as usize],
+			SignalHandler::Ignore
+		) {
+			return Err(errno!(EIO));
 		}
 		proc.kill_group(Signal::SIGTTIN);
 		Ok(())
@@ -78,15 +77,14 @@ impl TTYDeviceHandle {
 		if tty.get_termios().c_lflag & termios::consts::TOSTOP == 0 {
 			return Ok(());
 		}
-		{
-			let signal_manager = proc.signal.lock();
-			if signal_manager.is_signal_blocked(Signal::SIGTTOU) {
-				return Err(errno!(EIO));
-			}
-			let handler = signal_manager.handlers.lock()[Signal::SIGTTOU as usize].clone();
-			if matches!(handler, SignalHandler::Ignore) {
-				return Err(errno!(EIO));
-			}
+		if proc.signal.lock().is_signal_blocked(Signal::SIGTTOU) {
+			return Err(errno!(EIO));
+		}
+		if matches!(
+			proc.sig_handlers.lock()[Signal::SIGTTOU as usize],
+			SignalHandler::Ignore
+		) {
+			return Err(errno!(EIO));
 		}
 		if proc.is_in_orphan_process_group() {
 			return Err(errno!(EIO));

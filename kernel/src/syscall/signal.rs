@@ -78,10 +78,9 @@ pub fn sigaltstack(ss: UserPtr<Stack64>, old_ss: UserPtr<Stack64>) -> EResult<us
 
 pub fn signal(signum: c_int, handler: *const c_void) -> EResult<usize> {
 	let proc = Process::current();
-	let signals = proc.signal.lock();
 	let signal = Signal::try_from(signum)?;
 	let new_handler = SignalHandler::from_legacy(handler);
-	let old_handler = mem::replace(&mut signals.handlers.lock()[signal as usize], new_handler);
+	let old_handler = mem::replace(&mut proc.sig_handlers.lock()[signal as usize], new_handler);
 	Ok(old_handler.to_legacy() as _)
 }
 
@@ -90,10 +89,9 @@ fn do_rt_sigaction<S: fmt::Debug + From<SigAction> + Into<SigAction>>(
 	act: UserPtr<S>,
 	oldact: UserPtr<S>,
 ) -> EResult<usize> {
-	let proc = Process::current();
-	let signals = proc.signal.lock();
-	let mut handlers = signals.handlers.lock();
 	let signal = Signal::try_from(signum)?;
+	let proc = Process::current();
+	let mut handlers = proc.sig_handlers.lock();
 	// Save the old structure
 	let old = handlers[signal as usize].get_action().into();
 	oldact.copy_to_user(&old)?;

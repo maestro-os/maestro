@@ -27,12 +27,12 @@ use crate::{
 	memory::VirtAddr,
 	process,
 	process::{mem_space::MemSpace, pid::Pid},
-	syscall::wait::{WCONTINUED, WUNTRACED},
+	syscall::wait::WUNTRACED,
 	time::unit::ClockIdT,
 };
 use core::{
 	ffi::{c_int, c_void},
-	hint::{likely, unlikely},
+	hint::likely,
 	mem::{size_of, transmute},
 	ptr,
 	ptr::NonNull,
@@ -176,15 +176,12 @@ impl SignalAction {
 				proc.signal.lock().termsig = sig as u8;
 				process::set_state(State::Zombie)
 			}
-			SignalAction::Ignore => {}
+			// `Continue` makes the process resume when the signal is set
+			SignalAction::Ignore | SignalAction::Continue => {}
 			SignalAction::Stop => {
 				proc.signal.lock().termsig = sig as u8;
 				process::set_state(State::Stopped);
 				proc.parent_event.fetch_or(WUNTRACED as _, Release);
-			}
-			SignalAction::Continue => {
-				process::set_state(State::Running);
-				proc.parent_event.fetch_or(WCONTINUED as _, Release);
 			}
 		}
 	}
@@ -437,9 +434,6 @@ impl SignalHandler {
 	/// Executes the action for `signal` on the current process.
 	pub fn exec(&self, signal: Signal, frame: &mut IntFrame) {
 		let proc = Process::current();
-		if unlikely(matches!(proc.get_state(), State::Zombie)) {
-			return;
-		}
 		let action = match self {
 			Self::Handler(action) if signal.can_catch() => action,
 			Self::Ignore => return,
