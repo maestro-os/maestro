@@ -49,11 +49,11 @@ use crate::{
 			critical, dequeue, enqueue, switch,
 			switch::{KThreadEntry, idle_task, save_segments},
 		},
-		signal::{AltStack, SIGNALS_COUNT, SigSet},
+		signal::{AltStack, SIGNALS_COUNT, SigSet, SignalAction},
 	},
 	register_get,
 	sync::{atomic::AtomicU64, rwlock::IntRwLock, spin::Spin},
-	syscall::FromSyscallArg,
+	syscall::{FromSyscallArg, wait::WCONTINUED},
 	time::timer::TimerManager,
 };
 use core::{
@@ -128,13 +128,13 @@ const REDZONE_SIZE: usize = 128;
 #[repr(u8)]
 #[derive(Clone, Copy, Eq, Debug, PartialEq)]
 pub enum State {
-	/// The process is running or waiting to run.
+	/// The process is currently running, or waiting to run
 	Running = 0,
-	/// The process is waiting for an event.
+	/// The process is waiting for an event
 	Sleeping = 1,
-	/// The process has been stopped by a signal or by tracing.
+	/// The process has been stopped by a signal or by tracing
 	Stopped = 2,
-	/// The process has been killed.
+	/// The process has been killed
 	Zombie = 3,
 }
 
@@ -256,8 +256,6 @@ impl Clone for ProcessFs {
 
 /// A process's signal management information.
 pub struct ProcessSignal {
-	/// The list of signal handlers
-	pub handlers: Arc<Spin<[SignalHandler; SIGNALS_COUNT]>>,
 	/// The alternative signal stack
 	pub altstack: AltStack,
 	/// A bitfield storing the set of blocked signals
@@ -275,7 +273,6 @@ impl ProcessSignal {
 	/// Creates a new instance.
 	pub fn new() -> AllocResult<Self> {
 		Ok(ProcessSignal {
-			handlers: Arc::new(Default::default())?,
 			altstack: AltStack::default(),
 			sigmask: Default::default(),
 			sigpending: Default::default(),
@@ -366,6 +363,8 @@ pub struct Process {
 	fd_table: UnsafeMut<Option<Arc<Spin<FileDescriptorTable>>>>,
 	/// Process's timers, shared between all threads of the same process.
 	pub timer_manager: Arc<Spin<TimerManager>>,
+	/// The list of signal handlers
+	pub sig_handlers: UnsafeMut<Arc<Spin<[SignalHandler; SIGNALS_COUNT]>>>,
 	/// The process's signal management structure.
 	pub signal: Spin<ProcessSignal>, // TODO rwlock
 	/// Events to be notified to the parent process upon `wait`.
@@ -538,6 +537,7 @@ impl Process {
 			umask: Default::default(),
 			fd_table: Default::default(),
 			timer_manager: Arc::new(Spin::new(TimerManager::new()?))?,
+			sig_handlers: UnsafeMut::new(Arc::new(Default::default())?),
 			signal: Spin::new(ProcessSignal::new()?),
 			parent_event: Default::default(),
 
@@ -612,8 +612,8 @@ impl Process {
 			umask: AtomicU32::new(DEFAULT_UMASK),
 			fd_table: UnsafeMut::new(Some(Arc::new(Spin::new(fd_table))?)),
 			timer_manager: Arc::new(Spin::new(TimerManager::new()?))?,
+			sig_handlers: UnsafeMut::new(Arc::new(Default::default())?),
 			signal: Spin::new(ProcessSignal {
-				handlers: Arc::new(Default::default())?,
 				altstack: Default::default(),
 				sigmask: Default::default(),
 				sigpending: Default::default(),
@@ -807,7 +807,7 @@ impl Process {
 			}
 		};
 		// Clone file descriptors
-		let file_descriptors = if fork_options.share_fd {
+		let fd_table = if fork_options.share_fd {
 			parent.fd_table.get().clone()
 		} else {
 			parent
@@ -821,14 +821,11 @@ impl Process {
 				.transpose()?
 		};
 		// Clone signal handlers
-		let signal_handlers = {
-			let signal_manager = parent.signal.lock();
-			if fork_options.share_sighand {
-				signal_manager.handlers.clone()
-			} else {
-				let handlers = signal_manager.handlers.lock().clone();
-				Arc::new(Spin::new(handlers))?
-			}
+		let sig_handlers = if fork_options.share_sighand {
+			parent.sig_handlers.get().clone()
+		} else {
+			let handlers = parent.sig_handlers.lock().clone();
+			Arc::new(Spin::new(handlers))?
 		};
 		let group_leader = parent
 			.links
@@ -873,11 +870,11 @@ impl Process {
 			mem_space: UnsafeMut::new(Some(mem_space)),
 			fs: Some(Spin::new(parent.fs().lock().clone())),
 			umask: AtomicU32::new(parent.umask.load(Relaxed)),
-			fd_table: UnsafeMut::new(file_descriptors),
+			fd_table: UnsafeMut::new(fd_table),
 			// TODO if creating a thread: timer_manager: parent.timer_manager.clone(),
 			timer_manager: Arc::new(Spin::new(TimerManager::new()?))?,
+			sig_handlers: UnsafeMut::new(sig_handlers),
 			signal: Spin::new(ProcessSignal {
-				handlers: signal_handlers,
 				altstack: Default::default(),
 				sigmask: parent.signal.lock().sigmask,
 				sigpending: Default::default(),
@@ -957,20 +954,33 @@ impl Process {
 	/// If the process doesn't have a signal handler, the default action for the signal is
 	/// executed.
 	pub fn kill(&self, sig: Signal) {
-		let mut signal_manager = self.signal.lock();
-		// Ignore blocked signals
-		if sig.can_catch() && signal_manager.sigmask.is_set(sig as _) {
-			return;
+		{
+			let mut s = self.signal.lock();
+			// Ignore blocked signals
+			if sig.can_catch() && s.sigmask.is_set(sig as _) {
+				return;
+			}
+			// Statistics
+			self.rusage.lock().ru_nsignals += 1;
+			/*#[cfg(feature = "strace")]
+			println!(
+				"[strace {pid}] received signal `{sig}`",
+				pid = self.get_pid(),
+				sig = sig as c_int
+			);*/
+			s.sigpending.set(sig as _);
 		}
-		// Statistics
-		self.rusage.lock().ru_nsignals += 1;
-		/*#[cfg(feature = "strace")]
-		println!(
-			"[strace {pid}] received signal `{sig}`",
-			pid = self.get_pid(),
-			sig = sig as c_int
-		);*/
-		signal_manager.sigpending.set(sig as _);
+		// If the signal's action is to resume execution, change state
+		let handler = self.sig_handlers.lock()[sig as usize].clone();
+		if matches!(handler, SignalHandler::Default if sig.get_default_action() == SignalAction::Continue)
+		{
+			self.lock_state(|old_state| {
+				if old_state == State::Stopped {
+					self.state.store(STATE_LOCK | State::Running as u8, Relaxed);
+					self.parent_event.fetch_or(WCONTINUED as _, Release);
+				}
+			});
+		}
 	}
 
 	/// Kills every process in the process group.
@@ -995,12 +1005,14 @@ impl Process {
 
 	/// Removes all references to the process in order to free the structure.
 	///
+	/// The function assumes the process is a Zombie.
+	///
 	/// The process is unlinked from:
 	/// - Its parent
 	/// - Its group
-	/// - Its scheduler
 	/// - The processes list
-	pub fn remove(this: Arc<Self>) {
+	pub(crate) fn remove(this: Arc<Self>) {
+		debug_assert_eq!(this.get_state(), State::Zombie);
 		let (parent, group_leader) = {
 			let mut links = this.links.lock();
 			(links.parent.take(), links.group_leader.take())
@@ -1017,7 +1029,6 @@ impl Process {
 				links.process_group.remove(i);
 			}
 		}
-		dequeue(&this);
 		PROCESSES.write().remove(&*this.pid);
 	}
 }

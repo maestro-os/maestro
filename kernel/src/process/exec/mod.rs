@@ -70,13 +70,10 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 	unsafe {
 		*proc.fd_table.get_mut() = fds;
 		*proc.mem_space.get_mut() = Some(image.mem_space);
+		*proc.sig_handlers.get_mut() = signal_handlers;
 	}
 	// Reset signals
-	{
-		let mut signal_manager = proc.signal.lock();
-		signal_manager.handlers = signal_handlers;
-		signal_manager.sigpending = Default::default();
-	}
+	proc.signal.lock().sigpending = Default::default();
 	proc.vfork_wake();
 	*proc.tls.lock() = Default::default();
 	// Set TSS here for the first process to be executed
