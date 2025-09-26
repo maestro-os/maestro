@@ -49,11 +49,11 @@ use crate::{
 			critical, dequeue, enqueue, switch,
 			switch::{KThreadEntry, idle_task, save_segments},
 		},
-		signal::{AltStack, SIGNALS_COUNT, SigSet, SignalAction},
+		signal::{AltStack, SIGNALS_COUNT, SigSet},
 	},
 	register_get,
 	sync::{atomic::AtomicU64, rwlock::IntRwLock, spin::Spin},
-	syscall::{FromSyscallArg, wait::WCONTINUED},
+	syscall::{FromSyscallArg, wait::WEXITED},
 	time::timer::TimerManager,
 };
 use core::{
@@ -752,6 +752,15 @@ impl Process {
 		});
 	}
 
+	/// Notifies the parent process about `event` (see `waitpid` flags) by sending a `SIGCHLD`.
+	pub fn notify_parent(&self, event: u8) {
+		let parent = self.links.lock().parent.clone();
+		if let Some(parent) = parent {
+			self.parent_event.fetch_or(event, Release);
+			parent.kill(Signal::SIGCHLD);
+		}
+	}
+
 	/// Signals the parent that the `vfork` operation has completed.
 	pub fn vfork_wake(&self) {
 		self.vfork_done.store(true, Release);
@@ -954,33 +963,22 @@ impl Process {
 	/// If the process doesn't have a signal handler, the default action for the signal is
 	/// executed.
 	pub fn kill(&self, sig: Signal) {
-		{
-			let mut s = self.signal.lock();
-			// Ignore blocked signals
-			if sig.can_catch() && s.sigmask.is_set(sig as _) {
-				return;
-			}
-			// Statistics
-			self.rusage.lock().ru_nsignals += 1;
-			/*#[cfg(feature = "strace")]
-			println!(
-				"[strace {pid}] received signal `{sig}`",
-				pid = self.get_pid(),
-				sig = sig as c_int
-			);*/
-			s.sigpending.set(sig as _);
+		let mut s = self.signal.lock();
+		// Ignore blocked signals
+		if sig.can_catch() && s.sigmask.is_set(sig as _) {
+			return;
 		}
-		// If the signal's action is to resume execution, change state
-		let handler = self.sig_handlers.lock()[sig as usize].clone();
-		if matches!(handler, SignalHandler::Default if sig.get_default_action() == SignalAction::Continue)
-		{
-			self.lock_state(|old_state| {
-				if old_state == State::Stopped {
-					self.state.store(STATE_LOCK | State::Running as u8, Relaxed);
-					self.parent_event.fetch_or(WCONTINUED as _, Release);
-				}
-			});
-		}
+		// Statistics
+		self.rusage.lock().ru_nsignals += 1;
+		/*#[cfg(feature = "strace")]
+		println!(
+			"[strace {pid}] received signal `{sig}`",
+			pid = self.get_pid(),
+			sig = sig as c_int
+		);*/
+		s.sigpending.set(sig as _);
+		// Change state so that the process can handle the signal
+		set_state(State::Running);
 	}
 
 	/// Kills every process in the process group.
@@ -1072,7 +1070,7 @@ pub fn set_state(new_state: State) {
 	proc.lock_state(|old_state| {
 		let valid = matches!(
 			(old_state, new_state),
-			(State::Running | State::Sleeping, _) | (State::Stopped, State::Running)
+			(State::Running, _) | (State::Sleeping | State::Stopped, State::Running)
 		);
 		if !valid {
 			return;
@@ -1119,13 +1117,6 @@ pub fn set_state(new_state: State) {
 			// Set vfork as done just in case
 			proc.vfork_wake();
 		}
-		// Send SIGCHLD
-		if matches!(new_state, State::Running | State::Stopped | State::Zombie) {
-			let links = proc.links.lock();
-			if let Some(parent) = &links.parent {
-				parent.kill(Signal::SIGCHLD);
-			}
-		}
 	});
 }
 
@@ -1141,4 +1132,5 @@ pub fn exit(status: u32) {
 	);
 	proc.signal.lock().exit_status = status as ExitStatus;
 	set_state(State::Zombie);
+	proc.notify_parent(WEXITED as u8);
 }
