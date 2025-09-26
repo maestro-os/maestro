@@ -27,7 +27,7 @@ use crate::{
 	memory::VirtAddr,
 	process,
 	process::{mem_space::MemSpace, pid::Pid},
-	syscall::wait::WUNTRACED,
+	syscall::wait::{WCONTINUED, WEXITED, WUNTRACED},
 	time::unit::ClockIdT,
 };
 use core::{
@@ -37,7 +37,6 @@ use core::{
 	ptr,
 	ptr::NonNull,
 	slice,
-	sync::atomic::Ordering::Release,
 };
 use ucontext::UContext32;
 #[cfg(target_pointer_width = "64")]
@@ -174,15 +173,16 @@ impl SignalAction {
 			// TODO when `Abort`ing, dump core
 			SignalAction::Terminate | SignalAction::Abort => {
 				proc.signal.lock().termsig = sig as u8;
-				process::set_state(State::Zombie)
+				process::set_state(State::Zombie);
+				proc.notify_parent(WEXITED as u8);
 			}
-			// `Continue` makes the process resume when the signal is set
-			SignalAction::Ignore | SignalAction::Continue => {}
+			SignalAction::Ignore => {}
 			SignalAction::Stop => {
 				proc.signal.lock().termsig = sig as u8;
 				process::set_state(State::Stopped);
-				proc.parent_event.fetch_or(WUNTRACED as _, Release);
+				proc.notify_parent(WUNTRACED as u8);
 			}
+			SignalAction::Continue => proc.notify_parent(WCONTINUED as u8),
 		}
 	}
 }

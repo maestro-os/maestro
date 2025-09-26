@@ -110,10 +110,7 @@ fn get_waitable(
 			} else {
 				proc.parent_event.load(Acquire)
 			};
-			let stopped = options & WUNTRACED != 0 && events & WUNTRACED as u8 != 0;
-			let exited = options & WEXITED != 0 && proc.get_state() == State::Zombie;
-			let continued = options & WCONTINUED != 0 && events & WCONTINUED as u8 != 0;
-			stopped || exited || continued
+			events & options as u8 != 0
 		});
 	let Some(proc) = proc else {
 		return if empty {
@@ -142,20 +139,18 @@ pub fn do_waitpid(
 	rusage: UserPtr<Rusage>,
 ) -> EResult<usize> {
 	loop {
-		{
-			let result = get_waitable(pid, wstatus, options, rusage.clone())?;
-			// On success, return
-			if let Some(p) = result {
-				return Ok(p as _);
-			}
-			// If the flag is set, do not wait
-			if options & WNOHANG != 0 {
-				return Ok(0);
-			}
-			// When a child process has its state changed by a signal, SIGCHLD is sent to the
-			// current process to wake it up
-			process::set_state(State::Sleeping);
+		let result = get_waitable(pid, wstatus, options, rusage.clone())?;
+		// On success, return
+		if let Some(p) = result {
+			return Ok(p as _);
 		}
+		// If the flag is set, do not wait
+		if options & WNOHANG != 0 {
+			return Ok(0);
+		}
+		// When a child process has its state changed by a signal, SIGCHLD is sent to the
+		// current process to wake it up
+		process::set_state(State::Sleeping);
 		schedule();
 	}
 }
