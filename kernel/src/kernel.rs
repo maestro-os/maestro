@@ -147,7 +147,7 @@ fn init(init_path: String) -> EResult<IntFrame> {
 /// An inner function is required to ensure everything in scope is dropped before idle.
 fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	// Initialize TTY
-	TTY.display.lock().show();
+	TTY.show();
 	// Architecture-specific initialization, stage 1
 	arch::init1(true);
 
