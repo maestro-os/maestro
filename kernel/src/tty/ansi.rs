@@ -19,7 +19,7 @@
 //! ANSI escape sequences allow to control the terminal by specifying commands in standard output
 //! of the terminal.
 
-use super::{TTYDisplay, get_history_offset};
+use super::{Display, TTY, get_history_offset};
 use crate::tty::{
 	vga,
 	vga::{Color, HEIGHT, Pos, WIDTH},
@@ -107,14 +107,14 @@ impl ANSIBuffer {
 /// Consuming data on the view doesn't affect the underlying buffer. Only the view itself.
 struct ANSIBufferView<'tty> {
 	/// The TTY.
-	tty: &'tty mut TTYDisplay,
+	tty: &'tty mut Display,
 	/// The current offset of the view in the buffer.
 	cursor: usize,
 }
 
 impl<'tty> ANSIBufferView<'tty> {
 	/// Creates a view the buffer of the given TTY.
-	fn new(tty: &'tty mut TTYDisplay) -> Self {
+	fn new(tty: &'tty mut Display) -> Self {
 		Self {
 			tty,
 			cursor: 0,
@@ -247,7 +247,7 @@ fn get_vga_color_from_id(id: u8) -> Color {
 /// Arguments:
 /// - `d` is the direction character.
 /// - `n` is the number of cells to travel. If `None`, the default is used (`1`).
-fn move_cursor(tty: &mut TTYDisplay, d: u8, n: u32) -> ANSIState {
+fn move_cursor(tty: &mut Display, d: u8, n: u32) -> ANSIState {
 	let n = n.clamp(0, i16::MAX as _) as i16;
 	match d {
 		b'A' => {
@@ -274,7 +274,7 @@ fn move_cursor(tty: &mut TTYDisplay, d: u8, n: u32) -> ANSIState {
 /// Handles a Select Graphics Renderition (SGR) command.
 ///
 /// `seq` is the id of the numbers describing the command.
-fn parse_sgr(tty: &mut TTYDisplay, seq: &[u32]) -> ANSIState {
+fn parse_sgr(tty: &mut Display, seq: &[u32]) -> ANSIState {
 	if seq.is_empty() {
 		tty.reset_attrs();
 		return ANSIState::Valid;
@@ -442,13 +442,13 @@ fn parse(view: &mut ANSIBufferView) -> ANSIState {
 /// undefined.
 ///
 /// The function returns the number of bytes consumed by the function.
-pub fn handle(tty: &mut TTYDisplay, buffer: &[u8]) -> usize {
-	tty.ansi_buffer.push_back(buffer);
+pub(super) fn handle(tty: &TTY, disp: &mut Display, buffer: &[u8]) -> usize {
+	disp.ansi_buffer.push_back(buffer);
 	let mut n = 0;
-	while !tty.ansi_buffer.is_empty() {
-		let mut view = ANSIBufferView::new(tty);
+	while !disp.ansi_buffer.is_empty() {
+		let mut view = ANSIBufferView::new(disp);
 		if view.peek_char() != Some(ESCAPE) {
-			tty.ansi_buffer.clear();
+			disp.ansi_buffer.clear();
 			break;
 		}
 
@@ -460,14 +460,14 @@ pub fn handle(tty: &mut TTYDisplay, buffer: &[u8]) -> usize {
 			ANSIState::Invalid => {
 				// using an index to avoid double-borrow issues
 				for i in 0..len {
-					tty.putchar(tty.ansi_buffer.buf[i]);
+					tty.putchar(disp, disp.ansi_buffer.buf[i]);
 				}
 			}
 		}
-		tty.ansi_buffer.pop_front(len);
+		disp.ansi_buffer.pop_front(len);
 		n += len;
 	}
-	tty.update();
+	disp.update();
 	n
 }
 

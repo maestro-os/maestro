@@ -101,7 +101,7 @@ fn send_signal(sig: Signal, pgrp: Pid) {
 }
 
 /// TTY display manager.
-pub struct TTYDisplay {
+pub struct Display {
 	/// The X position of the cursor in the history
 	cursor_x: vga::Pos,
 	/// The Y position of the cursor in the history
@@ -112,15 +112,8 @@ pub struct TTYDisplay {
 	/// The content of the TTY's history
 	history: [vga::Char; HISTORY_SIZE],
 
-	/// Terminal I/O settings.
-	termios: Termios,
-	/// The size of the TTY.
-	winsize: WinSize,
 	/// The ANSI escape codes buffer.
 	ansi_buffer: ANSIBuffer,
-
-	/// The current foreground Program Group ID.
-	pgrp: Pid,
 
 	/// Tells whether the cursor is currently visible on screen.
 	cursor_visible: bool,
@@ -128,9 +121,9 @@ pub struct TTYDisplay {
 	current_color: vga::Color,
 }
 
-impl TTYDisplay {
+impl Display {
 	/// Updates the TTY to the screen.
-	pub fn update(&mut self) {
+	fn update(&mut self) {
 		let buff = &self.history[get_history_offset(0, self.screen_y)];
 		unsafe {
 			vmem::write_ro(|| {
@@ -146,14 +139,8 @@ impl TTYDisplay {
 		vga::move_cursor(self.cursor_x, y);
 	}
 
-	/// Shows the TTY on screen.
-	pub fn show(&mut self) {
-		self.set_cursor_visible(self.cursor_visible);
-		self.update();
-	}
-
 	/// Hides or shows the cursor on screen.
-	pub fn set_cursor_visible(&mut self, visible: bool) {
+	fn set_cursor_visible(&mut self, visible: bool) {
 		self.cursor_visible = visible;
 		if visible {
 			vga::enable_cursor();
@@ -163,34 +150,34 @@ impl TTYDisplay {
 	}
 
 	/// Reinitializes TTY's current attributes.
-	pub fn reset_attrs(&mut self) {
+	fn reset_attrs(&mut self) {
 		self.current_color = vga::DEFAULT_COLOR;
 	}
 
 	/// Sets the current foreground color `color` for TTY.
-	pub fn set_fgcolor(&mut self, color: vga::Color) {
+	fn set_fgcolor(&mut self, color: vga::Color) {
 		self.current_color &= !0x7f;
 		self.current_color |= color;
 	}
 
 	/// Resets the current foreground color `color` for TTY.
-	pub fn reset_fgcolor(&mut self) {
+	fn reset_fgcolor(&mut self) {
 		self.set_fgcolor(vga::DEFAULT_COLOR);
 	}
 
 	/// Sets the current background color `color` for TTY.
-	pub fn set_bgcolor(&mut self, color: vga::Color) {
+	fn set_bgcolor(&mut self, color: vga::Color) {
 		self.current_color &= !((0x7f << 4) as vga::Color);
 		self.current_color |= color << 4;
 	}
 
 	/// Resets the current background color `color` for TTY.
-	pub fn reset_bgcolor(&mut self) {
+	fn reset_bgcolor(&mut self) {
 		self.set_bgcolor(vga::DEFAULT_COLOR);
 	}
 
 	/// Swaps the foreground and background colors.
-	pub fn swap_colors(&mut self) {
+	fn swap_colors(&mut self) {
 		let fg = self.current_color & 0x7f;
 		let bg = self.current_color & (0x7f << 4);
 		self.set_fgcolor(fg);
@@ -200,7 +187,7 @@ impl TTYDisplay {
 	/// Sets the blinking state of the text for TTY.
 	///
 	/// If set to `true`, new text will blink. If set to `false`, new text will not blink.
-	pub fn set_blinking(&mut self, blinking: bool) {
+	fn set_blinking(&mut self, blinking: bool) {
 		if blinking {
 			self.current_color |= 0x80;
 		} else {
@@ -215,7 +202,7 @@ impl TTYDisplay {
 	/// - `end`: is the end of the history range to clear
 	/// - `reset_cursor`: if set to `true`, the cursor will be reset to the top-left corner
 	/// - `all`: if set to `true`, clear all the history
-	pub fn clear(&mut self, start: usize, end: usize, reset_cursor: bool, all: bool) {
+	fn clear(&mut self, start: usize, end: usize, reset_cursor: bool, all: bool) {
 		if reset_cursor {
 			self.cursor_x = 0;
 			self.cursor_y = 0;
@@ -307,10 +294,86 @@ impl TTYDisplay {
 		self.cursor_y += n as i16;
 		self.fix_pos();
 	}
+}
+
+/// TTY input manager.
+struct Input {
+	/// The buffer containing characters from TTY input.
+	buf: [u8; INPUT_MAX],
+	/// The current size of the input buffer.
+	input_size: usize,
+	/// The size of the data available to be read from the TTY.
+	available_size: usize,
+}
+
+struct Settings {
+	/// Terminal I/O settings.
+	termios: Termios,
+	/// The size of the TTY.
+	winsize: WinSize,
+	/// The current foreground Program Group ID.
+	pgrp: Pid,
+}
+
+// TODO Use the values in winsize
+/// A TTY.
+pub struct TTY {
+	/// Display manager.
+	display: IntSpin<Display>,
+	/// Input manager.
+	input: IntSpin<Input>,
+	/// TTY settings
+	settings: IntSpin<Settings>,
+
+	/// The queue of processes waiting for incoming data to read.
+	rd_queue: WaitQueue,
+}
+
+/// The TTY.
+pub static TTY: TTY = TTY {
+	display: IntSpin::new(Display {
+		cursor_x: 0,
+		cursor_y: 0,
+
+		screen_y: 0,
+		history: [(vga::DEFAULT_COLOR as vga::Char) << 8; HISTORY_SIZE],
+
+		ansi_buffer: ANSIBuffer::new(),
+
+		cursor_visible: true,
+		current_color: vga::DEFAULT_COLOR,
+	}),
+	input: IntSpin::new(Input {
+		buf: [0; INPUT_MAX],
+		input_size: 0,
+		available_size: 0,
+	}),
+	settings: IntSpin::new(Settings {
+		pgrp: 0,
+		termios: Termios::new(),
+		winsize: WinSize {
+			ws_row: vga::HEIGHT as _,
+			ws_col: vga::WIDTH as _,
+			ws_xpixel: vga::PIXEL_WIDTH as _,
+			ws_ypixel: vga::PIXEL_HEIGHT as _,
+		},
+	}),
+
+	rd_queue: WaitQueue::new(),
+};
+
+impl TTY {
+	/// Shows the TTY on screen.
+	pub fn show(&self) {
+		let mut disp = self.display.lock();
+		let cursor_visible = disp.cursor_visible;
+		disp.set_cursor_visible(cursor_visible);
+		disp.update();
+	}
 
 	/// Writes the character `c` to the TTY.
-	fn putchar(&mut self, mut c: u8) {
-		if self.termios.c_oflag & OLCUC != 0 && (c as char).is_ascii_uppercase() {
+	fn putchar(&self, disp: &mut Display, mut c: u8) {
+		if self.get_termios().c_oflag & OLCUC != 0 && (c as char).is_ascii_uppercase() {
 			c = (c as char).to_ascii_lowercase() as u8;
 		}
 
@@ -320,153 +383,52 @@ impl TTYDisplay {
 
 		match c {
 			0x07 => ring_bell(),
-			b'\t' => self.cursor_forward(get_tab_size(self.cursor_x), 0),
-			b'\n' => self.newline(1),
+			b'\t' => disp.cursor_forward(get_tab_size(disp.cursor_x), 0),
+			b'\n' => disp.newline(1),
 			// Form Feed (^L)
 			0x0c => {
 				// TODO Move printer to a top of page
 			}
-			b'\r' => self.cursor_x = 0,
-			0x08 | 0x7f => self.cursor_backward(1, 0),
+			b'\r' => disp.cursor_x = 0,
+			0x08 | 0x7f => disp.cursor_backward(1, 0),
 			_ => {
-				let tty_char = (c as vga::Char) | ((self.current_color as vga::Char) << 8);
-				let pos = get_history_offset(self.cursor_x, self.cursor_y);
-				self.history[pos] = tty_char;
-				self.cursor_forward(1, 0);
+				let tty_char = (c as vga::Char) | ((disp.current_color as vga::Char) << 8);
+				let pos = get_history_offset(disp.cursor_x, disp.cursor_y);
+				disp.history[pos] = tty_char;
+				disp.cursor_forward(1, 0);
 			}
 		}
 	}
 
 	/// Writes the content of `buf` to the TTY.
-	pub fn write(&mut self, buf: &[u8]) {
+	pub fn write(&self, buf: &[u8]) {
 		// TODO Add a compilation and/or runtime option for this
 		serial::PORTS[0].lock().write(buf);
-
+		let mut display = self.display.lock();
 		let mut i = 0;
 		while i < buf.len() {
 			let c = buf[i];
 			if c == ESCAPE {
-				let j = ansi::handle(self, &buf[i..buf.len()]);
+				let j = ansi::handle(self, &mut display, &buf[i..buf.len()]);
 				if j > 0 {
 					i += j;
 					continue;
 				}
 			}
-			self.putchar(c);
+			self.putchar(&mut display, c);
 			i += 1;
 		}
-		self.update();
+		display.update();
 	}
 
-	/// Returns the terminal IO settings.
-	pub fn get_termios(&self) -> &Termios {
-		&self.termios
-	}
-
-	/// Sets the terminal IO settings.
-	pub fn set_termios(&mut self, termios: Termios) {
-		self.termios = termios;
-	}
-
-	/// Returns the current foreground Program Group ID.
-	pub fn get_pgrp(&self) -> Pid {
-		self.pgrp
-	}
-
-	/// Sets the current foreground Program Group ID.
-	pub fn set_pgrp(&mut self, pgrp: Pid) {
-		self.pgrp = pgrp;
-	}
-
-	/// Returns the window size of the TTY.
-	pub fn get_winsize(&self) -> &WinSize {
-		&self.winsize
-	}
-
-	/// Sets the window size of the TTY.
-	///
-	/// If a foreground process group is set on the TTY, the function shall send
-	/// it a `SIGWINCH` signal.
-	pub fn set_winsize(&mut self, mut winsize: WinSize) {
-		// Clamping values
-		if winsize.ws_col > vga::WIDTH as _ {
-			winsize.ws_col = vga::WIDTH as _;
-		}
-		if winsize.ws_row > vga::HEIGHT as _ {
-			winsize.ws_row = vga::HEIGHT as _;
-		}
-		// Changes to the size in pixels are ignored
-		winsize.ws_xpixel = vga::PIXEL_WIDTH as _;
-		winsize.ws_ypixel = vga::PIXEL_HEIGHT as _;
-
-		self.winsize = winsize;
-
-		// Send a SIGWINCH if a process group is present
-		send_signal(Signal::SIGWINCH, self.pgrp); // FIXME: deadlock when using `strace`
-	}
-}
-
-/// TTY input manager.
-struct TTYInput {
-	/// The buffer containing characters from TTY input.
-	buf: [u8; INPUT_MAX],
-	/// The current size of the input buffer.
-	input_size: usize,
-	/// The size of the data available to be read from the TTY.
-	available_size: usize,
-}
-
-// TODO Use the values in winsize
-/// A TTY.
-pub struct TTY {
-	/// Display manager.
-	pub display: IntSpin<TTYDisplay>,
-	/// Input manager.
-	input: IntSpin<TTYInput>,
-	/// The queue of processes waiting for incoming data to read.
-	rd_queue: WaitQueue,
-}
-
-/// The TTY.
-pub static TTY: TTY = TTY {
-	display: IntSpin::new(TTYDisplay {
-		cursor_x: 0,
-		cursor_y: 0,
-
-		screen_y: 0,
-		history: [(vga::DEFAULT_COLOR as vga::Char) << 8; HISTORY_SIZE],
-
-		termios: Termios::new(),
-		winsize: WinSize {
-			ws_row: vga::HEIGHT as _,
-			ws_col: vga::WIDTH as _,
-			ws_xpixel: vga::PIXEL_WIDTH as _,
-			ws_ypixel: vga::PIXEL_HEIGHT as _,
-		},
-		ansi_buffer: ANSIBuffer::new(),
-
-		pgrp: 0,
-
-		cursor_visible: true,
-		current_color: vga::DEFAULT_COLOR,
-	}),
-	input: IntSpin::new(TTYInput {
-		buf: [0; INPUT_MAX],
-		input_size: 0,
-		available_size: 0,
-	}),
-	rd_queue: WaitQueue::new(),
-};
-
-impl TTY {
 	// TODO Implement IUTF8
 	/// Reads inputs from the TTY and writes it into the buffer `buf`.
 	///
 	/// The function returns the number of bytes read.
 	pub fn read(&self, buf: UserSlice<u8>) -> EResult<usize> {
 		self.rd_queue.wait_until(|| {
-			let termios = self.display.lock().get_termios().clone();
 			let mut input = self.input.lock();
+			let termios = self.get_termios();
 			// Canonical mode
 			let canon = termios.c_lflag & ICANON != 0;
 			let min_chars = if canon {
@@ -516,23 +478,22 @@ impl TTY {
 
 	/// Tells whether the TTY has any data available to be read.
 	pub fn has_input_available(&self) -> bool {
-		let display = self.display.lock();
-		let input = self.input.lock();
+		let termios = self.get_termios();
 		// Canonical mode
-		let canon = display.termios.c_lflag & ICANON != 0;
+		let canon = termios.c_lflag & ICANON != 0;
 		let min = if canon {
 			1
 		} else {
-			display.get_termios().c_cc[VMIN] as usize
+			termios.c_cc[VMIN] as usize
 		};
-		input.available_size >= min
+		self.input.lock().available_size >= min
 	}
 
 	// TODO Implement IUTF8
 	/// Takes the given string `buffer` as input, making it available from the
 	/// terminal input.
 	pub fn input(&self, buffer: &[u8]) {
-		let termios = self.display.lock().get_termios().clone();
+		let termios = self.get_termios().clone();
 		let mut input = self.input.lock();
 		// The length to write to the input buffer
 		let len = min(buffer.len(), input.buf.len() - input.input_size);
@@ -541,7 +502,7 @@ impl TTY {
 
 		if termios.c_lflag & ECHO != 0 {
 			// Write onto the TTY
-			self.display.lock().write(buffer);
+			self.write(buffer);
 		}
 		// TODO If ECHO is disabled but ICANON and ECHONL are set, print newlines
 
@@ -618,15 +579,12 @@ impl TTY {
 		if termios.c_lflag & ISIG != 0 {
 			for b in buffer {
 				// Printing special control characters if enabled
-				if termios.c_lflag & ECHO != 0
-					&& termios.c_lflag & ECHOCTL != 0
-					&& *b >= 1 && *b < 32
-				{
-					self.display.lock().write(&[b'^', b + b'A']);
+				if termios.c_lflag & (ECHO | ECHOCTL) == ECHO | ECHOCTL && *b >= 1 && *b < 32 {
+					self.write(b"^A");
 				}
 
 				// TODO Handle every special characters
-				let pgrp = self.display.lock().pgrp;
+				let pgrp = self.get_pgrp();
 				if *b == termios.c_cc[VINTR] {
 					send_signal(Signal::SIGINT, pgrp);
 				} else if *b == termios.c_cc[VQUIT] {
@@ -642,7 +600,7 @@ impl TTY {
 
 	/// Erases `count` characters in TTY.
 	pub fn erase(&self, count: usize) {
-		let termios = self.display.lock().termios.clone();
+		let termios = self.get_termios();
 		let mut input = self.input.lock();
 		if termios.c_lflag & ICANON != 0 {
 			let count = min(count, input.buf.len());
@@ -668,5 +626,52 @@ impl TTY {
 		}
 
 		self.rd_queue.wake_next();
+	}
+
+	/// Returns the current foreground Program Group ID.
+	#[inline]
+	pub fn get_pgrp(&self) -> Pid {
+		self.settings.lock().pgrp
+	}
+
+	/// Sets the current foreground Program Group ID.
+	#[inline]
+	pub fn set_pgrp(&self, pgrp: Pid) {
+		self.settings.lock().pgrp = pgrp;
+	}
+
+	/// Returns the terminal IO settings.
+	pub fn get_termios(&self) -> Termios {
+		self.settings.lock().termios.clone()
+	}
+
+	/// Sets the terminal IO settings.
+	pub fn set_termios(&self, termios: Termios) {
+		self.settings.lock().termios = termios;
+	}
+
+	/// Returns the window size of the TTY.
+	pub fn get_winsize(&self) -> WinSize {
+		self.settings.lock().winsize.clone()
+	}
+
+	/// Sets the window size of the TTY.
+	///
+	/// If a foreground process group is set on the TTY, the function shall send
+	/// it a `SIGWINCH` signal.
+	pub fn set_winsize(&self, mut winsize: WinSize) {
+		// Clamping values
+		if winsize.ws_col > vga::WIDTH as _ {
+			winsize.ws_col = vga::WIDTH as _;
+		}
+		if winsize.ws_row > vga::HEIGHT as _ {
+			winsize.ws_row = vga::HEIGHT as _;
+		}
+		// Changes to the size in pixels are ignored
+		winsize.ws_xpixel = vga::PIXEL_WIDTH as _;
+		winsize.ws_ypixel = vga::PIXEL_HEIGHT as _;
+
+		self.settings.lock().winsize = winsize;
+		send_signal(Signal::SIGWINCH, self.get_pgrp());
 	}
 }

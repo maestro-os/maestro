@@ -31,7 +31,7 @@ use crate::{
 		FromSyscallArg, ioctl,
 		select::{POLLIN, POLLOUT},
 	},
-	tty::{TTY, TTYDisplay, WinSize, termios, termios::Termios},
+	tty::{TTY, WinSize, termios, termios::Termios},
 };
 use core::ffi::c_void;
 use utils::{errno, errno::EResult};
@@ -46,9 +46,9 @@ impl TTYDeviceHandle {
 	/// If not, it is killed with a `SIGTTIN` signal.
 	///
 	/// This function must be called before performing the read operation.
-	fn check_sigttin(&self, tty: &TTYDisplay) -> EResult<()> {
+	fn check_sigttin(&self) -> EResult<()> {
 		let proc = Process::current();
-		if proc.get_pgid() == tty.get_pgrp() {
+		if proc.get_pgid() == TTY.get_pgrp() {
 			return Ok(());
 		}
 		if proc.is_in_orphan_process_group() {
@@ -72,9 +72,9 @@ impl TTYDeviceHandle {
 	/// If not, it is killed with a `SIGTTOU` signal.
 	///
 	/// This function must be called before performing the write operation.
-	fn check_sigttou(&self, tty: &TTYDisplay) -> EResult<()> {
+	fn check_sigttou(&self) -> EResult<()> {
 		let proc = Process::current();
-		if tty.get_termios().c_lflag & termios::consts::TOSTOP == 0 {
+		if TTY.get_termios().c_lflag & termios::consts::TOSTOP == 0 {
 			return Ok(());
 		}
 		if proc.signal.lock().is_signal_blocked(Signal::SIGTTOU) {
@@ -102,38 +102,37 @@ impl FileOps for TTYDeviceHandle {
 	}
 
 	fn ioctl(&self, _file: &File, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
-		let mut tty = TTY.display.lock();
 		match request.get_old_format() {
 			ioctl::TCGETS => {
 				let termios_ptr = UserPtr::<Termios>::from_ptr(argp as usize);
-				termios_ptr.copy_to_user(tty.get_termios())?;
+				termios_ptr.copy_to_user(&TTY.get_termios())?;
 				Ok(0)
 			}
 			// TODO Implement correct behaviours for each
 			ioctl::TCSETS | ioctl::TCSETSW | ioctl::TCSETSF => {
-				self.check_sigttou(&tty)?;
+				self.check_sigttou()?;
 				let termios_ptr = UserPtr::<Termios>::from_ptr(argp as usize);
 				let termios = termios_ptr
 					.copy_from_user()?
 					.ok_or_else(|| errno!(EFAULT))?;
-				tty.set_termios(termios.clone());
+				TTY.set_termios(termios.clone());
 				Ok(0)
 			}
 			ioctl::TIOCGPGRP => {
 				let pgid_ptr = UserPtr::<Pid>::from_ptr(argp as usize);
-				pgid_ptr.copy_to_user(&tty.get_pgrp())?;
+				pgid_ptr.copy_to_user(&TTY.get_pgrp())?;
 				Ok(0)
 			}
 			ioctl::TIOCSPGRP => {
-				self.check_sigttou(&tty)?;
+				self.check_sigttou()?;
 				let pgid_ptr = UserPtr::<Pid>::from_ptr(argp as usize);
 				let pgid = pgid_ptr.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-				tty.set_pgrp(pgid);
+				TTY.set_pgrp(pgid);
 				Ok(0)
 			}
 			ioctl::TIOCGWINSZ => {
 				let winsize = UserPtr::<WinSize>::from_ptr(argp as usize);
-				winsize.copy_to_user(tty.get_winsize())?;
+				winsize.copy_to_user(&TTY.get_winsize())?;
 				Ok(0)
 			}
 			ioctl::TIOCSWINSZ => {
@@ -141,7 +140,7 @@ impl FileOps for TTYDeviceHandle {
 				let winsize = winsize_ptr
 					.copy_from_user()?
 					.ok_or_else(|| errno!(EFAULT))?;
-				tty.set_winsize(winsize.clone());
+				TTY.set_winsize(winsize.clone());
 				Ok(0)
 			}
 			_ => Err(errno!(EINVAL)),
@@ -149,20 +148,19 @@ impl FileOps for TTYDeviceHandle {
 	}
 
 	fn read(&self, _file: &File, _off: u64, buf: UserSlice<u8>) -> EResult<usize> {
-		self.check_sigttin(&TTY.display.lock())?;
+		self.check_sigttin()?;
 		let len = TTY.read(buf)?;
 		Ok(len)
 	}
 
 	fn write(&self, _file: &File, _off: u64, buf: UserSlice<u8>) -> EResult<usize> {
-		let mut tty = TTY.display.lock();
-		self.check_sigttou(&tty)?;
+		self.check_sigttou()?;
 		// Write
 		let mut i = 0;
 		let mut b: [u8; 128] = [0; 128];
 		while i < buf.len() {
 			let l = buf.copy_from_user(i, &mut b)?;
-			tty.write(&b[..l]);
+			TTY.write(&b[..l]);
 			i += l;
 		}
 		Ok(buf.len())
