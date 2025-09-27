@@ -121,7 +121,7 @@ impl Write for Logger {
 	fn write_str(&mut self, s: &str) -> fmt::Result {
 		self.push(s.as_bytes());
 		if !self.silent {
-			TTY.display.lock().write(s.as_bytes());
+			TTY.write(s.as_bytes());
 		}
 		Ok(())
 	}

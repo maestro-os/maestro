@@ -970,12 +970,12 @@ impl Process {
 		}
 		// Statistics
 		self.rusage.lock().ru_nsignals += 1;
-		/*#[cfg(feature = "strace")]
+		#[cfg(feature = "strace")]
 		println!(
 			"[strace {pid}] received signal `{sig}`",
 			pid = self.get_pid(),
 			sig = sig as c_int
-		);*/
+		);
 		s.sigpending.set(sig as _);
 		// Change state so that the process can handle the signal
 		set_state(State::Running);
