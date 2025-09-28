@@ -223,7 +223,7 @@ fn wait_vfork_done(child_pid: Pid) {
 			process::set_state(State::Sleeping);
 			// If vfork has completed in between, cancel sleeping
 			if unlikely(child.is_vfork_done()) {
-				process::set_state(State::Running);
+				Process::wake_from(&Process::current(), State::Sleeping as u8);
 				break;
 			}
 		}

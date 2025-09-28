@@ -6,12 +6,12 @@ A process is a program being executed by the kernel. Each process has a unique P
 
 A process can have the following states:
 
-| Name       | Associated character | Description                                                                              |
-|------------|----------------------|------------------------------------------------------------------------------------------|
-| `Running`  | R                    | The process is currently running or is ready to be resumed by the scheduler              |
-| `Sleeping` | S                    | The process is waiting on a resource to become available (usualy I/O or another process) |
-| `Stopped`  | T                    | The process is paused                                                                    |
-| `Zombie`   | Z                    | The process has been terminated and cannot resume, ever                                  |
+| Name       | Shorthand | Description                                                                               |
+|------------|-----------|-------------------------------------------------------------------------------------------|
+| `Running`  | `R`       | The process is currently running or is ready to be resumed by the scheduler               |
+| `Sleeping` | `S`       | The process is waiting on a resource to become available (usually I/O or another process) |
+| `Stopped`  | `T`       | The process is paused                                                                     |
+| `Zombie`   | `Z`       | The process has been terminated and cannot resume, ever                                   |
 
 The `Running` state is the only state in which a process can be executed.
 
@@ -21,18 +21,13 @@ The following state transitions are valid:
 stateDiagram-v2
     [*] --> Running
 
+    Running --> Sleeping
+    Running --> Stopped
+    Running --> Zombie
+
     Sleeping --> Running
     Stopped --> Running
 
-    Running --> Sleeping
- 
-    Running --> Stopped
-    Sleeping --> Stopped
- 
-    Stopped --> Zombie
-    Sleeping --> Zombie
-    Running --> Zombie
-    
     Zombie --> [*]
 ```
 

@@ -120,6 +120,7 @@ impl Scheduler {
 /// This function attempts to select the scheduler that is the most suitable for the process, in an
 /// attempt to load-balance processes across CPU cores.
 pub(crate) fn enqueue(proc: &Arc<Process>) {
+	debug_assert_eq!(proc.get_state(), State::Running);
 	// If the process already is enqueued, do nothing
 	let last_cpu = {
 		let links = proc.links.lock();

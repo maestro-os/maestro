@@ -228,7 +228,7 @@ impl TimerManager {
 			match sevp.sigev_notify {
 				SIGEV_SIGNAL => {
 					// TODO on sigint_t, set si_code to SI_TIMER
-					proc.kill(sig);
+					Process::kill(&proc, sig);
 				}
 				SIGEV_THREAD => todo!(),
 				_ => {}
