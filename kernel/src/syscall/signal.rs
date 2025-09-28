@@ -161,7 +161,7 @@ pub fn sigreturn(frame: &mut IntFrame) -> EResult<usize> {
 				.ok_or_else(|| errno!(EFAULT))?;
 			let res = ctx.restore(&proc, frame);
 			if unlikely(res.is_err()) {
-				proc.kill(Signal::SIGSEGV);
+				Process::kill(&proc, Signal::SIGSEGV);
 			}
 		}
 	}
@@ -178,26 +178,16 @@ pub fn rt_sigreturn(frame: &mut IntFrame) -> EResult<usize> {
 /// If `sig` is `None`, the function doesn't send a signal, but still checks if
 /// there is a process that could be killed.
 fn try_kill(pid: Pid, sig: Option<Signal>) -> EResult<()> {
-	let proc = Process::current();
-	let ap = proc.fs().lock().access_profile;
-	// Closure sending the signal
-	let f = |target: &Process| {
-		if matches!(target.get_state(), State::Zombie) {
-			return Ok(());
-		}
-		if !ap.can_kill(target) {
-			return Err(errno!(EPERM));
-		}
-		if let Some(sig) = sig {
-			target.kill(sig);
-		}
-		Ok(())
-	};
-	if pid == proc.get_pid() {
-		f(&proc)?;
-	} else {
-		let target_proc = Process::get_by_pid(pid).ok_or_else(|| errno!(ESRCH))?;
-		f(&target_proc)?;
+	let target = Process::get_by_pid(pid).ok_or_else(|| errno!(ESRCH))?;
+	if matches!(target.get_state(), State::Zombie) {
+		return Ok(());
+	}
+	let ap = Process::current().fs().lock().access_profile;
+	if !ap.can_kill(&target) {
+		return Err(errno!(EPERM));
+	}
+	if let Some(sig) = sig {
+		Process::kill(&target, sig);
 	}
 	Ok(())
 }
@@ -217,13 +207,17 @@ fn try_kill_group(pid: i32, sig: Option<Signal>) -> EResult<()> {
 		_ => pid as Pid,
 	};
 	// Kill process group
-	Process::get_by_pid(pgid)
-		.ok_or_else(|| errno!(ESRCH))?
+	let leader = Process::get_by_pid(pgid).ok_or_else(|| errno!(ESRCH))?;
+	leader
 		.links
 		.lock()
 		.process_group
 		.iter()
-		.try_for_each(|pid| try_kill(*pid as _, sig))
+		.try_for_each(|pid| try_kill(*pid, sig))?;
+	if let Some(sig) = sig {
+		Process::kill(&leader, sig);
+	}
+	Ok(())
 }
 
 pub fn kill(pid: c_int, sig: c_int) -> EResult<usize> {
@@ -251,11 +245,11 @@ pub fn kill(pid: c_int, sig: c_int) -> EResult<usize> {
 }
 
 pub fn tkill(tid: Pid, sig: c_int) -> EResult<usize> {
-	let signal = Signal::try_from(sig)?;
+	let sig = Signal::try_from(sig)?;
 	let thread = Process::get_by_tid(tid).ok_or(errno!(ESRCH))?;
 	if !AccessProfile::cur_task().can_kill(&thread) {
 		return Err(errno!(EPERM));
 	}
-	thread.kill(signal);
+	Process::kill(&thread, sig);
 	Ok(0)
 }
