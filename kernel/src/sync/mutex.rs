@@ -156,7 +156,7 @@ impl<T: ?Sized> Mutex<T> {
 			q.wait_queue.remove_front()
 		};
 		if let Some(next) = next {
-			Process::wake(&next);
+			Process::wake_from(&next, State::Sleeping as u8);
 		}
 	}
 }

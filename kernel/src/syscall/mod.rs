@@ -1094,7 +1094,7 @@ pub extern "C" fn syscall_handler(frame: &mut IntFrame) {
 			"[strace {pid}] invalid syscall (ID: 0x{id:x})",
 			pid = proc.get_pid()
 		);
-		proc.kill(Signal::SIGSYS);
+		Process::kill(&proc, Signal::SIGSYS);
 	}
 	// If the process has been killed, handle it
 	alter_flow(3, frame);

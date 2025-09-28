@@ -49,7 +49,7 @@ use crate::{
 			critical, dequeue, enqueue, switch,
 			switch::{KThreadEntry, idle_task, save_segments},
 		},
-		signal::{AltStack, SIGNALS_COUNT, SigSet},
+		signal::{AltStack, SIGNALS_COUNT, SigSet, SignalAction},
 	},
 	register_get,
 	sync::{atomic::AtomicU64, rwlock::IntRwLock, spin::Spin},
@@ -129,23 +129,23 @@ const REDZONE_SIZE: usize = 128;
 #[derive(Clone, Copy, Eq, Debug, PartialEq)]
 pub enum State {
 	/// The process is currently running, or waiting to run
-	Running = 0,
+	Running = 1,
 	/// The process is waiting for an event
-	Sleeping = 1,
+	Sleeping = 2,
 	/// The process has been stopped by a signal or by tracing
-	Stopped = 2,
+	Stopped = 4,
 	/// The process has been killed
-	Zombie = 3,
+	Zombie = 8,
 }
 
 impl State {
 	/// Returns the state with the given ID.
 	fn from_id(id: u8) -> Self {
 		match id {
-			0 => Self::Running,
-			1 => Self::Sleeping,
-			2 => Self::Stopped,
-			3 => Self::Zombie,
+			1 => Self::Running,
+			2 => Self::Sleeping,
+			4 => Self::Stopped,
+			8 => Self::Zombie,
 			_ => unreachable!(),
 		}
 	}
@@ -395,11 +395,11 @@ pub(crate) fn init() -> EResult<()> {
 			// Divide-by-zero
 			// x87 Floating-Point Exception
 			// SIMD Floating-Point Exception
-			0x00 | 0x10 | 0x13 => proc.kill(Signal::SIGFPE),
+			0x00 | 0x10 | 0x13 => Process::kill(&proc, Signal::SIGFPE),
 			// Breakpoint
-			0x03 => proc.kill(Signal::SIGTRAP),
+			0x03 => Process::kill(&proc, Signal::SIGTRAP),
 			// Invalid Opcode
-			0x06 => proc.kill(Signal::SIGILL),
+			0x06 => Process::kill(&proc, Signal::SIGILL),
 			// General Protection Fault
 			0x0d => {
 				// Get the instruction opcode
@@ -409,11 +409,11 @@ pub(crate) fn init() -> EResult<()> {
 				if opcode == Ok(Some(HLT_INSTRUCTION)) {
 					exit(frame.get_syscall_id() as _);
 				} else {
-					proc.kill(Signal::SIGSEGV);
+					Process::kill(&proc, Signal::SIGSEGV);
 				}
 			}
 			// Alignment Check
-			0x11 => proc.kill(Signal::SIGBUS),
+			0x11 => Process::kill(&proc, Signal::SIGBUS),
 			_ => {}
 		}
 		CallbackResult::Continue
@@ -447,10 +447,10 @@ pub(crate) fn init() -> EResult<()> {
 							return CallbackResult::Panic;
 						}
 					} else {
-						Process::current().kill(Signal::SIGSEGV);
+						Process::kill(&Process::current(), Signal::SIGSEGV);
 					}
 				}
-				Err(_) => Process::current().kill(Signal::SIGBUS),
+				Err(_) => Process::kill(&Process::current(), Signal::SIGBUS),
 			}
 			CallbackResult::Continue
 		},
@@ -737,15 +737,18 @@ impl Process {
 	}
 
 	/// Wakes up the process if in [`State::Sleeping`] state.
-	pub fn wake(this: &Arc<Self>) {
+	///
+	/// `from_mask` is the mask of states the process can wake up from. If the current state is not
+	/// in the mask, the function does nothing.
+	pub fn wake_from(this: &Arc<Self>, from_mask: u8) {
 		this.lock_state(|old_state| {
-			if old_state != State::Sleeping {
+			if from_mask & old_state as u8 == 0 {
 				return;
 			}
-			this.state.store(STATE_LOCK | State::Running as u8, Relaxed);
+			this.state.store(STATE_LOCK | State::Running as u8, Release);
 			#[cfg(feature = "strace")]
 			println!(
-				"[strace {pid}] changed state: Sleeping -> Running",
+				"[strace {pid}] changed state: {old_state:?} -> Running",
 				pid = this.get_pid()
 			);
 			enqueue(this);
@@ -757,7 +760,7 @@ impl Process {
 		let parent = self.links.lock().parent.clone();
 		if let Some(parent) = parent {
 			self.parent_event.fetch_or(event, Release);
-			parent.kill(Signal::SIGCHLD);
+			Process::kill(&parent, Signal::SIGCHLD);
 		}
 	}
 
@@ -766,7 +769,7 @@ impl Process {
 		self.vfork_done.store(true, Release);
 		let links = self.links.lock();
 		if let Some(parent) = &links.parent {
-			Process::wake(parent);
+			Process::wake_from(parent, State::Sleeping as u8);
 		}
 	}
 
@@ -962,36 +965,40 @@ impl Process {
 	///
 	/// If the process doesn't have a signal handler, the default action for the signal is
 	/// executed.
-	pub fn kill(&self, sig: Signal) {
-		let mut s = self.signal.lock();
+	pub fn kill(this: &Arc<Self>, sig: Signal) {
+		let mut s = this.signal.lock();
 		// Ignore blocked signals
 		if sig.can_catch() && s.sigmask.is_set(sig as _) {
 			return;
 		}
 		// Statistics
-		self.rusage.lock().ru_nsignals += 1;
+		this.rusage.lock().ru_nsignals += 1;
 		#[cfg(feature = "strace")]
 		println!(
 			"[strace {pid}] received signal `{sig}`",
-			pid = self.get_pid(),
+			pid = this.get_pid(),
 			sig = sig as c_int
 		);
 		s.sigpending.set(sig as _);
 		// Change state so that the process can handle the signal
-		set_state(State::Running);
+		let mut mask = State::Sleeping as u8;
+		if sig.get_default_action() == SignalAction::Continue {
+			mask |= State::Stopped as u8;
+		}
+		Self::wake_from(this, mask);
 	}
 
 	/// Kills every process in the process group.
-	pub fn kill_group(&self, sig: Signal) {
-		self.links
+	pub fn kill_group(this: &Arc<Self>, sig: Signal) {
+		this.links
 			.lock()
 			.process_group
 			.iter()
 			.filter_map(|pid| Process::get_by_pid(*pid))
 			.for_each(|proc| {
-				proc.kill(sig);
+				Process::kill(&proc, sig);
 			});
-		self.kill(sig);
+		Process::kill(this, sig);
 	}
 
 	/// Compares process priorities
@@ -1068,6 +1075,9 @@ impl Drop for Process {
 pub fn set_state(new_state: State) {
 	let proc = Process::current();
 	proc.lock_state(|old_state| {
+		if new_state == old_state {
+			return;
+		}
 		let valid = matches!(
 			(old_state, new_state),
 			(State::Running, _) | (State::Sleeping | State::Stopped, State::Running)
@@ -1075,11 +1085,8 @@ pub fn set_state(new_state: State) {
 		if !valid {
 			return;
 		}
-		if new_state == old_state {
-			return;
-		}
 		// Update state
-		proc.state.store(STATE_LOCK | new_state as u8, Relaxed);
+		proc.state.store(STATE_LOCK | new_state as u8, Release);
 		#[cfg(feature = "strace")]
 		println!(
 			"[strace {pid}] changed state: {old_state:?} -> {new_state:?}",
@@ -1088,7 +1095,7 @@ pub fn set_state(new_state: State) {
 		// Enqueue or dequeue the process
 		if new_state == State::Running {
 			enqueue(&proc);
-		} else if old_state == State::Running {
+		} else {
 			dequeue(&proc);
 		}
 		if new_state == State::Zombie {
@@ -1125,6 +1132,7 @@ pub fn set_state(new_state: State) {
 /// This function changes the process's status to `Zombie`.
 pub fn exit(status: u32) {
 	let proc = Process::current();
+	debug_assert_eq!(proc.get_state(), State::Running);
 	#[cfg(feature = "strace")]
 	println!(
 		"[strace {pid}] exited with status `{status}`",

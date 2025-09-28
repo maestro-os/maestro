@@ -96,7 +96,7 @@ fn send_signal(sig: Signal, pgrp: Pid) {
 		return;
 	}
 	if let Some(proc) = Process::get_by_pid(pgrp) {
-		proc.kill_group(sig);
+		Process::kill_group(&proc, sig);
 	}
 }
 

@@ -63,7 +63,7 @@ impl TTYDeviceHandle {
 		) {
 			return Err(errno!(EIO));
 		}
-		proc.kill_group(Signal::SIGTTIN);
+		Process::kill_group(&proc, Signal::SIGTTIN);
 		Ok(())
 	}
 
@@ -89,7 +89,7 @@ impl TTYDeviceHandle {
 		if proc.is_in_orphan_process_group() {
 			return Err(errno!(EIO));
 		}
-		proc.kill_group(Signal::SIGTTOU);
+		Process::kill_group(&proc, Signal::SIGTTOU);
 		Ok(())
 	}
 }
@@ -115,7 +115,7 @@ impl FileOps for TTYDeviceHandle {
 				let termios = termios_ptr
 					.copy_from_user()?
 					.ok_or_else(|| errno!(EFAULT))?;
-				TTY.set_termios(termios.clone());
+				TTY.set_termios(termios);
 				Ok(0)
 			}
 			ioctl::TIOCGPGRP => {
@@ -140,7 +140,7 @@ impl FileOps for TTYDeviceHandle {
 				let winsize = winsize_ptr
 					.copy_from_user()?
 					.ok_or_else(|| errno!(EFAULT))?;
-				TTY.set_winsize(winsize.clone());
+				TTY.set_winsize(winsize);
 				Ok(0)
 			}
 			_ => Err(errno!(EINVAL)),

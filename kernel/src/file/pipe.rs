@@ -163,7 +163,7 @@ impl FileOps for PipeBuffer {
 		let len = self.wr_queue.wait_until(|| {
 			let mut inner = self.inner.lock();
 			if inner.readers == 0 {
-				Process::current().kill(Signal::SIGPIPE);
+				Process::kill(&Process::current(), Signal::SIGPIPE);
 				return Some(Err(errno!(EPIPE)));
 			}
 			let len = match inner.buffer.write(buf) {

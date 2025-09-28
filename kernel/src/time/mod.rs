@@ -56,7 +56,9 @@ use utils::{errno, errno::EResult};
 pub fn sleep_for(clock: Clock, delay: Timestamp, remain: &mut Timestamp) -> EResult<()> {
 	let proc = Process::current();
 	// FIXME: there can be allocation failures here
-	let mut timer = Timer::new(clock, move || Process::wake(&proc))?;
+	let mut timer = Timer::new(clock, move || {
+		Process::wake_from(&proc, State::Sleeping as u8)
+	})?;
 	timer.set_time(0, delay)?;
 	// Loop until the timer expires
 	loop {

@@ -84,7 +84,7 @@ impl WaitQueue {
 			};
 			break proc;
 		};
-		Process::wake(&proc);
+		Process::wake_from(&proc, State::Sleeping as u8);
 	}
 
 	/// Wakes all processes.
@@ -95,7 +95,7 @@ impl WaitQueue {
 				// Process does not exist, try next
 				continue;
 			};
-			Process::wake(&proc);
+			Process::wake_from(&proc, State::Sleeping as u8);
 		}
 	}
 }
