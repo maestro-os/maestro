@@ -23,8 +23,7 @@
 
 use crate::ptr::arc::Arc;
 use core::{
-	cell::UnsafeCell, fmt, fmt::Formatter, hint::unlikely, marker::PhantomData, mem, ptr,
-	ptr::NonNull,
+	cell::Cell, fmt, fmt::Formatter, hint::unlikely, marker::PhantomData, mem, ptr, ptr::NonNull,
 };
 
 /// A non-concurrent, intrusive, doubly-linked list node.
@@ -32,8 +31,8 @@ use core::{
 /// Most operations on this structure are unsafe as they cannot fit Rust's borrowing rules.
 #[derive(Default)]
 pub struct ListNode {
-	prev: UnsafeCell<Option<NonNull<ListNode>>>,
-	next: UnsafeCell<Option<NonNull<ListNode>>>,
+	prev: Cell<Option<NonNull<ListNode>>>,
+	next: Cell<Option<NonNull<ListNode>>>,
 }
 
 impl ListNode {
@@ -53,13 +52,13 @@ impl ListNode {
 	/// Returns a reference to the previous element.
 	#[inline]
 	pub fn prev(&self) -> Option<&Self> {
-		unsafe { (*self.prev.get()).map(|n| n.as_ref()) }
+		self.prev.get().map(|n| unsafe { n.as_ref() })
 	}
 
 	/// Returns a reference to the next element.
 	#[inline]
 	pub fn next(&self) -> Option<&Self> {
-		unsafe { (*self.next.get()).map(|n| n.as_ref()) }
+		self.next.get().map(|n| unsafe { n.as_ref() })
 	}
 
 	/// Inserts `self` before `node` in the list.
@@ -70,12 +69,12 @@ impl ListNode {
 	/// correctly.
 	pub unsafe fn insert_before(&self, mut node: NonNull<ListNode>) {
 		// Insert in the new list
-		*self.next.get() = Some(node);
-		*self.prev.get() = *node.as_ref().prev.get();
+		self.next.set(Some(node));
+		self.prev.set(node.as_ref().prev.get());
 		// Link back
-		*node.as_mut().prev.get() = Some(NonNull::from(self));
+		node.as_mut().prev.set(Some(NonNull::from(self)));
 		if let Some(prev) = self.prev() {
-			*prev.next.get() = Some(NonNull::from(self));
+			prev.next.set(Some(NonNull::from(self)));
 		}
 	}
 
@@ -87,12 +86,12 @@ impl ListNode {
 	/// correctly.
 	pub unsafe fn insert_after(&self, mut node: NonNull<ListNode>) {
 		// Insert in the new list
-		*self.prev.get() = Some(node);
-		*self.next.get() = *node.as_ref().next.get();
+		self.prev.set(Some(node));
+		self.next.set(node.as_ref().next.get());
 		// Link back
-		*node.as_mut().next.get() = Some(NonNull::from(self));
+		node.as_mut().next.set(Some(NonNull::from(self)));
 		if let Some(next) = self.next() {
-			*next.prev.get() = Some(NonNull::from(self));
+			next.prev.set(Some(NonNull::from(self)));
 		}
 	}
 
@@ -103,13 +102,13 @@ impl ListNode {
 	/// It is the caller's responsibility to ensure concurrency and consistency are handled
 	/// correctly.
 	pub unsafe fn unlink(&self) {
-		let prev = (*self.prev.get()).take();
-		let next = (*self.next.get()).take();
+		let prev = self.prev.replace(None);
+		let next = self.next.replace(None);
 		if let Some(mut prev) = prev {
-			*prev.as_mut().next.get() = next;
+			prev.as_mut().next.set(next);
 		}
 		if let Some(mut next) = next {
-			*next.as_mut().prev.get() = prev;
+			next.as_mut().prev.set(prev);
 		}
 	}
 }
@@ -235,8 +234,8 @@ impl<T, const OFF: usize> List<T, OFF> {
 		} else {
 			// The list is empty: make a cycle
 			unsafe {
-				*node.as_ref().prev.get() = Some(node);
-				*node.as_ref().next.get() = Some(node);
+				node.as_ref().prev.set(Some(node));
+				node.as_ref().next.set(Some(node));
 			}
 		}
 		// Update head
@@ -256,8 +255,8 @@ impl<T, const OFF: usize> List<T, OFF> {
 		} else {
 			// The list is empty: make a cycle
 			unsafe {
-				*node.as_ref().prev.get() = Some(node);
-				*node.as_ref().next.get() = Some(node);
+				node.as_ref().prev.set(Some(node));
+				node.as_ref().next.set(Some(node));
 			}
 			// Set as head
 			self.head = Some(node);
@@ -267,13 +266,13 @@ impl<T, const OFF: usize> List<T, OFF> {
 	/// Rotates the circular list, making the second element the new head, and the old head the new
 	/// tail.
 	pub fn rotate_left(&mut self) {
-		self.head = self.head.and_then(|h| unsafe { *h.as_ref().next.get() });
+		self.head = self.head.and_then(|h| unsafe { h.as_ref().next.get() });
 	}
 
 	/// Rotates the circular list, making the tail the new head, and the old head the second
 	/// element.
 	pub fn rotate_right(&mut self) {
-		self.head = self.head.and_then(|h| unsafe { *h.as_ref().prev.get() });
+		self.head = self.head.and_then(|h| unsafe { h.as_ref().prev.get() });
 	}
 
 	/// Removes the first element of the list and returns it, if any.
