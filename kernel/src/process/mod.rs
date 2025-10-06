@@ -130,12 +130,14 @@ const REDZONE_SIZE: usize = 128;
 pub enum State {
 	/// The process is currently running, or waiting to run
 	Running = 1,
-	/// The process is waiting for an event
-	Sleeping = 2,
+	/// The process is waiting for an event, but can get resumed by a signal
+	IntSleeping = 2,
+	/// The process is waiting for an event, and **cannot** get resumed by a signal
+	Sleeping = 4,
 	/// The process has been stopped by a signal or by tracing
-	Stopped = 4,
+	Stopped = 8,
 	/// The process has been killed
-	Zombie = 8,
+	Zombie = 16,
 }
 
 impl State {
@@ -143,9 +145,10 @@ impl State {
 	fn from_id(id: u8) -> Self {
 		match id {
 			1 => Self::Running,
-			2 => Self::Sleeping,
-			4 => Self::Stopped,
-			8 => Self::Zombie,
+			2 => Self::IntSleeping,
+			4 => Self::Sleeping,
+			8 => Self::Stopped,
+			16 => Self::Zombie,
 			_ => unreachable!(),
 		}
 	}
@@ -154,7 +157,8 @@ impl State {
 	pub fn as_char(&self) -> char {
 		match self {
 			Self::Running => 'R',
-			Self::Sleeping => 'S',
+			Self::IntSleeping => 'S',
+			Self::Sleeping => 'D',
 			Self::Stopped => 'T',
 			Self::Zombie => 'Z',
 		}
@@ -164,7 +168,8 @@ impl State {
 	pub fn as_str(&self) -> &'static str {
 		match self {
 			Self::Running => "running",
-			Self::Sleeping => "sleeping",
+			Self::IntSleeping => "sleeping",
+			Self::Sleeping => "disk sleep",
 			Self::Stopped => "stopped",
 			Self::Zombie => "zombie",
 		}
@@ -981,7 +986,7 @@ impl Process {
 		);
 		s.sigpending.set(sig as _);
 		// Change state so that the process can handle the signal
-		let mut mask = State::Sleeping as u8;
+		let mut mask = State::IntSleeping as u8;
 		if sig.get_default_action() == SignalAction::Continue {
 			mask |= State::Stopped as u8;
 		}
@@ -1057,14 +1062,6 @@ impl AccessProfile {
 			|| self.uid == fs.access_profile.suid
 			|| self.euid == fs.access_profile.uid
 			|| self.euid == fs.access_profile.suid
-	}
-}
-
-impl Drop for Process {
-	fn drop(&mut self) {
-		if self.is_init() {
-			panic!("Terminated init process!");
-		}
 	}
 }
 
