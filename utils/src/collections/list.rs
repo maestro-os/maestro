@@ -49,6 +49,12 @@ impl ListNode {
 		&*(self as *const Self).byte_sub(inner_off).cast::<T>()
 	}
 
+	/// Tells whether the node is linked in a list.
+	#[inline]
+	pub fn is_linked(&self) -> bool {
+		self.prev.get().is_some() || self.next.get().is_some()
+	}
+
 	/// Returns a reference to the previous element.
 	#[inline]
 	pub fn prev(&self) -> Option<&Self> {
@@ -65,14 +71,16 @@ impl ListNode {
 	///
 	/// # Safety
 	///
-	/// It is the caller's responsibility to ensure concurrency and consistency are handled
-	/// correctly.
-	pub unsafe fn insert_before(&self, mut node: NonNull<ListNode>) {
+	/// It is the caller's responsibility to ensure concurrency is handled correctly.
+	///
+	/// If the node is already inserted in a list, the behaviour is undefined.
+	pub unsafe fn insert_before(&self, node: NonNull<ListNode>) {
+		debug_assert!(!self.is_linked());
 		// Insert in the new list
 		self.next.set(Some(node));
 		self.prev.set(node.as_ref().prev.get());
 		// Link back
-		node.as_mut().prev.set(Some(NonNull::from(self)));
+		node.as_ref().prev.set(Some(NonNull::from(self)));
 		if let Some(prev) = self.prev() {
 			prev.next.set(Some(NonNull::from(self)));
 		}
@@ -82,34 +90,43 @@ impl ListNode {
 	///
 	/// # Safety
 	///
-	/// It is the caller's responsibility to ensure concurrency and consistency are handled
-	/// correctly.
-	pub unsafe fn insert_after(&self, mut node: NonNull<ListNode>) {
+	/// It is the caller's responsibility to ensure concurrency is handled correctly.
+	///
+	/// If the node is already inserted in a list, the behaviour is undefined.
+	pub unsafe fn insert_after(&self, node: NonNull<ListNode>) {
+		debug_assert!(!self.is_linked());
 		// Insert in the new list
 		self.prev.set(Some(node));
 		self.next.set(node.as_ref().next.get());
 		// Link back
-		node.as_mut().next.set(Some(NonNull::from(self)));
+		node.as_ref().next.set(Some(NonNull::from(self)));
 		if let Some(next) = self.next() {
 			next.prev.set(Some(NonNull::from(self)));
 		}
 	}
 
-	/// Unlinks `self` from its list. If not in a list, the function does nothing
+	/// Unlinks `self` from its list. If not in a list, the function does nothing.
+	///
+	/// If the node was in a linked list, the function returns `true`. Else, it returns `false`.
 	///
 	/// # Safety
 	///
 	/// It is the caller's responsibility to ensure concurrency and consistency are handled
 	/// correctly.
-	pub unsafe fn unlink(&self) {
+	pub unsafe fn unlink(&self) -> bool {
 		let prev = self.prev.replace(None);
 		let next = self.next.replace(None);
-		if let Some(mut prev) = prev {
-			prev.as_mut().next.set(next);
+		if let Some(prev) = prev {
+			if !ptr::addr_eq(prev.as_ptr(), self) {
+				prev.as_ref().next.set(next);
+			}
 		}
-		if let Some(mut next) = next {
-			next.as_mut().prev.set(prev);
+		if let Some(next) = next {
+			if !ptr::addr_eq(next.as_ptr(), self) {
+				next.as_ref().prev.set(prev);
+			}
 		}
+		prev.is_some() || next.is_some()
 	}
 }
 
@@ -192,6 +209,12 @@ impl<T, const OFF: usize> List<T, OFF> {
 		self.head_node()?.prev()
 	}
 
+	/// Tells whether the list is empty.
+	#[inline]
+	pub fn is_empty(&self) -> bool {
+		self.head.is_none()
+	}
+
 	/// Returns a reference to the first element of the list.
 	#[inline]
 	pub fn front(&self) -> Option<Arc<T>> {
@@ -222,42 +245,46 @@ impl<T, const OFF: usize> List<T, OFF> {
 	}
 
 	/// Inserts `val` at the first position of the list.
+	///
+	/// If the node is already inserted in a list, the function panics.
 	pub fn insert_front(&mut self, val: Arc<T>) {
 		let node = Self::get_node(&val);
 		// Keep reference
 		mem::forget(val);
+		let node_ref = unsafe { node.as_ref() };
+		assert!(!node_ref.is_linked());
 		if let Some(head) = self.head {
 			// There is already an element in the list
 			unsafe {
-				node.as_ref().insert_before(head);
+				node_ref.insert_before(head);
 			}
 		} else {
 			// The list is empty: make a cycle
-			unsafe {
-				node.as_ref().prev.set(Some(node));
-				node.as_ref().next.set(Some(node));
-			}
+			node_ref.prev.set(Some(node));
+			node_ref.next.set(Some(node));
 		}
 		// Update head
 		self.head = Some(node);
 	}
 
 	/// Inserts `val` at the last position of the list.
+	///
+	/// If the node is already inserted in a list, the function panics.
 	pub fn insert_back(&mut self, val: Arc<T>) {
 		let node = Self::get_node(&val);
 		// Keep reference
 		mem::forget(val);
+		let node_ref = unsafe { node.as_ref() };
+		assert!(!node_ref.is_linked());
 		if let Some(head) = self.head {
 			// There is already an element in the list
 			unsafe {
-				node.as_ref().insert_before(head);
+				node_ref.insert_before(head);
 			}
 		} else {
 			// The list is empty: make a cycle
-			unsafe {
-				node.as_ref().prev.set(Some(node));
-				node.as_ref().next.set(Some(node));
-			}
+			node_ref.prev.set(Some(node));
+			node_ref.next.set(Some(node));
 			// Set as head
 			self.head = Some(node);
 		}
@@ -295,16 +322,32 @@ impl<T, const OFF: usize> List<T, OFF> {
 
 	/// Removes a value from the list.
 	///
+	/// If the node is not inserted in **any** list, the function does nothing.
+	///
 	/// # Safety
 	///
-	/// The function is marked as unsafe because it cannot ensure `val` actually is inserted in
-	/// `self`. This is the caller's responsibility.
+	/// The function cannot ensure `val` actually is inserted in `self` and not in another list.
+	/// This is the caller's responsibility. Attempting to remove a node from this list if it is
+	/// inserted in another list is undefined.
 	pub unsafe fn remove(&mut self, val: &Arc<T>) {
-		let cursor = Cursor {
-			list: NonNull::from(&mut *self),
-			node: Self::get_node(val).as_ref(),
+		// If the list is empty, stop
+		let Some(head) = self.head_node() else {
+			return;
 		};
-		cursor.remove();
+		unsafe {
+			let node = Self::get_node(val).as_ref();
+			// If the node to remove is the head, change it
+			if ptr::addr_eq(node, head) {
+				self.head = head
+					.next()
+					// If nothing else than the head remain, the list shall become empty
+					.filter(|next| !ptr::addr_eq(*next, head))
+					.map(NonNull::from);
+			}
+			if node.unlink() {
+				Arc::decrement_count(val);
+			}
+		}
 	}
 
 	/// Moves the node to the beginning of the list.
@@ -370,11 +413,11 @@ impl<'l, T: 'l, const OFF: usize> Cursor<'l, T, OFF> {
 			// Cannot fail since `self` is in the list
 			let head = list.head_node().unwrap();
 			// If the node to remove is the head, change it
-			if ptr::eq(self.node, head) {
+			if ptr::addr_eq(self.node, head) {
 				list.head = head
 					.next()
 					// If nothing else than the head remain, the list shall become empty
-					.filter(|next| !ptr::eq(*next, head))
+					.filter(|next| !ptr::addr_eq(*next, head))
 					.map(NonNull::from);
 			}
 			self.node.unlink();
@@ -391,7 +434,7 @@ impl<'l, T: 'l, const OFF: usize> Cursor<'l, T, OFF> {
 			// Cannot fail since `self` is in the list
 			let head = list.head.unwrap();
 			// If the node is already the head, do nothing
-			if ptr::eq(self.node, head.as_ptr()) {
+			if ptr::addr_eq(self.node, head.as_ptr()) {
 				return;
 			}
 			// Move the node in the list
@@ -418,7 +461,7 @@ impl<'l, T: 'l, const OFF: usize> Iterator for Iter<'l, T, OFF> {
 		if unlikely(self.fuse) {
 			return None;
 		}
-		if unlikely(ptr::eq(*start, *end)) {
+		if unlikely(ptr::addr_eq(*start, *end)) {
 			self.fuse = true;
 		}
 		let node = *start;
@@ -437,7 +480,7 @@ impl<'l, T: 'l, const OFF: usize> DoubleEndedIterator for Iter<'l, T, OFF> {
 		if unlikely(self.fuse) {
 			return None;
 		}
-		if unlikely(ptr::eq(*start, *end)) {
+		if unlikely(ptr::addr_eq(*start, *end)) {
 			self.fuse = true;
 		}
 		let node = *end;
@@ -453,7 +496,6 @@ impl<'l, T: 'l, const OFF: usize> DoubleEndedIterator for Iter<'l, T, OFF> {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use core::pin::pin;
 
 	struct Foo {
 		foo: usize,
@@ -486,7 +528,7 @@ mod test {
 
 	#[test]
 	fn list_basic() {
-		let mut list = pin!(list!(Foo, node));
+		let mut list = list!(Foo, node);
 		init(&mut list);
 
 		let mut iter = list.iter();
@@ -500,27 +542,51 @@ mod test {
 	}
 
 	#[test]
+	fn list_unsafe_remove() {
+		let mut list = list!(Foo, node);
+		let n = Arc::new(Foo {
+			foo: 0,
+			node: ListNode::default(),
+		})
+		.unwrap();
+		list.insert_front(n.clone());
+
+		assert_eq!(list.front().map(|n| n.foo), Some(0));
+		assert_eq!(list.back().map(|n| n.foo), Some(0));
+
+		let mut iter = list.iter();
+		assert_eq!(iter.next().map(|n| n.value().foo), Some(0));
+		assert!(iter.next().is_none());
+
+		unsafe {
+			list.remove(&n);
+		}
+		assert_eq!(Arc::strong_count(&n), 1);
+
+		assert!(list.front().is_none());
+		assert!(list.back().is_none());
+		assert!(list.is_empty());
+	}
+
+	#[test]
 	fn list_remove() {
-		let mut list = pin!(list!(Foo, node));
+		let mut list = list!(Foo, node);
 		init(&mut list);
 
-		let removed = list
-			.as_mut()
-			.iter()
-			.find(|c| c.value().foo == 1)
-			.map(|c| c.remove());
+		let removed = list.iter().find(|c| c.value().foo == 1).unwrap().remove();
 
 		let mut iter = list.iter().rev();
 		assert_eq!(iter.next().map(|n| n.value().foo), Some(0));
 		assert_eq!(iter.next().map(|n| n.value().foo), Some(2));
 		assert!(iter.next().is_none());
 
-		assert_eq!(removed.map(|n| n.foo), Some(1));
+		assert_eq!(Arc::strong_count(&removed), 1);
+		assert_eq!(removed.foo, 1);
 	}
 
 	#[test]
 	fn list_lru_promote() {
-		let mut list = pin!(list!(Foo, node));
+		let mut list = list!(Foo, node);
 		init(&mut list);
 
 		let mut promoted = list.iter().find(|c| c.value().foo == 1).unwrap();

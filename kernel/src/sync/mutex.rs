@@ -32,34 +32,46 @@ use core::{
 	fmt::Formatter,
 	ops::{Deref, DerefMut},
 };
-use utils::{list, list_type};
+use utils::{errno, errno::EResult, list, list_type};
 
-fn lock(queue: &IntSpin<Queue>) {
+fn lock<const INT: bool>(queue: &IntSpin<Queue>) -> EResult<()> {
 	{
 		let mut q = queue.lock();
 		q.acquired += 1;
 		// If no one else has acquired the mutex, return
 		if q.acquired == 1 {
-			return;
+			return Ok(());
 		}
 		// At least one other task has acquired the mutex: we must sleep. The process is dequeued
 		// when the mutex is released by the previous task that acquired it
 		q.wait_queue.insert_back(Process::current());
 		// Put to sleep before releasing the spinlock to make sure another process releasing
 		// the mutex does not try to wake us up before we sleep
-		process::set_state(State::Sleeping);
+		if INT {
+			process::set_state(State::IntSleeping);
+		} else {
+			process::set_state(State::Sleeping);
+		}
 	}
 	schedule();
-	// TODO if interruptible sleep, and woken up by a signal, remove from the queue and return
-	// EINTR
+	let proc = Process::current();
+	// Make sure the process is dequeued
+	unsafe {
+		queue.lock().wait_queue.remove(&proc);
+	}
+	// If woken up by a signal
+	if INT && proc.has_pending_signal() {
+		return Err(errno!(EINTR));
+	}
+	Ok(())
 }
 
 /// Unlocks the associated [`Mutex`] when dropped.
-pub struct MutexGuard<'m, T: ?Sized> {
-	mutex: &'m Mutex<T>,
+pub struct MutexGuard<'m, T: ?Sized, const INT: bool> {
+	mutex: &'m Mutex<T, INT>,
 }
 
-impl<T: ?Sized> Deref for MutexGuard<'_, T> {
+impl<T: ?Sized, const INT: bool> Deref for MutexGuard<'_, T, INT> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
@@ -67,23 +79,23 @@ impl<T: ?Sized> Deref for MutexGuard<'_, T> {
 	}
 }
 
-impl<T: ?Sized> DerefMut for MutexGuard<'_, T> {
+impl<T: ?Sized, const INT: bool> DerefMut for MutexGuard<'_, T, INT> {
 	fn deref_mut(&mut self) -> &mut Self::Target {
 		unsafe { &mut *self.mutex.data.get() }
 	}
 }
 
-impl<T: ?Sized> !Send for MutexGuard<'_, T> {}
+impl<T: ?Sized, const INT: bool> !Send for MutexGuard<'_, T, INT> {}
 
-unsafe impl<T: ?Sized + Sync> Sync for MutexGuard<'_, T> {}
+unsafe impl<T: ?Sized + Sync, const INT: bool> Sync for MutexGuard<'_, T, INT> {}
 
-impl<T: ?Sized + fmt::Debug> fmt::Debug for MutexGuard<'_, T> {
+impl<T: ?Sized + fmt::Debug, const INT: bool> fmt::Debug for MutexGuard<'_, T, INT> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		fmt::Debug::fmt(self.deref(), f)
 	}
 }
 
-impl<T: ?Sized> Drop for MutexGuard<'_, T> {
+impl<T: ?Sized, const INT: bool> Drop for MutexGuard<'_, T, INT> {
 	fn drop(&mut self) {
 		unsafe {
 			self.mutex.unlock();
@@ -97,18 +109,20 @@ struct Queue {
 }
 
 /// Sleeping mutex.
-pub struct Mutex<T: ?Sized> {
+///
+/// `INT` tells whether sleeping can be interrupted by a signal.
+pub struct Mutex<T: ?Sized, const INT: bool> {
 	queue: IntSpin<Queue>,
 	data: UnsafeCell<T>,
 }
 
-impl<T: Default> Default for Mutex<T> {
+impl<T: Default, const INT: bool> Default for Mutex<T, INT> {
 	fn default() -> Self {
 		Self::new(Default::default())
 	}
 }
 
-impl<T> Mutex<T> {
+impl<T, const INT: bool> Mutex<T, INT> {
 	/// Creates a new instance wrapping the given `data`.
 	pub const fn new(data: T) -> Self {
 		Self {
@@ -119,51 +133,79 @@ impl<T> Mutex<T> {
 			data: UnsafeCell::new(data),
 		}
 	}
+}
 
+impl<T> Mutex<T, false> {
 	/// Acquires the mutex, consumes it and returns the inner value.
 	pub fn into_inner(self) -> T {
-		lock(&self.queue);
+		let _ = lock::<false>(&self.queue);
 		self.data.into_inner()
 	}
 }
 
-impl<T: ?Sized> Mutex<T> {
+impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
+	/// Releases the mutex, waking up the next process waiting on it, if any.
+	///
+	/// # Safety
+	///
+	/// This function should not be used directly since it is called when the guard is dropped.
+	///
+	/// If the mutex is not locked, the behaviour is undefined.
+	///
+	/// Releasing while the resource is being used is undefined.
+	pub unsafe fn unlock(&self) {
+		let next = {
+			let mut q = self.queue.lock();
+			q.acquired -= 1;
+			// If at least one other task is waiting, wake it up
+			q.wait_queue.remove_front()
+		};
+		if let Some(next) = next {
+			let mut mask = State::Sleeping as u8;
+			if INT {
+				mask |= State::IntSleeping as u8;
+			}
+			Process::wake_from(&next, mask);
+		}
+	}
+}
+
+impl<T: ?Sized> Mutex<T, false> {
 	/// Acquires the mutex.
 	///
 	/// If the mutex is already acquired, the thread loops until it becomes available.
 	///
 	/// The function returns a [`MutexGuard`] associated with `self`. When dropped, the mutex
 	/// is unlocked.
-	pub fn lock(&self) -> MutexGuard<T> {
-		lock(&self.queue);
+	pub fn lock(&self) -> MutexGuard<T, false> {
+		let _ = lock::<false>(&self.queue);
 		MutexGuard {
 			mutex: self,
 		}
 	}
+}
 
-	/// Releases the mutex. This function should not be used directly since it is called when
-	/// the guard is dropped.
+impl<T: ?Sized> Mutex<T, true> {
+	/// Acquires the mutex.
 	///
-	/// # Safety
+	/// If the mutex is already acquired, the thread loops until it becomes available.
 	///
-	/// Releasing while the resource is being used is undefined.
-	pub unsafe fn unlock(&self) {
-		let next = {
-			let mut q = self.queue.lock();
-			debug_assert_ne!(q.acquired, 0);
-			q.acquired -= 1;
-			// If at least one other task is waiting, wake it up
-			q.wait_queue.remove_front()
-		};
-		if let Some(next) = next {
-			Process::wake_from(&next, State::Sleeping as u8);
-		}
+	/// The function returns a [`MutexGuard`] associated with `self`. When dropped, the mutex
+	/// is unlocked.
+	///
+	/// If the current process is interrupted by a signal while waiting, the function returns with
+	/// the errno [`EINTR`].
+	pub fn lock(&self) -> EResult<MutexGuard<T, true>> {
+		lock::<true>(&self.queue)?;
+		Ok(MutexGuard {
+			mutex: self,
+		})
 	}
 }
 
-unsafe impl<T> Sync for Mutex<T> {}
+unsafe impl<T, const INT: bool> Sync for Mutex<T, INT> {}
 
-impl<T: ?Sized + fmt::Debug> fmt::Debug for Mutex<T> {
+impl<T: ?Sized + fmt::Debug> fmt::Debug for Mutex<T, false> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		let guard = self.lock();
 		fmt::Debug::fmt(&*guard, f)

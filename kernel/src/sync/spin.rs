@@ -143,16 +143,17 @@ impl<T: ?Sized, const INT: bool> Spin<T, INT> {
 		}
 	}
 
-	/// Releases the spinlock. This function should not be used directly since it is called when
-	/// the guard is dropped.
+	/// Releases the spinlock.
 	///
 	/// `int_state` is the state of interruptions before locking.
 	///
 	/// # Safety
 	///
+	/// This function should not be used directly since it is called when the guard is dropped.
+	///
 	/// If the spinlock is not locked, the behaviour is undefined.
 	///
-	/// Releasing while the resource is being used may result in concurrent accesses.
+	/// Releasing while the resource is being used is undefined.
 	pub unsafe fn unlock(&self, int_state: bool) {
 		self.spin.store(false, Release);
 		if !INT && int_state {

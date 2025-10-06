@@ -16,29 +16,54 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! When a resource is blocking, a process trying to use it must be put in `Sleeping` state until
-//! the resource is available.
+//! Queue of processes waiting on a resource.
 
 use crate::{
 	process,
-	process::{Process, State, pid::Pid, scheduler::schedule},
-	sync::spin::{IntSpin, Spin},
+	process::{Process, State, scheduler::schedule},
+	sync::spin::IntSpin,
 };
-use core::mem;
-use utils::{collections::vec::Vec, errno, errno::EResult};
+use core::{fmt, fmt::Formatter};
+use utils::{errno, errno::EResult, list, list_type, ptr::arc::Arc};
 
-/// A queue of processes waiting on a resource.
+/// Queue of processes waiting on a resource.
 ///
-/// Wait processes shall sleep, and be woken up when the resource is available.
-///
-/// **Note**: dropping this structure while processes are waiting on it makes them starve.
-#[derive(Debug, Default)]
-pub struct WaitQueue(IntSpin<Vec<Pid>>); // TODO use a VecDeque
+/// While waiting, the process is turned to the [`IntSleeping`] or [`Sleeping`] state.
+pub struct WaitQueue(IntSpin<list_type!(Process, wait_queue)>);
+
+impl Default for WaitQueue {
+	fn default() -> Self {
+		Self::new()
+	}
+}
 
 impl WaitQueue {
 	/// Creates a new empty queue.
 	pub const fn new() -> Self {
-		Self(Spin::new(Vec::new()))
+		Self(IntSpin::new(list!(Process, wait_queue)))
+	}
+
+	/// Makes the current process wait (sleep) until woken up.
+	///
+	/// If the process has been interrupted while waiting, the function returns [`EINTR`].
+	pub fn wait(&self) -> EResult<()> {
+		// Enqueue and put the process to sleep
+		self.0.lock().insert_back(Process::current());
+		process::set_state(State::IntSleeping);
+		// Switch context
+		schedule();
+		{
+			let proc = Process::current();
+			// Make sure the process is dequeued
+			unsafe {
+				self.0.lock().remove(&proc);
+			}
+			// If woken up by a signal
+			if proc.has_pending_signal() {
+				return Err(errno!(EINTR));
+			}
+		}
+		Ok(())
 	}
 
 	/// Makes the current process wait until the given closure returns `Some`.
@@ -49,53 +74,31 @@ impl WaitQueue {
 			if let Some(val) = f() {
 				break Ok(val);
 			}
-			// Queue
-			{
-				self.0.lock().push(Process::current().get_pid())?;
-				process::set_state(State::Sleeping);
-			}
-			schedule();
-			// TODO try to remove the process from the queue (since it might get woken up by
-			// something else)
-			{
-				// If the current process had received a signal, return
-				if Process::current().has_pending_signal() {
-					return Err(errno!(EINTR));
-				}
-			}
+			self.wait()?;
 		}
 	}
 
-	/// Wakes the next process in queue.
+	/// Wakes the next process in queue, if any.
 	pub fn wake_next(&self) {
-		let proc = loop {
-			// TODO: inefficient, must use a linked list
-			let pid = {
-				let mut pids = self.0.lock();
-				if pids.is_empty() {
-					// No process to wake, stop
-					return;
-				}
-				pids.remove(0)
-			};
-			let Some(proc) = Process::get_by_pid(pid) else {
-				// Process does not exist, try next
-				continue;
-			};
-			break proc;
-		};
-		Process::wake_from(&proc, State::Sleeping as u8);
+		if let Some(proc) = self.0.lock().remove_front() {
+			Process::wake_from(&proc, State::IntSleeping as u8);
+		}
 	}
 
-	/// Wakes all processes.
+	/// Wakes all processes in queue, if any.
 	pub fn wake_all(&self) {
-		let mut pids = self.0.lock();
-		for pid in mem::take(&mut *pids) {
-			let Some(proc) = Process::get_by_pid(pid) else {
-				// Process does not exist, try next
-				continue;
-			};
-			Process::wake_from(&proc, State::Sleeping as u8);
+		let mut queue = self.0.lock();
+		for node in queue.iter() {
+			let proc = node.remove();
+			Process::wake_from(&proc, State::IntSleeping as u8);
 		}
+	}
+}
+
+unsafe impl Sync for WaitQueue {}
+
+impl fmt::Debug for WaitQueue {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		f.write_str("WaitQueue")
 	}
 }

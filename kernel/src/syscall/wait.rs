@@ -73,7 +73,7 @@ fn get_wstatus(proc: &Process) -> i32 {
 	};
 	#[allow(clippy::let_and_return)]
 	let wstatus = match proc.get_state() {
-		State::Running | State::Sleeping => 0xffff,
+		State::Running | State::IntSleeping | State::Sleeping => 0xffff,
 		State::Stopped => ((termsig as i32 & 0xff) << 8) | 0x7f,
 		State::Zombie => ((status as i32 & 0xff) << 8) | (termsig as i32 & 0x7f),
 	};
@@ -150,7 +150,7 @@ pub fn do_waitpid(
 		}
 		// When a child process has its state changed by a signal, SIGCHLD is sent to the
 		// current process to wake it up
-		process::set_state(State::Sleeping);
+		process::set_state(State::IntSleeping);
 		schedule();
 	}
 }

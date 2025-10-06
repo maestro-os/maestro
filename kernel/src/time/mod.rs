@@ -57,7 +57,7 @@ pub fn sleep_for(clock: Clock, delay: Timestamp, remain: &mut Timestamp) -> ERes
 	let proc = Process::current();
 	// FIXME: there can be allocation failures here
 	let mut timer = Timer::new(clock, move || {
-		Process::wake_from(&proc, State::Sleeping as u8)
+		Process::wake_from(&proc, State::IntSleeping as u8)
 	})?;
 	timer.set_time(0, delay)?;
 	// Loop until the timer expires
@@ -71,7 +71,7 @@ pub fn sleep_for(clock: Clock, delay: Timestamp, remain: &mut Timestamp) -> ERes
 			*remain = timer.get_time().it_value.to_nano();
 			return Err(errno!(EINTR));
 		}
-		process::set_state(State::Sleeping);
+		process::set_state(State::IntSleeping);
 		schedule();
 	}
 	Ok(())
