@@ -24,7 +24,7 @@ use crate::{
 	sync::spin::IntSpin,
 };
 use core::{fmt, fmt::Formatter};
-use utils::{errno, errno::EResult, list, list_type, ptr::arc::Arc};
+use utils::{errno, errno::EResult, list, list_type};
 
 /// Queue of processes waiting on a resource.
 ///
