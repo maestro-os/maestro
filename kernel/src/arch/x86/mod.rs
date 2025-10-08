@@ -187,6 +187,12 @@ pub fn supports_supervisor_prot() -> (bool, bool) {
 	(smep, smap)
 }
 
+/// Tells whether the kernel can write to read-only pages.
+#[inline]
+pub fn is_write_protected() -> bool {
+	register_get!("cr0") & (1 << 16) != 0
+}
+
 /// Sets whether the kernel can write to read-only pages.
 ///
 /// The function returns the previous state of the flag.
