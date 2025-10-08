@@ -548,32 +548,39 @@ impl Ext2INode {
 	}
 
 	/// Looks for a sequence of free entries large enough to fit a chunk with at least `min_size`
-	/// bytes, and returns the block containing it, with the offset to its beginning.
+	/// bytes.
+	///
+	/// Return values:
+	/// - The block containing the sequence
+	/// - The offset to the beginning of the sequence
+	/// - The length of the sequence
 	///
 	/// Arguments:
 	/// - `buf` is the block buffer
 	/// - `min_size` is the minimum size of the new entry in bytes
 	///
 	/// If no suitable sequence is found, the function returns `None`.
-	fn find_suitable_slot(&self, fs: &Ext2Fs, min_size: u16) -> EResult<Option<(RcFrame, u64)>> {
+	fn find_suitable_slot(
+		&self,
+		fs: &Ext2Fs,
+		min_size: u16,
+	) -> EResult<Option<(RcFrame, u64, usize)>> {
 		let blk_size = fs.sp.get_block_size() as u64;
 		let mut free_length = 0;
 		let mut blk = None;
 		for ent in DirentIterator::new(fs, self, &mut blk, 0)? {
 			let (off, ent) = ent?;
-			// If the entry is used, reset counter
-			if !ent.is_free() {
+			// If at the beginning of a new block, reset counter
+			if off % blk_size == 0 {
 				free_length = 0;
-				continue;
 			}
-			// If a sequence large enough has been found, stop
-			if (free_length + ent.rec_len as usize) >= min_size as usize {
-				let begin = off - free_length as u64;
-				return Ok(Some((blk.unwrap(), begin)));
-			}
-			// If the next entry is on the next block, reset counter
-			let next = (off % blk_size + ent.rec_len as u64) >= blk_size;
-			if next {
+			if !ent.is_free() {
+				// If a sequence large enough has been found, stop
+				if free_length >= min_size as usize {
+					let begin = off - free_length as u64;
+					return Ok(Some((blk.unwrap(), begin, free_length)));
+				}
+				// Reset counter
 				free_length = 0;
 			} else {
 				free_length += ent.rec_len as usize;
@@ -611,7 +618,7 @@ impl Ext2INode {
 		if unlikely(rec_len as u32 > blk_size) {
 			return Err(errno!(ENAMETOOLONG));
 		}
-		if let Some((blk, off)) = self.find_suitable_slot(fs, rec_len)? {
+		if let Some((blk, off, len)) = self.find_suitable_slot(fs, rec_len)? {
 			// Safe since the inode is locked
 			let buf = unsafe { blk.slice_mut() };
 			// Create entry
@@ -630,7 +637,10 @@ impl Ext2INode {
 				name,
 			)?;
 			// Create free entries to cover remaining free space
-			fill_free_entries(&mut buf[(inner_off + rec_len as usize)..], &fs.sp)?;
+			fill_free_entries(
+				&mut buf[(inner_off + rec_len as usize)..(inner_off + len)],
+				&fs.sp,
+			)?;
 			blk.mark_dirty();
 		} else {
 			// No suitable free entry: Fill a new block
