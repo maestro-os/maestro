@@ -256,11 +256,11 @@ fn map_segment(
 	if unlikely(seg.p_align as usize != PAGE_SIZE) {
 		return Err(errno!(ENOEXEC));
 	}
+	// Map segment
 	let page_start = seg.p_vaddr as usize & !(PAGE_SIZE - 1);
 	let page_off = seg.p_vaddr as usize & (PAGE_SIZE - 1);
 	let addr = load_base + page_start;
-	let size = seg.p_memsz as usize + page_off;
-	let pages = size.div_ceil(PAGE_SIZE);
+	let pages = (page_off + seg.p_filesz as usize).div_ceil(PAGE_SIZE);
 	if let Some(pages) = NonZeroUsize::new(pages) {
 		mem_space.map(
 			addr,
@@ -270,10 +270,31 @@ fn map_segment(
 			Some(file),
 			seg.p_offset - page_off as u64,
 		)?;
+		// Zero the end of the last page if needed
+		let begin = load_base + seg.p_vaddr as usize + seg.p_filesz as usize;
+		let len = begin.next_multiple_of(PAGE_SIZE) - begin.0;
+		if len > 0 {
+			unsafe {
+				let slice = slice::from_raw_parts_mut(begin.as_ptr::<u8>(), len);
+				vmem::write_ro(|| vmem::smap_disable(|| slice.fill(0)));
+			}
+		}
 	}
-	// The pointer to the end of the virtual memory chunk
-	let mem_end = addr.add(pages * PAGE_SIZE);
-	Ok(mem_end)
+	// Add zero pages at the end if needed
+	let zero_start = (seg.p_vaddr as usize + seg.p_filesz as usize).next_multiple_of(PAGE_SIZE);
+	let zero_end = (seg.p_vaddr as usize + seg.p_memsz as usize).next_multiple_of(PAGE_SIZE);
+	let zero_pages = (zero_end - zero_start) / PAGE_SIZE;
+	if let Some(pages) = NonZeroUsize::new(zero_pages) {
+		mem_space.map(
+			load_base + zero_start,
+			pages,
+			seg.mmap_prot(),
+			MAP_PRIVATE | MAP_FIXED,
+			None,
+			0,
+		)?;
+	}
+	Ok(addr + pages * PAGE_SIZE)
 }
 
 /// Loads the ELF file parsed by `elf` into the memory space `mem_space`.
@@ -304,23 +325,6 @@ fn load_elf(
 					if (seg.p_offset..seg.p_offset + seg.p_filesz).contains(&ehdr.e_phoff) {
 						phdr_addr =
 							load_base + (ehdr.e_phoff - seg.p_offset + seg.p_vaddr) as usize;
-					}
-					// Zero the end of the segment if needed
-					if seg.p_memsz <= seg.p_filesz {
-						continue;
-					}
-					let begin = load_base.add(seg.p_vaddr as usize + seg.p_filesz as usize);
-					let end = load_base
-						.add(seg.p_vaddr as usize + seg.p_memsz as usize)
-						.next_multiple_of(PAGE_SIZE);
-					let len = end - begin.0;
-					unsafe {
-						let slice = slice::from_raw_parts_mut(begin.as_ptr::<u8>(), len);
-						vmem::write_ro(|| {
-							vmem::smap_disable(|| {
-								slice.fill(0);
-							});
-						});
 					}
 				}
 				PT_GNU_STACK => exec_stack = seg.p_flags & PF_X != 0,

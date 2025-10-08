@@ -52,16 +52,14 @@ impl WaitQueue {
 		process::set_state(State::IntSleeping);
 		// Switch context
 		schedule();
-		{
-			let proc = Process::current();
-			// Make sure the process is dequeued
-			unsafe {
-				self.0.lock().remove(&proc);
-			}
-			// If woken up by a signal
-			if proc.has_pending_signal() {
-				return Err(errno!(EINTR));
-			}
+		// Make sure the process is dequeued
+		let proc = Process::current();
+		unsafe {
+			self.0.lock().remove(&proc);
+		}
+		// If woken up by a signal
+		if proc.has_pending_signal() {
+			return Err(errno!(EINTR));
 		}
 		Ok(())
 	}
