@@ -29,7 +29,7 @@ mod transaction;
 
 use crate::{
 	arch::{
-		core_id,
+		core_id, x86,
 		x86::paging::{PAGE_FAULT_INSTRUCTION, PAGE_FAULT_WRITE},
 	},
 	file::{File, vfs},
@@ -741,7 +741,7 @@ impl MemSpace {
 		};
 		// Check permissions
 		let write = code & PAGE_FAULT_WRITE != 0;
-		if unlikely(write && mapping.prot & PROT_WRITE == 0) {
+		if unlikely(write && mapping.prot & PROT_WRITE == 0 && x86::is_write_protected()) {
 			return Ok(false);
 		}
 		if unlikely(code & PAGE_FAULT_INSTRUCTION != 0 && mapping.prot & PROT_EXEC == 0) {
