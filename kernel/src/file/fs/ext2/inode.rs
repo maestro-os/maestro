@@ -24,7 +24,7 @@ use super::{
 use crate::{
 	file::{FileType, INode, Mode, Stat, fs::ext2::dirent::DirentIterator, vfs::node::Node},
 	memory::cache::{RcFrame, RcFrameVal},
-	sync::spin::SpinGuard,
+	sync::mutex::MutexGuard,
 };
 use core::{
 	hint::unlikely,
@@ -94,7 +94,7 @@ pub const ROOT_DIRECTORY_INODE: u32 = 2;
 
 /// Container for an inode, locking its associated spinlock to avoid concurrency issues
 pub(super) struct INodeWrap<'n> {
-	_guard: SpinGuard<'n, (), true>,
+	_guard: MutexGuard<'n, (), false>,
 	inode: RcFrameVal<Ext2INode>,
 }
 

@@ -151,8 +151,8 @@ pub fn sethostname(name: *mut u8, len: usize) -> EResult<usize> {
 	}
 	// Copy
 	let name = UserSlice::from_user(name, len)?;
-	let mut hostname = crate::HOSTNAME.lock();
-	*hostname = name.copy_from_user_vec(0)?.ok_or(errno!(EFAULT))?;
+	let new_hostname = name.copy_from_user_vec(0)?.ok_or(errno!(EFAULT))?;
+	*crate::HOSTNAME.lock() = new_hostname;
 	Ok(0)
 }
 

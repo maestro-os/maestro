@@ -34,7 +34,7 @@ use crate::{
 	device::BlkDev,
 	file::vfs::node::Node,
 	memory::{cache::RcFrame, user::UserSlice},
-	sync::spin::Spin,
+	sync::{mutex::Mutex, spin::Spin},
 	syscall::ioctl,
 	time::unit::Timestamp,
 };
@@ -477,9 +477,9 @@ pub struct Filesystem {
 	pub ops: Box<dyn FilesystemOps>,
 
 	/// Cached [`Node`]s, to avoid duplications when several entries point to the same node
-	nodes: Spin<HashSet<NodeWrapper>>,
+	nodes: Mutex<HashSet<NodeWrapper>, false>,
 	/// Active buffers on the filesystem
-	buffers: Spin<HashMap<INode, Arc<dyn FileOps>>>,
+	buffers: Mutex<HashMap<INode, Arc<dyn FileOps>>, false>,
 }
 
 impl Filesystem {

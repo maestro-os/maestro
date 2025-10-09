@@ -39,7 +39,7 @@ use crate::{
 		cache::{FrameOwner, RcFrame},
 		user::UserSlice,
 	},
-	sync::spin::Spin,
+	sync::{mutex::Mutex, spin::Spin},
 };
 use core::{any::Any, hint::unlikely};
 use utils::{
@@ -130,9 +130,9 @@ impl DirInner {
 #[derive(Debug)]
 enum NodeContent {
 	/// Regular file content
-	Regular(Spin<Vec<RcFrame>>),
+	Regular(Mutex<Vec<RcFrame>, false>),
 	/// Directory entries
-	Directory(Spin<DirInner>),
+	Directory(Mutex<DirInner, false>),
 	// TODO we could avoid having a spinlock here since the path is set only when the link is
 	// created
 	/// Symbolic link path
@@ -388,7 +388,7 @@ pub struct TmpFS {
 	/// Tells whether the filesystem is readonly.
 	readonly: bool,
 	/// The inner kernfs.
-	nodes: Spin<NodeStorage>,
+	nodes: Mutex<NodeStorage, false>,
 }
 
 impl FilesystemOps for TmpFS {
@@ -477,7 +477,7 @@ impl FilesystemType for TmpFsType {
 			0,
 			Box::new(TmpFS {
 				readonly,
-				nodes: Spin::new(NodeStorage::new()?),
+				nodes: Mutex::new(NodeStorage::new()?),
 			})?,
 		)?;
 		let root = Arc::new(Node::new(
