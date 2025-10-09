@@ -54,7 +54,6 @@ use crate::{
 		scheduler::{alter_flow, preempt_check_resched},
 		signal::Signal,
 	},
-	sync::spin::Spin,
 	syscall::{
 		dirent::{getdents, getdents64},
 		execve::execve,

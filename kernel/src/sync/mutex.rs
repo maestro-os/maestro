@@ -111,7 +111,7 @@ struct Queue {
 /// Sleeping mutex.
 ///
 /// `INT` tells whether sleeping can be interrupted by a signal.
-pub struct Mutex<T: ?Sized, const INT: bool> {
+pub struct Mutex<T: ?Sized, const INT: bool = true> {
 	queue: IntSpin<Queue>,
 	data: UnsafeCell<T>,
 }
@@ -205,9 +205,12 @@ impl<T: ?Sized> Mutex<T, true> {
 
 unsafe impl<T, const INT: bool> Sync for Mutex<T, INT> {}
 
-impl<T: ?Sized + fmt::Debug> fmt::Debug for Mutex<T, false> {
+impl<T: ?Sized + fmt::Debug, const INT: bool> fmt::Debug for Mutex<T, INT> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		let guard = self.lock();
+		let _ = lock::<false>(&self.queue);
+		let guard = MutexGuard {
+			mutex: self,
+		};
 		fmt::Debug::fmt(&*guard, f)
 	}
 }

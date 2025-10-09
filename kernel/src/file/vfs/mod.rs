@@ -40,7 +40,7 @@ use super::{
 use crate::{
 	file::fs::StatSet,
 	process::Process,
-	sync::{once::OnceInit, spin::Spin},
+	sync::{mutex::Mutex, once::OnceInit, spin::Spin},
 };
 use core::{
 	borrow::Borrow,
@@ -103,7 +103,7 @@ pub struct Entry {
 	/// The list of cached file entries.
 	///
 	/// This is not an exhaustive list of the file's entries. Only those that are loaded.
-	children: Spin<HashSet<EntryChild>>,
+	children: Mutex<HashSet<EntryChild>, false>,
 	/// The node associated with the entry.
 	///
 	/// If `None`, the entry is negative.

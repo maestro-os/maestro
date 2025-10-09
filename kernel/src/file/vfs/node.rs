@@ -24,7 +24,7 @@ use crate::{
 		fs::{FileOps, Filesystem, NodeOps},
 	},
 	memory::{cache::MappedNode, user::UserSlice},
-	sync::spin::Spin,
+	sync::{mutex::Mutex, spin::Spin},
 };
 use core::ptr;
 use utils::{
@@ -55,7 +55,7 @@ pub struct Node {
 	pub file_ops: Box<dyn FileOps>,
 
 	/// A lock to be used by the filesystem implementation
-	pub lock: Spin<()>,
+	pub lock: Mutex<(), false>,
 	/// The node as mapped
 	pub mapped: MappedNode,
 
