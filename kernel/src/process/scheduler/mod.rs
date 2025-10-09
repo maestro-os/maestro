@@ -29,7 +29,10 @@ pub mod switch;
 use crate::{
 	arch::{
 		core_id, end_of_interrupt,
-		x86::{cli, idt::IntFrame},
+		x86::{
+			cli,
+			idt::{IntFrame, disable_int},
+		},
 	},
 	process::{
 		Process, State,
@@ -301,38 +304,39 @@ pub(crate) fn rebalance_task() -> ! {
 /// **Note**: calling this function inside a critical section is invalid.
 pub fn schedule() {
 	// Disable interrupts so that no interrupt can occur before switching to the next process
-	cli();
-	// Reset preempt flag
-	per_cpu().preempt_counter.fetch_or(1 << 31, Relaxed);
-	// Make deferred calls
-	defer::consume();
-	let sched = &per_cpu().sched;
-	let (prev, next) = {
-		let prev = sched.cur_proc.get();
-		// Find the next process to run
-		let next = sched
-			.get_next_process()
-			.unwrap_or_else(|| sched.idle_task.clone());
-		// If the process to run is the current, do nothing
-		if ptr::eq(next.as_ref(), prev.as_ref()) {
-			return;
+	disable_int(|| {
+		// Reset preempt flag
+		per_cpu().preempt_counter.fetch_or(1 << 31, Relaxed);
+		// Make deferred calls
+		defer::consume();
+		let sched = &per_cpu().sched;
+		let (prev, next) = {
+			let prev = sched.cur_proc.get();
+			// Find the next process to run
+			let next = sched
+				.get_next_process()
+				.unwrap_or_else(|| sched.idle_task.clone());
+			// If the process to run is the current, do nothing
+			if ptr::eq(next.as_ref(), prev.as_ref()) {
+				return;
+			}
+			// Update the idle bitmap if necessary
+			if prev.is_idle_task() {
+				cpu::bitmap_clear(&IDLE_CPUS, core_id() as _);
+			} else if next.is_idle_task() {
+				cpu::bitmap_set(&IDLE_CPUS, core_id() as _);
+			}
+			// Swap current running process. We use pointers to avoid cloning the Arc
+			let next_ptr = Arc::as_ptr(&next);
+			let prev = sched.swap_current_process(next);
+			(Arc::as_ptr(&prev), next_ptr)
+		};
+		// Send end of interrupt, so that the next tick can be received
+		end_of_interrupt(0);
+		unsafe {
+			switch(prev, next);
 		}
-		// Update the idle bitmap if necessary
-		if prev.is_idle_task() {
-			cpu::bitmap_clear(&IDLE_CPUS, core_id() as _);
-		} else if next.is_idle_task() {
-			cpu::bitmap_set(&IDLE_CPUS, core_id() as _);
-		}
-		// Swap current running process. We use pointers to avoid cloning the Arc
-		let next_ptr = Arc::as_ptr(&next);
-		let prev = sched.swap_current_process(next);
-		(Arc::as_ptr(&prev), next_ptr)
-	};
-	// Send end of interrupt, so that the next tick can be received
-	end_of_interrupt(0);
-	unsafe {
-		switch(prev, next);
-	}
+	});
 }
 
 /// Enter a critical section, disabling preemption.

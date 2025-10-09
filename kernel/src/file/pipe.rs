@@ -37,8 +37,12 @@ use core::{
 use utils::{
 	errno,
 	errno::{AllocResult, EResult},
-	limits::PIPE_BUF,
 };
+
+/// The capacity of a pipe in bytes.
+const CAPACITY: usize = 65536;
+
+// TODO guarantee atomicity on transfer <= PIPE_BUF
 
 #[derive(Debug)]
 struct PipeInner {
@@ -66,7 +70,7 @@ impl PipeBuffer {
 	pub fn new() -> AllocResult<Self> {
 		Ok(Self {
 			inner: Spin::new(PipeInner {
-				buffer: RingBuffer::new(NonZeroUsize::new(PIPE_BUF).unwrap())?,
+				buffer: RingBuffer::new(NonZeroUsize::new(CAPACITY).unwrap())?,
 				readers: 0,
 				writers: 0,
 			}),
@@ -77,7 +81,7 @@ impl PipeBuffer {
 
 	/// Returns the capacity of the pipe in bytes.
 	pub fn get_capacity(&self) -> usize {
-		PIPE_BUF
+		CAPACITY
 	}
 }
 
