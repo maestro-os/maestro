@@ -330,7 +330,7 @@ pub struct Process {
 	state: AtomicU8,
 	/// If `true`, the parent can resume after a `vfork`.
 	pub vfork_done: AtomicBool,
-	/// The links to other processes.
+	/// Links to other processes.
 	pub links: Spin<ProcessLinks>,
 
 	/// The node in the scheduler's run queue.
