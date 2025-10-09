@@ -238,3 +238,13 @@ pub struct ITimerspec32 {
 	/// Start value of the timer.
 	pub it_value: Timespec32,
 }
+
+/// Legacy structure for `utime`
+#[derive(Clone, Copy, Debug, Default)]
+#[repr(C)]
+pub struct UTimBuf {
+	/// Access time
+	pub actime: u32,
+	/// Modification time
+	pub modtime: u32,
+}

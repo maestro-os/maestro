@@ -38,7 +38,7 @@ use crate::{
 	},
 	time::{
 		clock::{Clock, current_time_ns, current_time_sec},
-		unit::{TimeUnit, Timespec},
+		unit::{TimeUnit, Timespec, Timeval, UTimBuf},
 	},
 };
 use core::{ffi::c_int, hint::unlikely, sync::atomic::Ordering::Release};
@@ -63,35 +63,45 @@ pub fn creat(pathname: UserString, mode: c_int) -> EResult<usize> {
 }
 
 pub fn mkdir(pathname: UserString, mode: file::Mode) -> EResult<usize> {
-	let path = pathname.copy_path_from_user()?;
-	// If the path is not empty, create
-	if let Some(name) = path.file_name() {
-		// Get parent directory
-		let parent_path = path.parent().unwrap_or(Path::root());
-		let parent = vfs::get_file_from_path(parent_path, true)?;
-		let mode = mode & !Process::current().umask();
-		let ts = current_time_sec(Clock::Realtime);
-		// Create the directory
-		vfs::create_file(
-			parent,
-			name,
-			Stat {
-				mode: FileType::Directory.to_mode() | mode,
-				ctime: ts,
-				mtime: ts,
-				atime: ts,
-				..Default::default()
-			},
-		)?;
-	}
+	mkdirat(AT_FDCWD, pathname, mode)
+}
+
+pub fn mkdirat(dirfd: c_int, path: UserString, mode: file::Mode) -> EResult<usize> {
+	let path = path.copy_path_from_user()?;
+	let Resolved::Creatable {
+		parent,
+		name,
+	} = at::get_file(dirfd, Some(&path), 0, true, false)?
+	else {
+		return Err(errno!(EEXIST));
+	};
+	let mode = mode & !Process::current().umask();
+	let ts = current_time_sec(Clock::Realtime);
+	vfs::create_file(
+		parent,
+		name,
+		Stat {
+			mode: FileType::Directory.to_mode() | mode,
+			ctime: ts,
+			mtime: ts,
+			atime: ts,
+			..Default::default()
+		},
+	)?;
 	Ok(0)
 }
 
 pub fn mknod(pathname: UserString, mode: file::Mode, dev: u64) -> EResult<usize> {
-	let pathname = pathname.copy_path_from_user()?;
-	let parent_path = pathname.parent().unwrap_or(Path::root());
-	// File name
-	let Some(name) = pathname.file_name() else {
+	mknodat(AT_FDCWD, pathname, mode, dev)
+}
+
+pub fn mknodat(dirfd: c_int, path: UserString, mode: file::Mode, dev: u64) -> EResult<usize> {
+	let path = path.copy_path_from_user()?;
+	let Resolved::Creatable {
+		parent,
+		name,
+	} = at::get_file(dirfd, Some(&path), 0, true, false)?
+	else {
 		return Err(errno!(EEXIST));
 	};
 	// Check file type and permissions
@@ -104,9 +114,7 @@ pub fn mknod(pathname: UserString, mode: file::Mode, dev: u64) -> EResult<usize>
 		(_, false) => return Err(errno!(EPERM)),
 		(_, true) => return Err(errno!(EINVAL)),
 	}
-	// Create file
 	let ts = current_time_sec(Clock::Realtime);
-	let parent = vfs::get_file_from_path(parent_path, true)?;
 	vfs::create_file(
 		parent,
 		name,
@@ -190,18 +198,21 @@ pub fn symlinkat(target: UserString, newdirfd: c_int, linkpath: UserString) -> E
 }
 
 pub fn readlink(pathname: UserString, buf: *mut u8, bufsiz: usize) -> EResult<usize> {
-	// Get file
-	let pathname = pathname.copy_path_from_user()?;
-	let ent = vfs::get_file_from_path(&pathname, false)?;
-	// Validation
+	readlinkat(AT_FDCWD, pathname, buf, bufsiz)
+}
+
+pub fn readlinkat(dirfd: c_int, path: UserString, buf: *mut u8, bufsiz: usize) -> EResult<usize> {
+	let path = path.copy_path_from_user()?;
+	let Resolved::Found(ent) = at::get_file(dirfd, Some(&path), 0, false, false)? else {
+		unreachable!();
+	};
 	if ent.get_type()? != FileType::Link {
 		return Err(errno!(EINVAL));
 	}
-	// Read link
 	let buf = UserSlice::from_user(buf, bufsiz)?;
 	let node = ent.node();
 	let len = node.node_ops.readlink(node, buf)?;
-	Ok(len as _)
+	Ok(len)
 }
 
 pub fn open(pathname: UserString, flags: c_int, mode: file::Mode) -> EResult<usize> {
@@ -544,39 +555,57 @@ pub fn umask(mask: file::Mode) -> EResult<usize> {
 	Ok(prev as _)
 }
 
-pub fn utimensat(
+fn do_utimensat<T: TimeUnit>(
 	dirfd: c_int,
 	pathname: UserString,
-	times: UserPtr<[Timespec; 2]>,
+	times: [T; 2],
 	flags: c_int,
 ) -> EResult<usize> {
 	let pathname = pathname.copy_path_opt_from_user()?;
-	let (atime, mtime) = times
-		.copy_from_user()?
-		.map(|[atime, mtime]| (atime.to_nano(), mtime.to_nano()))
-		.unwrap_or_else(|| {
-			let ts = current_time_ns(Clock::Monotonic);
-			(ts, ts)
-		});
-	// Get file
 	let Resolved::Found(file) = at::get_file(dirfd, pathname.as_deref(), flags, false, true)?
 	else {
 		unreachable!();
 	};
-	// Update timestamps
 	vfs::set_stat(
 		file.node(),
 		&StatSet {
-			atime: Some(atime / 1_000_000_000),
-			mtime: Some(mtime / 1_000_000_000),
+			atime: Some(times[0].to_nano() / 1_000_000_000),
+			mtime: Some(times[1].to_nano() / 1_000_000_000),
 			..Default::default()
 		},
 	)?;
 	Ok(0)
 }
 
-pub fn rename(oldpath: UserString, newpath: UserString) -> EResult<usize> {
-	do_renameat2(AT_FDCWD, oldpath, AT_FDCWD, newpath, 0)
+pub fn utime(path: UserString, times: UserPtr<UTimBuf>) -> EResult<usize> {
+	let times = times.copy_from_user()?.ok_or(errno!(EFAULT))?;
+	let mut t: [Timespec; 2] = Default::default();
+	t[0].tv_sec = times.actime as _;
+	t[1].tv_sec = times.modtime as _;
+	do_utimensat(AT_FDCWD, path, t, 0)
+}
+
+pub fn utimes(path: UserString, times: UserPtr<[Timeval; 2]>) -> EResult<usize> {
+	let times = times.copy_from_user()?.ok_or(errno!(EFAULT))?;
+	do_utimensat(AT_FDCWD, path, times, 0)
+}
+
+pub fn futimesat(dirfd: c_int, path: UserString, times: UserPtr<[Timeval; 2]>) -> EResult<usize> {
+	let times = times.copy_from_user()?.ok_or(errno!(EFAULT))?;
+	do_utimensat(dirfd, path, times, 0)
+}
+
+pub fn utimensat(
+	dirfd: c_int,
+	pathname: UserString,
+	times: UserPtr<[Timespec; 2]>,
+	flags: c_int,
+) -> EResult<usize> {
+	let times = times.copy_from_user()?.unwrap_or_else(|| {
+		let ts = Timespec::from_nano(current_time_ns(Clock::Monotonic));
+		[ts, ts]
+	});
+	do_utimensat(dirfd, pathname, times, flags)
 }
 
 // TODO implement flags
@@ -607,6 +636,19 @@ pub(super) fn do_renameat2(
 		} => vfs::rename(old, new_parent, new_name)?,
 	}
 	Ok(0)
+}
+
+pub fn rename(oldpath: UserString, newpath: UserString) -> EResult<usize> {
+	do_renameat2(AT_FDCWD, oldpath, AT_FDCWD, newpath, 0)
+}
+
+pub fn renameat(
+	olddirfd: c_int,
+	oldpath: UserString,
+	newdirfd: c_int,
+	newpath: UserString,
+) -> EResult<usize> {
+	do_renameat2(olddirfd, oldpath, newdirfd, newpath, 0)
 }
 
 pub fn renameat2(
