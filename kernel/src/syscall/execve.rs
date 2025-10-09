@@ -20,15 +20,16 @@
 
 use crate::{
 	arch::x86::idt::IntFrame,
-	file::{File, O_RDONLY, perm::AccessProfile, vfs},
+	file::{File, O_RDONLY, perm::AccessProfile, vfs, vfs::Resolved},
 	memory::user::{UserArray, UserSlice, UserString},
 	process::{
 		Process,
 		exec::{elf, exec},
 		scheduler::switch::init_ctx,
 	},
+	syscall::util::{at, at::AT_FDCWD},
 };
-use core::hint::unlikely;
+use core::{ffi::c_int, hint::unlikely};
 use utils::{
 	collections::{path::Path, string::String, vec::Vec},
 	errno,
@@ -70,13 +71,11 @@ impl Default for ShebangBuffer {
 /// - `rs` is the resolution settings to be used to open files.
 /// - `argv` is an iterator over the arguments passed to the system call.
 fn get_file<A: Iterator<Item = EResult<String>>>(
-	path: &Path,
+	mut ent: Arc<vfs::Entry>,
 	argv: A,
 ) -> EResult<(Arc<vfs::Entry>, Vec<String>)> {
 	let ap = AccessProfile::cur_task();
 	let mut shebangs: [ShebangBuffer; INTERP_MAX] = Default::default();
-	// Read and parse shebangs
-	let mut ent = vfs::get_file_from_path(path, true)?;
 	let mut i = 0;
 	loop {
 		// Check permission
@@ -84,7 +83,7 @@ fn get_file<A: Iterator<Item = EResult<String>>>(
 		if !ap.can_read_file(&stat) || !ap.can_execute_file(&stat) {
 			return Err(errno!(EACCES));
 		}
-		// Read file
+		// Read shebang
 		let shebang = &mut shebangs[i];
 		let len = {
 			let file = File::open_entry(ent.clone(), O_RDONLY)?;
@@ -135,11 +134,25 @@ pub fn execve(
 	envp: UserArray,
 	frame: &mut IntFrame,
 ) -> EResult<usize> {
+	execveat(AT_FDCWD, pathname, argv, envp, 0, frame)
+}
+
+pub fn execveat(
+	dirfd: c_int,
+	path: UserString,
+	argv: UserArray,
+	envp: UserArray,
+	flags: c_int,
+	frame: &mut IntFrame,
+) -> EResult<usize> {
 	// Use scope to drop everything before calling `init_ctx`
 	{
-		let path = pathname.copy_path_from_user()?;
+		let path = path.copy_path_from_user()?;
+		let Resolved::Found(ent) = at::get_file(dirfd, Some(&path), flags, false, true)? else {
+			unreachable!();
+		};
 		let argv = argv.iter();
-		let (file, argv) = get_file(&path, argv)?;
+		let (file, argv) = get_file(ent, argv)?;
 		let envp = envp.iter().collect::<EResult<CollectResult<Vec<_>>>>()?.0?;
 		let program_image = elf::exec(file, argv, envp)?;
 		let proc = Process::current();
