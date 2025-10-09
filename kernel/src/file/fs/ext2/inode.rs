@@ -566,24 +566,25 @@ impl Ext2INode {
 		min_size: u16,
 	) -> EResult<Option<(RcFrame, u64, usize)>> {
 		let blk_size = fs.sp.get_block_size() as u64;
+		let mut begin = 0;
 		let mut free_length = 0;
 		let mut blk = None;
 		for ent in DirentIterator::new(fs, self, &mut blk, 0)? {
 			let (off, ent) = ent?;
-			// If at the beginning of a new block, reset counter
-			if off % blk_size == 0 {
-				free_length = 0;
+			let end_off = off + ent.rec_len as u64;
+			if ent.is_free() {
+				free_length += ent.rec_len as usize;
 			}
-			if !ent.is_free() {
+			// If used entry, or at the end of the block
+			let end = off / blk_size != end_off / blk_size;
+			if !ent.is_free() || end {
 				// If a sequence large enough has been found, stop
 				if free_length >= min_size as usize {
-					let begin = off - free_length as u64;
 					return Ok(Some((blk.unwrap(), begin, free_length)));
 				}
 				// Reset counter
 				free_length = 0;
-			} else {
-				free_length += ent.rec_len as usize;
+				begin = end_off;
 			}
 		}
 		Ok(None)
