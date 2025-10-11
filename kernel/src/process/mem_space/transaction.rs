@@ -20,14 +20,8 @@
 
 use super::{MemSpace, MemSpaceState, gap::MemGap, mapping::MemMapping};
 use crate::{
-	memory::{
-		VirtAddr,
-		vmem::{VMem, shootdown_range},
-	},
-	sync::{
-		rwlock::{INT_READ, INT_WRITE, WriteGuard},
-		spin::SpinGuard,
-	},
+	memory::{VirtAddr, vmem::shootdown_range},
+	sync::rwlock::{INT_READ, INT_WRITE, WriteGuard},
 };
 use core::{alloc::AllocError, hash::Hash, mem};
 use utils::{
@@ -98,11 +92,6 @@ fn insert<K: Clone + Ord + Hash, V>(
 pub(super) struct MemSpaceTransaction<'m> {
 	/// The memory space on which the transaction is done
 	mem_space: &'m MemSpace,
-
-	// It is important that `vmem` is placed before `state` since they are dropped according to
-	// the order of declaration. This is important for interrupt masking
-	/// The virtual memory context
-	pub vmem: SpinGuard<'m, VMem, false>,
 	/// The memory space state on which the transaction applies.
 	pub state: WriteGuard<'m, MemSpaceState, { INT_READ | INT_WRITE }>,
 
@@ -124,12 +113,9 @@ impl<'m> MemSpaceTransaction<'m> {
 	/// Begins a new transaction for the given memory space.
 	pub fn new(mem_space: &'m MemSpace) -> Self {
 		let state = mem_space.state.write();
-		let vmem = mem_space.vmem.lock();
 		let vmem_usage = state.vmem_usage;
 		Self {
 			mem_space,
-
-			vmem,
 			state,
 
 			gaps_complement: Default::default(),
@@ -189,9 +175,11 @@ impl<'m> MemSpaceTransaction<'m> {
 		if let Some(mapping) = self.state.mappings.get(&mapping_begin) {
 			self.mappings_discard.insert(mapping_begin)?;
 			// Sync to disk
-			mapping.sync(&self.vmem, true)?;
+			mapping.sync(&self.mem_space.vmem, true)?;
 			// Apply to vmem. No rollback is required since this would be corrected by a page fault
-			self.vmem.unmap_range(mapping.addr, mapping.size.get());
+			self.mem_space
+				.vmem
+				.unmap_range(mapping.addr, mapping.size.get());
 			shootdown_range(
 				mapping.addr,
 				mapping.size.get(),

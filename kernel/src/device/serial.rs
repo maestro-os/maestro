@@ -20,7 +20,7 @@
 
 use crate::{
 	arch::x86::io::{inb, outb},
-	sync::spin::Spin,
+	sync::spin::IntSpin,
 };
 
 /// The offset of COM1 registers.
@@ -182,9 +182,9 @@ impl Serial {
 }
 
 /// The list of serial ports.
-pub static PORTS: [Spin<Serial>; 4] = [
-	Spin::new(Serial::from_port(COM1)),
-	Spin::new(Serial::from_port(COM2)),
-	Spin::new(Serial::from_port(COM3)),
-	Spin::new(Serial::from_port(COM4)),
+pub static PORTS: [IntSpin<Serial>; 4] = [
+	IntSpin::new(Serial::from_port(COM1)),
+	IntSpin::new(Serial::from_port(COM2)),
+	IntSpin::new(Serial::from_port(COM3)),
+	IntSpin::new(Serial::from_port(COM4)),
 ];

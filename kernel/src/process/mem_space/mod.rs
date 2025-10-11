@@ -46,7 +46,7 @@ use crate::{
 			critical,
 		},
 	},
-	sync::{rwlock::IntRwLock, spin::IntSpin},
+	sync::rwlock::IntRwLock,
 };
 use core::{
 	alloc::AllocError, cmp::min, ffi::c_void, fmt, hint::unlikely, mem, num::NonZeroUsize,
@@ -226,7 +226,7 @@ pub struct MemSpace {
 	///
 	/// We use it as a cache which can be invalidated by unmapping. When a page fault occurs, this
 	/// field is corrected by the [`MemSpace`].
-	vmem: IntSpin<VMem>,
+	vmem: VMem,
 
 	/// Executable program information
 	pub exe_info: ExeInfo,
@@ -249,7 +249,7 @@ impl MemSpace {
 				brk: brk_init,
 				..Default::default()
 			}),
-			vmem: IntSpin::new(unsafe { VMem::new() }),
+			vmem: unsafe { VMem::new() },
 
 			exe_info: ExeInfo {
 				exe,
@@ -548,7 +548,7 @@ impl MemSpace {
 			let core_id = core_id() as usize;
 			bitmap_set(&this.bound_cpus, core_id);
 			// Do actual bind
-			this.vmem.lock().bind();
+			this.vmem.bind();
 			// Update old bitmap if any
 			if let Some(prev) = prev {
 				bitmap_clear(&prev.bound_cpus, core_id);
@@ -562,7 +562,7 @@ impl MemSpace {
 			// Update per-CPU structure
 			let prev = per_cpu().mem_space.replace(None);
 			// Bind the kernel's vmem
-			KERNEL_VMEM.lock().bind();
+			KERNEL_VMEM.bind();
 			// Update old bitmap if any
 			if let Some(prev) = prev {
 				let core_id = core_id() as usize;
@@ -585,16 +585,16 @@ impl MemSpace {
 	///
 	/// `f` is executed in a critical section to prevent the temporary memory space from being
 	/// replaced by the scheduler.
-	pub fn switch<'m, F: FnOnce(&'m Arc<Self>) -> T, T>(this: &'m Arc<Self>, f: F) -> T {
+	pub fn switch<F: FnOnce(&Arc<Self>) -> T, T>(this: &Arc<Self>, f: F) -> T {
 		critical(|| {
 			// Bind `this`
-			this.vmem.lock().bind();
+			this.vmem.bind();
 			let old = per_cpu().mem_space.replace(Some(this.clone()));
 			// Execute function
 			let res = f(this);
 			// Restore previous
 			if let Some(old) = &old {
-				old.vmem.lock().bind();
+				old.vmem.bind();
 			}
 			per_cpu().mem_space.set(old);
 			res
@@ -606,12 +606,11 @@ impl MemSpace {
 		let bound_cpus = init_bitmap(false)?;
 		// Lock
 		let state = self.state.read();
-		let mut vmem = self.vmem.lock();
 		// Clone first to mark as shared
 		let mappings = state.mappings.try_clone()?;
 		// Unmap to invalidate the virtual memory context
 		for (_, m) in &state.mappings {
-			vmem.unmap_range(m.addr, m.size.get());
+			self.vmem.unmap_range(m.addr, m.size.get());
 			shootdown_range(m.addr, m.size.get(), self.bound_cpus());
 		}
 		Ok(Self {
@@ -624,7 +623,7 @@ impl MemSpace {
 
 				vmem_usage: state.vmem_usage,
 			}),
-			vmem: IntSpin::new(unsafe { VMem::new() }),
+			vmem: unsafe { VMem::new() },
 
 			exe_info: self.exe_info.clone(),
 
@@ -711,12 +710,11 @@ impl MemSpace {
 	/// - `sync` tells whether the synchronization should be performed synchronously
 	pub fn sync(&self, addr: VirtAddr, pages: usize, sync: bool) -> EResult<()> {
 		let state = self.state.read();
-		let vmem = self.vmem.lock();
 		// Iterate over mappings
 		let mut i = 0;
 		while i < pages {
 			let mapping = state.get_mapping_for_addr(addr).ok_or(AllocError)?;
-			mapping.sync(&vmem, sync)?;
+			mapping.sync(&self.vmem, sync)?;
 			i += mapping.size.get();
 		}
 		Ok(())
@@ -764,12 +762,11 @@ impl fmt::Debug for MemSpace {
 impl Drop for MemSpace {
 	fn drop(&mut self) {
 		let mut state = self.state.write();
-		let vmem = self.vmem.lock();
 		// Synchronize all mappings to disk
 		let mappings = mem::take(&mut state.mappings);
 		for (_, m) in mappings {
 			// Ignore I/O errors
-			let _ = m.sync(&vmem, true);
+			let _ = m.sync(&self.vmem, true);
 		}
 	}
 }
