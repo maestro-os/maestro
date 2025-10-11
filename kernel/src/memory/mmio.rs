@@ -73,9 +73,7 @@ impl Mmio {
 		if !prefetchable {
 			flags |= FLAG_CACHE_DISABLE;
 		}
-		KERNEL_VMEM
-			.lock()
-			.map_range(phys_addr, virt_addr, pages.get(), flags);
+		KERNEL_VMEM.map_range(phys_addr, virt_addr, pages.get(), flags);
 		shootdown_range(virt_addr, pages.get(), iter_online());
 		// Add offset to virtual address
 		let page_off = phys_addr.0 & 0xfff;
@@ -98,7 +96,7 @@ impl Drop for Mmio {
 	fn drop(&mut self) {
 		// Restore mapping
 		let virt_addr = VirtAddr::from(self.virt_addr);
-		KERNEL_VMEM.lock().map_range(
+		KERNEL_VMEM.map_range(
 			virt_addr.kernel_to_physical().unwrap(),
 			virt_addr,
 			self.pages.get(),

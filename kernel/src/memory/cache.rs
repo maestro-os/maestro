@@ -34,7 +34,7 @@ use crate::{
 		stats::MEM_INFO,
 	},
 	println,
-	sync::spin::IntSpin,
+	sync::{mutex::Mutex, spin::IntSpin},
 	time::{
 		clock::{Clock, current_time_ms},
 		sleep_for,
@@ -448,7 +448,7 @@ impl Drop for MappedNode {
 }
 
 /// Global cache for all frames
-static LRU: IntSpin<list_type!(RcFrameInner, lru)> = IntSpin::new(list!(RcFrameInner, lru));
+static LRU: Mutex<list_type!(RcFrameInner, lru), false> = Mutex::new(list!(RcFrameInner, lru));
 
 fn flush_task_inner(cur_ts: Timestamp) {
 	// Iterate on all frames

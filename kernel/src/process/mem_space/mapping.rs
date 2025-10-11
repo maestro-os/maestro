@@ -124,12 +124,7 @@ fn vmem_flags(prot: u8, cow: bool) -> usize {
 /// - `src` is the page containing the data to initialize the new page with. If `None`, the new
 ///   page is initialized with zeros
 /// - `dst` is the virtual address at which the new page is mapped
-fn init_page(
-	vmem: &mut VMem,
-	prot: u8,
-	src: Option<&RcFrame>,
-	dst: VirtAddr,
-) -> AllocResult<RcFrame> {
+fn init_page(vmem: &VMem, prot: u8, src: Option<&RcFrame>, dst: VirtAddr) -> AllocResult<RcFrame> {
 	// Allocate destination page
 	let new_page = RcFrame::new(0, ZONE_USER, FrameOwner::Anon, 0)?;
 	// Map source page to copy buffer if any
@@ -227,7 +222,6 @@ impl MemMapping {
 	/// error.
 	pub(super) fn map(&self, mem_space: &MemSpace, offset: usize, write: bool) -> EResult<()> {
 		let virtaddr = self.addr + offset * PAGE_SIZE;
-		let mut vmem = mem_space.vmem.lock();
 		let mut pages = self.pages.lock();
 		if let Some(page) = &pages[offset] {
 			// A page is already present, use it
@@ -236,13 +230,13 @@ impl MemMapping {
 			if pending_cow {
 				// The page cannot be shared: we need our own copy (regardless of whether we are
 				// reading or writing)
-				let page = init_page(&mut vmem, self.prot, Some(page), virtaddr)?;
+				let page = init_page(&mem_space.vmem, self.prot, Some(page), virtaddr)?;
 				phys_addr = page.phys_addr();
 				pages[offset] = Some(MappedFrame::new(page));
 			}
 			// Map the page
 			let flags = vmem_flags(self.prot, false);
-			vmem.map(phys_addr, virtaddr, flags);
+			mem_space.vmem.map(phys_addr, virtaddr, flags);
 			return Ok(());
 		}
 		// Else, Allocate a page
@@ -250,7 +244,7 @@ impl MemMapping {
 			// Anonymous mapping
 			None => {
 				let phys_addr = if write {
-					let page = init_page(&mut vmem, self.prot, None, virtaddr)?;
+					let page = init_page(&mem_space.vmem, self.prot, None, virtaddr)?;
 					let phys_addr = page.phys_addr();
 					pages[offset] = Some(MappedFrame::new(page));
 					phys_addr
@@ -260,7 +254,7 @@ impl MemMapping {
 				};
 				// Map
 				let flags = vmem_flags(self.prot, !write);
-				vmem.map(phys_addr, virtaddr, flags);
+				mem_space.vmem.map(phys_addr, virtaddr, flags);
 			}
 			// Mapped file
 			Some(file) => {
@@ -270,13 +264,13 @@ impl MemMapping {
 				let mut page = node.node_ops.read_page(node, file_off)?;
 				// If the mapping is private, we need our own copy
 				if self.flags & MAP_PRIVATE != 0 {
-					page = init_page(&mut vmem, self.prot, Some(&page), virtaddr)?;
+					page = init_page(&mem_space.vmem, self.prot, Some(&page), virtaddr)?;
 				}
 				let phys_addr = page.phys_addr();
 				pages[offset] = Some(MappedFrame::new(page));
 				// Map
 				let flags = vmem_flags(self.prot, !write);
-				vmem.map(phys_addr, virtaddr, flags);
+				mem_space.vmem.map(phys_addr, virtaddr, flags);
 			}
 		}
 		shootdown_page(virtaddr, mem_space.bound_cpus());

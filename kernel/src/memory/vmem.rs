@@ -33,7 +33,7 @@ use crate::{
 	memory::{KERNEL_BEGIN, PhysAddr, VirtAddr, buddy, memmap::mmap_iter},
 	multiboot::{MEMORY_ACPI_RECLAIMABLE, MEMORY_AVAILABLE, MEMORY_RESERVED},
 	process::scheduler::defer,
-	sync::{once::OnceInit, spin::Spin},
+	sync::{once::OnceInit, spin::IntSpin},
 	tty::vga,
 };
 use core::{ptr::NonNull, sync::atomic::Ordering::Release};
@@ -44,7 +44,7 @@ use utils::limits::PAGE_SIZE;
 /// save time
 const TLB_FLUSH_THRESHOLD: usize = 32;
 
-/// A virtual memory context.
+/// A virtual memory context, with interior mutability.
 ///
 /// This structure implements operations to modify virtual memory in an architecture-independent
 /// way.
@@ -52,6 +52,9 @@ const TLB_FLUSH_THRESHOLD: usize = 32;
 /// Internally, the structure retries allocations on failure, to avoid returning allocation errors.
 /// This greatly reduces the complexity of the kernel.
 pub struct VMem {
+	/// Spinlock, acquired upon mutating.
+	spin: IntSpin<()>,
+
 	/// The root paging object.
 	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	table: NonNull<x86::paging::Table>,
@@ -66,6 +69,8 @@ impl VMem {
 	/// responsibility to ensure code and data (including stacks) remain accessible.
 	pub unsafe fn new() -> Self {
 		Self {
+			spin: IntSpin::new(()),
+
 			#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 			table: x86::paging::alloc(),
 		}
@@ -75,12 +80,6 @@ impl VMem {
 	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 	pub fn inner(&self) -> &x86::paging::Table {
 		unsafe { self.table.as_ref() }
-	}
-
-	/// Returns a mutable reference to the architecture-dependent inner representation.
-	#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-	pub fn inner_mut(&mut self) -> &mut x86::paging::Table {
-		unsafe { self.table.as_mut() }
 	}
 
 	/// Translates the given virtual address `addr` to the corresponding physical
@@ -100,29 +99,25 @@ impl VMem {
 	/// **Note**: this function does *not* invalidate the cache. This is the caller's
 	/// responsibility
 	#[inline]
-	pub fn map(&mut self, physaddr: PhysAddr, virtaddr: VirtAddr, flags: usize) {
+	pub fn map(&self, physaddr: PhysAddr, virtaddr: VirtAddr, flags: usize) {
+		let _guard = self.spin.lock();
 		#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 		unsafe {
-			x86::paging::map(self.inner_mut(), physaddr, virtaddr, flags);
+			x86::paging::map(self.table.as_ref(), physaddr, virtaddr, flags);
 		}
 	}
 
 	/// Like [`Self::map`] but on a range of several pages.
 	///
 	/// On overflow, the physical and virtual addresses wrap around the memory space.
-	pub fn map_range(
-		&mut self,
-		physaddr: PhysAddr,
-		virtaddr: VirtAddr,
-		pages: usize,
-		flags: usize,
-	) {
+	pub fn map_range(&self, physaddr: PhysAddr, virtaddr: VirtAddr, pages: usize, flags: usize) {
+		let _guard = self.spin.lock();
 		for i in 0..pages {
 			let physaddr = physaddr + i * PAGE_SIZE;
 			let virtaddr = virtaddr + i * PAGE_SIZE;
 			#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 			unsafe {
-				x86::paging::map(self.inner_mut(), physaddr, virtaddr, flags);
+				x86::paging::map(self.table.as_ref(), physaddr, virtaddr, flags);
 			}
 		}
 	}
@@ -132,22 +127,24 @@ impl VMem {
 	/// **Note**: this function does *not* invalidate the cache. This is the caller's
 	/// responsibility
 	#[inline]
-	pub fn unmap(&mut self, virtaddr: VirtAddr) {
+	pub fn unmap(&self, virtaddr: VirtAddr) {
+		let _guard = self.spin.lock();
 		#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 		unsafe {
-			x86::paging::unmap(self.inner_mut(), virtaddr);
+			x86::paging::unmap(self.table.as_ref(), virtaddr);
 		}
 	}
 
 	/// Like [`Self::unmap`] but on a range of several pages.
 	///
 	/// On overflow, the physical and virtual addresses wrap around the memory space.
-	pub fn unmap_range(&mut self, virtaddr: VirtAddr, pages: usize) {
+	pub fn unmap_range(&self, virtaddr: VirtAddr, pages: usize) {
+		let _guard = self.spin.lock();
 		for i in 0..pages {
 			let virtaddr = virtaddr + i * PAGE_SIZE;
 			#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 			unsafe {
-				x86::paging::unmap(self.inner_mut(), virtaddr);
+				x86::paging::unmap(self.table.as_ref(), virtaddr);
 			}
 		}
 	}
@@ -275,13 +272,13 @@ pub unsafe fn smap_disable<F: FnOnce() -> T, T>(f: F) -> T {
 }
 
 /// The kernel's virtual memory context.
-pub static KERNEL_VMEM: OnceInit<Spin<VMem>> = unsafe { OnceInit::new() };
+pub static KERNEL_VMEM: OnceInit<VMem> = unsafe { OnceInit::new() };
 
 /// Initializes virtual memory management.
 pub(crate) fn init() {
 	// No cache invalidation is required in this function since the memory context is not bound
 	// until the end
-	let mut kernel_vmem = unsafe { VMem::new() };
+	let kernel_vmem = unsafe { VMem::new() };
 	// Map kernel
 	for entry in mmap_iter() {
 		if !matches!(
@@ -361,7 +358,7 @@ pub(crate) fn init() {
 	}
 	kernel_vmem.bind();
 	unsafe {
-		OnceInit::init(&KERNEL_VMEM, Spin::new(kernel_vmem));
+		OnceInit::init(&KERNEL_VMEM, kernel_vmem);
 	}
 }
 
@@ -379,7 +376,7 @@ mod test {
 
 	#[test_case]
 	fn vmem_map0() {
-		let mut vmem = unsafe { VMem::new() };
+		let vmem = unsafe { VMem::new() };
 		vmem.map(PhysAddr(0x100000), VirtAddr(0x100000), 0);
 		for i in (0..0xc0000000).step_by(PAGE_SIZE) {
 			let res = vmem.translate(VirtAddr(i));
@@ -393,7 +390,7 @@ mod test {
 
 	#[test_case]
 	fn vmem_map1() {
-		let mut vmem = unsafe { VMem::new() };
+		let vmem = unsafe { VMem::new() };
 		vmem.map(PhysAddr(0x100000), VirtAddr(0x100000), 0);
 		vmem.map(PhysAddr(0x200000), VirtAddr(0x100000), 0);
 		for i in (0..0xc0000000).step_by(PAGE_SIZE) {
@@ -408,7 +405,7 @@ mod test {
 
 	#[test_case]
 	fn vmem_unmap0() {
-		let mut vmem = unsafe { VMem::new() };
+		let vmem = unsafe { VMem::new() };
 		vmem.map(PhysAddr(0x100000), VirtAddr(0x100000), 0);
 		vmem.unmap(VirtAddr(0x100000));
 		for i in (0..0xc0000000).step_by(PAGE_SIZE) {
