@@ -134,7 +134,7 @@ impl Table {
 	///
 	/// This function allocates a new page table and fills it so that the memory mapping keeps the
 	/// same behavior.
-	pub fn expand(&mut self, index: usize) {
+	pub fn expand(&self, index: usize) {
 		let entry = self[index].load(Relaxed);
 		if entry & FLAG_PRESENT == 0 || entry & FLAG_PAGE_SIZE == 0 {
 			return;
@@ -294,7 +294,7 @@ fn can_remove_table(level: usize, index: usize) -> bool {
 ///
 /// In case the mapped memory is in kernelspace, the caller must ensure the code and stack of the
 /// kernel remain accessible and valid.
-pub unsafe fn map(mut table: &mut Table, physaddr: PhysAddr, virtaddr: VirtAddr, flags: usize) {
+pub unsafe fn map(mut table: &Table, physaddr: PhysAddr, virtaddr: VirtAddr, flags: usize) {
 	// Sanitize
 	let physaddr = PhysAddr(physaddr.0 & !(PAGE_SIZE - 1));
 	let virtaddr = VirtAddr(virtaddr.0 & !(PAGE_SIZE - 1));
@@ -333,7 +333,7 @@ pub unsafe fn map(mut table: &mut Table, physaddr: PhysAddr, virtaddr: VirtAddr,
 ///
 /// In case the unmapped memory is in kernelspace, the caller must ensure the code and stack of the
 /// kernel remain accessible and valid.
-pub unsafe fn unmap(mut table: &mut Table, virtaddr: VirtAddr) {
+pub unsafe fn unmap(mut table: &Table, virtaddr: VirtAddr) {
 	// Sanitize
 	let virtaddr = VirtAddr(virtaddr.0 & !(PAGE_SIZE - 1));
 	// Read entries
