@@ -57,6 +57,8 @@ pub mod acpi;
 pub mod arch;
 mod boot;
 pub mod cmdline;
+#[macro_use]
+pub mod config;
 pub mod debug;
 pub mod device;
 pub mod elf;
