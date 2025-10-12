@@ -64,9 +64,8 @@ use utils::{
 	ptr::arc::Arc,
 };
 
-// TODO must be configurable
 /// The timeout, in milliseconds, after which a dirty page may be written back to disk.
-const WRITEBACK_TIMEOUT: u64 = 100;
+const WRITEBACK_TIMEOUT: u64 = build_cfg!(config_memory_writeback_timeout);
 
 /// The node from which the data of a [`RcFrame`] comes from.
 #[derive(Clone, Debug)]
