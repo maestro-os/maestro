@@ -19,15 +19,12 @@
 //! ANSI escape sequences allow to control the terminal by specifying commands in standard output
 //! of the terminal.
 
-use super::{Display, TTY, get_history_offset};
+use super::{Display, TTY};
 use crate::tty::{
 	vga,
-	vga::{Color, HEIGHT, Pos, WIDTH},
+	vga::{Color, HEIGHT, WIDTH},
 };
-use core::{
-	cmp::{max, min},
-	str,
-};
+use core::{cmp::min, str};
 
 /// The character used to initialize ANSI escape sequences.
 pub const ESCAPE: u8 = 0x1b;
@@ -153,12 +150,12 @@ impl<'tty> ANSIBufferView<'tty> {
 	/// incomplete and need more data.
 	///
 	/// If not enough data remains or if the number is invalid, the function returns `None`.
-	fn next_nbr(&mut self) -> Option<u32> {
+	fn next_nbr(&mut self) -> Option<usize> {
 		let nbr_len = utils::nbr_len(&self.buffer()[self.cursor..]);
 		let Ok(nbr) = str::from_utf8(&self.buffer()[self.cursor..(self.cursor + nbr_len)]) else {
 			return None;
 		};
-		let n = str::parse::<u32>(nbr).ok()?;
+		let n = str::parse::<usize>(nbr).ok()?;
 		self.cursor += nbr_len;
 		Some(n)
 	}
@@ -167,7 +164,7 @@ impl<'tty> ANSIBufferView<'tty> {
 	///
 	/// The function takes a buffer to write the sequence on. If the buffer is not large enough to
 	/// fit the whole sequence, it is truncated.
-	fn next_nbr_sequence<'b>(&mut self, buf: &'b mut [u32]) -> &'b [u32] {
+	fn next_nbr_sequence<'b>(&mut self, buf: &'b mut [usize]) -> &'b [usize] {
 		let mut len = 0;
 		for b in buf.iter_mut() {
 			let Some(nbr) = self.next_nbr() else {
@@ -247,25 +244,19 @@ fn get_vga_color_from_id(id: u8) -> Color {
 /// Arguments:
 /// - `d` is the direction character.
 /// - `n` is the number of cells to travel. If `None`, the default is used (`1`).
-fn move_cursor(tty: &mut Display, d: u8, n: u32) -> ANSIState {
-	let n = n.clamp(0, i16::MAX as _) as i16;
+fn move_cursor(tty: &mut Display, d: u8, n: usize) -> ANSIState {
+	let n = n.clamp(0, i16::MAX as usize);
 	match d {
-		b'A' => {
-			let n = tty.cursor_y.checked_sub(n).unwrap_or(0);
-			tty.cursor_y = max(n, 0);
-		}
+		b'A' => tty.cursor_y = tty.cursor_y.saturating_sub(n),
 		b'B' => {
-			let n = tty.cursor_y.checked_add(n).unwrap_or(HEIGHT - 1);
-			tty.cursor_y = min(n, HEIGHT - 1);
+			let n = tty.cursor_y.checked_add(n).unwrap_or(HEIGHT as usize - 1);
+			tty.cursor_y = min(n, HEIGHT as usize - 1);
 		}
 		b'C' => {
-			let n = tty.cursor_x.checked_add(n).unwrap_or(WIDTH - 1);
-			tty.cursor_x = min(n, WIDTH - 1);
+			let n = tty.cursor_x.checked_add(n).unwrap_or(WIDTH as usize - 1);
+			tty.cursor_x = min(n, WIDTH as usize - 1);
 		}
-		b'D' => {
-			let n = tty.cursor_x.checked_sub(n).unwrap_or(0);
-			tty.cursor_x = max(n, 0);
-		}
+		b'D' => tty.cursor_x = tty.cursor_x.saturating_sub(n),
 		_ => return ANSIState::Invalid,
 	}
 	ANSIState::Valid
@@ -274,7 +265,7 @@ fn move_cursor(tty: &mut Display, d: u8, n: u32) -> ANSIState {
 /// Handles a Select Graphics Renderition (SGR) command.
 ///
 /// `seq` is the id of the numbers describing the command.
-fn parse_sgr(tty: &mut Display, seq: &[u32]) -> ANSIState {
+fn parse_sgr(tty: &mut Display, seq: &[usize]) -> ANSIState {
 	if seq.is_empty() {
 		tty.reset_attrs();
 		return ANSIState::Valid;
@@ -354,7 +345,7 @@ fn parse_sgr(tty: &mut Display, seq: &[u32]) -> ANSIState {
 /// The function returns the state of the sequence. If valid, the length of the
 /// sequence is also returned.
 fn parse_csi(view: &mut ANSIBufferView) -> ANSIState {
-	let mut seq_buf: [u32; SEQ_MAX] = [0; SEQ_MAX];
+	let mut seq_buf: [usize; SEQ_MAX] = [0; SEQ_MAX];
 	let seq = view.next_nbr_sequence(&mut seq_buf);
 	let Some(cmd) = view.next_char() else {
 		return ANSIState::Incomplete;
@@ -366,44 +357,80 @@ fn parse_csi(view: &mut ANSIBufferView) -> ANSIState {
 			_ => return ANSIState::Invalid,
 		},
 		(seq, b'A'..=b'D') => {
-			return move_cursor(view.tty, cmd, seq.first().cloned().unwrap_or(1) as _);
+			return move_cursor(view.tty, cmd, seq.first().cloned().unwrap_or(1));
 		}
-		(seq, b'E') => view.tty.newline(seq.first().cloned().unwrap_or(1) as _),
+		(seq, b'E') => view.tty.newline(seq.first().cloned().unwrap_or(1)),
 		(_seq, b'F') => {
 			// TODO Previous line
 		}
 		(seq, b'G') => {
-			let y = seq.first().cloned().unwrap_or(1).clamp(1, WIDTH as u32 + 1) - 1;
-			view.tty.cursor_y = y as _;
+			let y = seq
+				.first()
+				.cloned()
+				.unwrap_or(1)
+				.clamp(1, WIDTH as usize + 1)
+				- 1;
+			view.tty.cursor_y = y;
 		}
 		(seq, b'H') => {
-			let x = seq.first().cloned().unwrap_or(1).clamp(1, WIDTH as u32 + 1) - 1;
-			let y = seq.get(1).cloned().unwrap_or(1).clamp(1, HEIGHT as u32 + 1) - 1;
-			view.tty.cursor_x = x as Pos;
-			view.tty.cursor_y = view.tty.screen_y + y as Pos;
+			let x = seq
+				.first()
+				.cloned()
+				.unwrap_or(1)
+				.clamp(1, WIDTH as usize + 1)
+				- 1;
+			let y = seq
+				.get(1)
+				.cloned()
+				.unwrap_or(1)
+				.clamp(1, HEIGHT as usize + 1)
+				- 1;
+			view.tty.cursor_x = x;
+			view.tty.cursor_y = view.tty.screen_y + y;
 		}
 		(seq, b'J') => {
 			// Erase in display
-			let screen_start = get_history_offset(0, view.tty.screen_y);
-			let screen_end = screen_start + (WIDTH * HEIGHT) as usize;
-			let cursor_pos = get_history_offset(view.tty.cursor_x, view.tty.cursor_y);
 			match seq.first().cloned().unwrap_or(0) {
-				0 => view.tty.clear(cursor_pos, screen_end, false, false),
-				1 => view.tty.clear(screen_start, cursor_pos, false, false),
-				2 => view.tty.clear(screen_start, screen_end, true, false),
-				3 => view.tty.clear(0, 0, true, true),
+				0 => view.tty.clear_range(
+					view.tty.cursor_x,
+					view.tty.cursor_y,
+					WIDTH as usize,
+					view.tty.screen_y + HEIGHT as usize - 1,
+				),
+				1 => view.tty.clear_range(
+					0,
+					view.tty.screen_y,
+					view.tty.cursor_x,
+					view.tty.cursor_y,
+				),
+				2 => view.tty.clear_range(
+					0,
+					view.tty.screen_y,
+					WIDTH as usize,
+					view.tty.screen_y + HEIGHT as usize - 1,
+				),
+				3 => view.tty.clear_all(),
 				_ => return ANSIState::Invalid,
 			}
 		}
 		(seq, b'K') => {
 			// Erase in line
-			let line_start = get_history_offset(0, view.tty.cursor_y);
-			let line_end = line_start + WIDTH as usize;
-			let cursor_pos = get_history_offset(view.tty.cursor_x, view.tty.cursor_y);
 			match seq.first().cloned().unwrap_or(0) {
-				0 => view.tty.clear(cursor_pos, line_end, false, false),
-				1 => view.tty.clear(line_start, cursor_pos, false, false),
-				2 => view.tty.clear(line_start, line_end, false, false),
+				0 => view.tty.clear_range(
+					view.tty.cursor_x,
+					view.tty.cursor_y,
+					WIDTH as usize,
+					view.tty.cursor_y,
+				),
+				1 => view.tty.clear_range(
+					0,
+					view.tty.cursor_y,
+					view.tty.cursor_x,
+					view.tty.cursor_y,
+				),
+				2 => view
+					.tty
+					.clear_range(0, view.tty.cursor_y, WIDTH as usize, view.tty.cursor_y),
 				_ => return ANSIState::Invalid,
 			}
 		}
@@ -416,7 +443,7 @@ fn parse_csi(view: &mut ANSIBufferView) -> ANSIState {
 		(seq, b'm') => return parse_sgr(view.tty, seq),
 		_ => return ANSIState::Invalid,
 	}
-	view.tty.update();
+	view.tty.update_screen();
 	ANSIState::Valid
 }
 
@@ -467,7 +494,7 @@ pub(super) fn handle(tty: &TTY, disp: &mut Display, buffer: &[u8]) -> usize {
 		disp.ansi_buffer.pop_front(len);
 		n += len;
 	}
-	disp.update();
+	disp.update_screen();
 	n
 }
 

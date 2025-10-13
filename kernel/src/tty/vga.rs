@@ -25,25 +25,21 @@
 
 use crate::{
 	arch::x86::io::{inb, outb},
-	memory::{PhysAddr, vmem},
+	memory::PhysAddr,
 };
 
 /// Type representing a VGA text mode character.
 pub type Char = u16;
 /// Type representing a VGA text mode color.
 pub type Color = u8;
-/// Type representing a VGA text mode position.
-pub type Pos = i16;
 
 /// Physical address of the VGA text buffer.
 pub const BUFFER_PHYS: PhysAddr = PhysAddr(0xb8000);
 
 /// Width of the screen in characters under the VGA text mode.
-pub const WIDTH: Pos = 80;
+pub const WIDTH: u16 = 80;
 /// Height of the screen in characters under the VGA text mode.
-pub const HEIGHT: Pos = 25;
-/// The size in bytes of the VGA text buffer.
-pub const BUFFER_SIZE: u32 = (WIDTH * HEIGHT * core::mem::size_of::<i16>() as Pos) as u32;
+pub const HEIGHT: u16 = 25;
 
 /// Width of the screen in pixels under the VGA text mode.
 pub const PIXEL_WIDTH: u32 = 640;
@@ -83,7 +79,7 @@ pub const COLOR_YELLOW: Color = 0xe;
 /// VGA text mode color: White
 pub const COLOR_WHITE: Color = 0xf;
 
-/// VGA text mode default color.
+/// VGA text mode default color
 pub const DEFAULT_COLOR: Color = COLOR_WHITE | (COLOR_BLACK << 4);
 
 /// The beginning scanline for the cursor.
@@ -102,17 +98,6 @@ pub fn get_buffer_virt() -> *mut Char {
 #[inline]
 pub fn entry_color(fg: Color, bg: Color) -> Color {
 	fg | (bg << 4)
-}
-
-/// Clears the VGA text buffer.
-pub fn clear() {
-	for i in 0..(WIDTH as usize * HEIGHT as usize) {
-		unsafe {
-			vmem::write_ro(|| {
-				*get_buffer_virt().add(i) = (DEFAULT_COLOR as Char) << 8;
-			});
-		}
-	}
 }
 
 /// Enables the VGA text mode cursor.
@@ -134,52 +119,24 @@ pub fn disable_cursor() {
 }
 
 /// Returns the current position of the cursor.
-pub fn get_cursor_position() -> (Pos, Pos) {
+pub fn get_cursor_position() -> (u16, u16) {
 	let mut pos: u16 = 0;
-
 	unsafe {
 		outb(0x3d4, 0x0f);
 		pos |= inb(0x3d5) as u16;
 		outb(0x3d4, 0x0e);
 		pos |= (inb(0x3d5) as u16) << 8;
 	}
-
-	(pos as i16 % WIDTH, pos as i16 / WIDTH)
+	(pos % WIDTH, pos / WIDTH)
 }
 
 /// Moves the VGA text mode cursor to the given position.
-pub fn move_cursor(x: Pos, y: Pos) {
+pub fn move_cursor(x: u16, y: u16) {
 	let pos = y * WIDTH + x;
-
 	unsafe {
 		outb(0x3d4, 0x0f);
 		outb(0x3d5, (pos & 0xff) as u8);
 		outb(0x3d4, 0x0e);
 		outb(0x3d5, ((pos >> 8) & 0xff) as u8);
-	}
-}
-
-/// Writes the given character `c` at the given position `x`/`y` on the screen
-/// with the default color.
-pub fn putchar(c: char, x: Pos, y: Pos) {
-	putchar_color(c, DEFAULT_COLOR, x, y);
-}
-
-/// Writes the given character `c` at the given position `x`/`y` on the screen
-/// with the given color `color`.
-pub fn putchar_color(c: char, color: Color, x: Pos, y: Pos) {
-	debug_assert!(x >= 0);
-	debug_assert!(x < WIDTH);
-	debug_assert!(y >= 0);
-	debug_assert!(y < HEIGHT);
-
-	let pos = (y as usize) * (WIDTH as usize) + (x as usize);
-	let c = (c as Char) | ((color as Char) << 8);
-
-	debug_assert!(pos < BUFFER_SIZE as usize);
-	unsafe {
-		vmem::write_ro(|| {
-			*get_buffer_virt().add(pos) = c;
-		});
 	}
 }
