@@ -42,9 +42,7 @@ use core::{cmp::min, ptr};
 use utils::errno::EResult;
 
 /// The number of history lines for one TTY.
-const HISTORY_LINES: vga::Pos = 128;
-/// The number of characters a TTY can store.
-const HISTORY_SIZE: usize = (vga::WIDTH as usize) * (HISTORY_LINES as usize);
+const HISTORY_LINES: usize = 128;
 
 /// An empty character.
 const EMPTY_CHAR: vga::Char = (vga::DEFAULT_COLOR as vga::Char) << 8;
@@ -72,17 +70,31 @@ pub struct WinSize {
 	pub ws_ypixel: u16,
 }
 
-/// Returns the position of the cursor in the history array from `x` and `y`
-/// position.
-fn get_history_offset(x: vga::Pos, y: vga::Pos) -> usize {
-	let off = (y * vga::WIDTH + x) as usize;
-	debug_assert!(off < HISTORY_SIZE);
-	off
+/// Returns the width of a tab character for the given cursor X position
+fn get_tab_size(cursor_x: usize) -> usize {
+	TAB_SIZE - (cursor_x % TAB_SIZE)
 }
 
-/// Returns the position of a tab character for the given cursor X position.
-fn get_tab_size(cursor_x: vga::Pos) -> usize {
-	TAB_SIZE - ((cursor_x as usize) % TAB_SIZE)
+/// Tells whether the `n`th line is in the range from `start` to `end` (excluded), wrapping around
+/// the history buffer
+fn is_in_range_wrapping(n: usize, start: usize, end: usize) -> bool {
+	if start == end {
+		false
+	} else if start < end {
+		(start..end).contains(&n)
+	} else {
+		(start..HISTORY_LINES).contains(&n) || (0..end).contains(&n)
+	}
+}
+
+/// Returns the number of lines from the absolute Y position `start` to `end`, wrapping around the
+/// history buffer
+fn relative_y_distance(start: usize, end: usize) -> usize {
+	if end >= start {
+		end - start
+	} else {
+		(HISTORY_LINES - start) + end
+	}
 }
 
 /// Rings the TTY's bell.
@@ -103,14 +115,14 @@ fn send_signal(sig: Signal, pgrp: Pid) {
 /// TTY display manager.
 pub struct Display {
 	/// The X position of the cursor in the history
-	cursor_x: vga::Pos,
+	cursor_x: usize,
 	/// The Y position of the cursor in the history
-	cursor_y: vga::Pos,
+	cursor_y: usize,
 
 	/// The Y position of the screen in the history
-	screen_y: vga::Pos,
+	screen_y: usize,
 	/// The content of the TTY's history
-	history: [vga::Char; HISTORY_SIZE],
+	history: [[vga::Char; vga::WIDTH as usize]; HISTORY_LINES],
 
 	/// The ANSI escape codes buffer.
 	ansi_buffer: ANSIBuffer,
@@ -122,21 +134,41 @@ pub struct Display {
 }
 
 impl Display {
-	/// Updates the TTY to the screen.
-	fn update(&mut self) {
-		let buff = &self.history[get_history_offset(0, self.screen_y)];
+	/// Updates the TTY's text to the screen.
+	fn update_screen(&self) {
 		unsafe {
 			vmem::write_ro(|| {
-				ptr::copy_nonoverlapping(
-					buff as *const vga::Char,
-					vga::get_buffer_virt() as *mut vga::Char,
-					(vga::WIDTH as usize) * (vga::HEIGHT as usize),
-				);
+				let screen_end_y = self.screen_y + vga::HEIGHT as usize;
+				if let Some(lines_after) = screen_end_y.checked_sub(HISTORY_LINES) {
+					// Wraps around the TTY's history, we need two copies
+					let lines_before = vga::HEIGHT as usize - lines_after;
+					ptr::copy_nonoverlapping(
+						&self.history[self.screen_y][0],
+						vga::get_buffer_virt(),
+						vga::WIDTH as usize * lines_before,
+					);
+					// Second copy
+					ptr::copy_nonoverlapping(
+						&self.history[0][0],
+						vga::get_buffer_virt().add(vga::WIDTH as usize * lines_before),
+						vga::WIDTH as usize * lines_after,
+					);
+				} else {
+					// We can copy everything at once
+					ptr::copy_nonoverlapping(
+						&self.history[self.screen_y][0],
+						vga::get_buffer_virt(),
+						vga::WIDTH as usize * vga::HEIGHT as usize,
+					);
+				}
 			});
 		}
+	}
 
-		let y = self.cursor_y - self.screen_y;
-		vga::move_cursor(self.cursor_x, y);
+	/// Updates the TTY's cursor to the screen
+	fn update_cursor(&self) {
+		let y = relative_y_distance(self.screen_y, self.cursor_y);
+		vga::move_cursor(self.cursor_x as _, y as _);
 	}
 
 	/// Hides or shows the cursor on screen.
@@ -195,104 +227,89 @@ impl Display {
 		}
 	}
 
-	/// Clears the TTY's history.
+	/// Clears a range of the TTY's history.
 	///
 	/// Arguments:
-	/// - `start`: is the start of the history range to clear
-	/// - `end`: is the end of the history range to clear
-	/// - `reset_cursor`: if set to `true`, the cursor will be reset to the top-left corner
-	/// - `all`: if set to `true`, clear all the history
-	fn clear(&mut self, start: usize, end: usize, reset_cursor: bool, all: bool) {
-		if reset_cursor {
-			self.cursor_x = 0;
-			self.cursor_y = 0;
-		}
-		let slice = if all {
-			// Clear all of history
-			self.screen_y = 0;
-			&mut self.history
+	/// - `start_x` is the starting X coordinate of the history range to clear
+	/// - `start_y` is the starting X coordinate of the history range to clear
+	/// - `end_x` is the ending X coordinate of the history range to clear (excluded)
+	/// - `end_y` is the ending Y coordinate of the history range to clear (included)
+	fn clear_range(&mut self, start_x: usize, start_y: usize, end_x: usize, end_y: usize) {
+		let start_y = start_y % HISTORY_LINES;
+		let end_y = end_y % HISTORY_LINES;
+		if start_y == end_y {
+			self.history[start_y][start_x..end_x].fill(EMPTY_CHAR);
+		} else if start_y < end_y {
+			// Continuous in memory
+			self.history[start_y..end_y].as_flattened_mut()[start_x..].fill(EMPTY_CHAR);
+			self.history[end_y][..end_x].fill(EMPTY_CHAR);
 		} else {
-			// Clear only the given range
-			&mut self.history[start..end]
-		};
-		slice.fill((vga::DEFAULT_COLOR as vga::Char) << 8);
-		self.update();
+			// Wrapping
+			self.history[start_y..].as_flattened_mut()[start_x..].fill(EMPTY_CHAR);
+			self.history[..end_y].as_flattened_mut().fill(EMPTY_CHAR);
+			self.history[end_y][..end_x].fill(EMPTY_CHAR);
+		}
+		self.update_screen();
 	}
 
-	/// Fixes the position of the cursor after executing an action.
-	fn fix_pos(&mut self) {
-		if self.cursor_x < 0 {
-			let off = -self.cursor_x;
-			self.cursor_x = vga::WIDTH - (off % vga::WIDTH);
-			self.cursor_y -= off / vga::WIDTH + 1;
-		}
-
-		if self.cursor_x >= vga::WIDTH {
-			let off = self.cursor_x;
-			self.cursor_x = off % vga::WIDTH;
-			self.cursor_y += off / vga::WIDTH;
-		}
-
-		if self.cursor_y < self.screen_y {
-			self.screen_y = self.cursor_y;
-		}
-
-		if self.cursor_y >= self.screen_y + vga::HEIGHT {
-			self.screen_y = self.cursor_y - vga::HEIGHT + 1;
-		}
-
-		if self.cursor_y >= HISTORY_LINES {
-			self.cursor_y = HISTORY_LINES - 1;
-		}
-
-		if self.cursor_y < 0 {
-			self.cursor_y = 0;
-		}
-
-		if self.screen_y < 0 {
-			self.screen_y = 0;
-		}
-
-		if self.screen_y + vga::HEIGHT > HISTORY_LINES {
-			let diff = ((self.screen_y + vga::HEIGHT - HISTORY_LINES) * vga::WIDTH) as usize;
-			let size = self.history.len() - diff;
-			for i in 0..size {
-				self.history[i] = self.history[diff + i];
-			}
-			for i in size..self.history.len() {
-				self.history[i] = (vga::DEFAULT_COLOR as vga::Char) << 8;
-			}
-
-			self.screen_y = HISTORY_LINES - vga::HEIGHT;
-		}
-
-		debug_assert!(self.cursor_x >= 0);
-		debug_assert!(self.cursor_x < vga::WIDTH);
-		debug_assert!(self.cursor_y - self.screen_y >= 0);
-		debug_assert!(self.cursor_y - self.screen_y < vga::HEIGHT);
+	/// Clears all TTY's history.
+	fn clear_all(&mut self) {
+		self.cursor_x = 0;
+		self.cursor_y = 0;
+		self.screen_y = 0;
+		self.history.as_flattened_mut().fill(EMPTY_CHAR);
+		self.update_screen();
+		self.update_cursor();
 	}
 
-	/// Moves the cursor forward `x` characters horizontally and `y` characters
-	/// vertically.
-	fn cursor_forward(&mut self, x: usize, y: usize) {
-		self.cursor_x += x as vga::Pos;
-		self.cursor_y += y as vga::Pos;
-		self.fix_pos();
+	/// If the cursor is out of the screen, append lines by shifting the screen relative to the
+	/// history buffer, wrapping if the history buffer is exceeded.
+	fn append_lines(&mut self) {
+		let screen_y_end = (self.screen_y + vga::HEIGHT as usize) % HISTORY_LINES;
+		if is_in_range_wrapping(self.cursor_y, self.screen_y, screen_y_end) {
+			return;
+		}
+		let newlines = relative_y_distance(screen_y_end, self.cursor_y % HISTORY_LINES) + 1;
+		// Clear new lines
+		let new_screen_y_end = screen_y_end + newlines;
+		if let Some(lines_after) = new_screen_y_end.checked_sub(HISTORY_LINES) {
+			self.history[screen_y_end..]
+				.as_flattened_mut()
+				.fill(EMPTY_CHAR);
+			self.history[..lines_after]
+				.as_flattened_mut()
+				.fill(EMPTY_CHAR);
+		} else {
+			self.history[screen_y_end..new_screen_y_end]
+				.as_flattened_mut()
+				.fill(EMPTY_CHAR);
+		}
+		// Update screen position
+		self.screen_y = (self.screen_y + newlines) % HISTORY_LINES;
+		self.cursor_y %= HISTORY_LINES;
 	}
 
-	/// Moves the cursor backwards `x` characters horizontally and `y`
-	/// characters vertically.
-	fn cursor_backward(&mut self, x: usize, y: usize) {
-		self.cursor_x -= x as vga::Pos;
-		self.cursor_y -= y as vga::Pos;
-		self.fix_pos();
+	/// Moves the cursor forward `n` characters.
+	fn cursor_forward(&mut self, n: usize) {
+		let off = self.cursor_x + n;
+		self.cursor_x = off % vga::WIDTH as usize;
+		let newlines = off / vga::WIDTH as usize;
+		if newlines > 0 {
+			self.cursor_y += newlines;
+			self.append_lines();
+		}
+	}
+
+	/// Moves the cursor backwards `n` characters.
+	fn cursor_backward(&mut self, n: usize) {
+		self.cursor_x = self.cursor_x.saturating_sub(n);
 	}
 
 	/// Moves the cursor `n` lines down.
 	fn newline(&mut self, n: usize) {
 		self.cursor_x = 0;
-		self.cursor_y += n as i16;
-		self.fix_pos();
+		self.cursor_y += n;
+		self.append_lines();
 	}
 }
 
@@ -336,7 +353,7 @@ pub static TTY: TTY = TTY {
 		cursor_y: 0,
 
 		screen_y: 0,
-		history: [(vga::DEFAULT_COLOR as vga::Char) << 8; HISTORY_SIZE],
+		history: [[EMPTY_CHAR; vga::WIDTH as usize]; HISTORY_LINES],
 
 		ansi_buffer: ANSIBuffer::new(),
 
@@ -368,7 +385,8 @@ impl TTY {
 		let mut disp = self.display.lock();
 		let cursor_visible = disp.cursor_visible;
 		disp.set_cursor_visible(cursor_visible);
-		disp.update();
+		disp.update_screen();
+		disp.update_cursor();
 	}
 
 	/// Writes the character `c` to the TTY.
@@ -383,19 +401,18 @@ impl TTY {
 
 		match c {
 			0x07 => ring_bell(),
-			b'\t' => disp.cursor_forward(get_tab_size(disp.cursor_x), 0),
+			b'\t' => disp.cursor_forward(get_tab_size(disp.cursor_x)),
 			b'\n' => disp.newline(1),
 			// Form Feed (^L)
 			0x0c => {
 				// TODO Move printer to a top of page
 			}
 			b'\r' => disp.cursor_x = 0,
-			0x08 | 0x7f => disp.cursor_backward(1, 0),
+			0x08 | 0x7f => disp.cursor_backward(1),
 			_ => {
 				let tty_char = (c as vga::Char) | ((disp.current_color as vga::Char) << 8);
-				let pos = get_history_offset(disp.cursor_x, disp.cursor_y);
-				disp.history[pos] = tty_char;
-				disp.cursor_forward(1, 0);
+				disp.history[disp.cursor_y][disp.cursor_x] = tty_char;
+				disp.cursor_forward(1);
 			}
 		}
 	}
@@ -418,7 +435,8 @@ impl TTY {
 			self.putchar(&mut display, c);
 			i += 1;
 		}
-		display.update();
+		display.update_screen();
+		display.update_cursor();
 	}
 
 	// TODO Implement IUTF8
@@ -564,8 +582,7 @@ impl TTY {
 
 					i += 1;
 				} else if b == 0xf7 {
-					// TODO Check
-					self.erase(1);
+					self.erase();
 				} else {
 					i += 1;
 				}
@@ -599,32 +616,27 @@ impl TTY {
 	}
 
 	/// Erases `count` characters in TTY.
-	pub fn erase(&self, count: usize) {
+	pub fn erase(&self) {
 		let termios = self.get_termios();
 		let mut input = self.input.lock();
 		if termios.c_lflag & ICANON != 0 {
-			let count = min(count, input.buf.len());
-			if count > input.input_size {
+			if input.input_size == 0 {
 				return;
 			}
-
 			if termios.c_lflag & ECHOE != 0 {
 				let mut disp = self.display.lock();
 				// TODO Handle tab characters
-				disp.cursor_backward(count, 0);
-				let begin = get_history_offset(disp.cursor_x, disp.cursor_y);
-				disp.history[begin..(begin + count)].fill(EMPTY_CHAR);
-				disp.update();
+				disp.cursor_backward(1);
+				let cursor_x = disp.cursor_x;
+				let cursor_y = disp.cursor_y;
+				disp.history[cursor_y][cursor_x] = EMPTY_CHAR;
+				disp.update_screen();
+				disp.update_cursor();
 			}
-
-			input.input_size -= count;
+			input.input_size -= 1;
 		} else {
-			// Printing DEL characters
-			for _ in 0..count {
-				self.input(&[0x7f]);
-			}
+			self.input(&[0x7f]);
 		}
-
 		self.rd_queue.wake_next();
 	}
 
