@@ -41,7 +41,7 @@ pub const PATH_SEPARATOR: u8 = b'/';
 
 /// Owned file path.
 #[derive(Default, Eq, Hash, PartialEq)]
-pub struct PathBuf(String);
+pub struct PathBuf(pub(crate) String);
 
 impl PathBuf {
 	/// Creates a new empty path.

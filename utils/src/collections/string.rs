@@ -16,11 +16,14 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module implements the String structure which wraps the `str` type.
+//! Owned version of `[u8]` (in standard Rust, this would be an owned version of `str` instead).
 
 use crate::{
 	AllocError, TryClone, TryToOwned,
-	collections::vec::Vec,
+	collections::{
+		path::{Path, PathBuf},
+		vec::Vec,
+	},
 	errno::{AllocResult, CollectResult},
 };
 use core::{
@@ -166,6 +169,12 @@ impl From<Vec<u8>> for String {
 	}
 }
 
+impl From<PathBuf> for String {
+	fn from(path: PathBuf) -> Self {
+		path.0
+	}
+}
+
 impl TryFrom<&[u8]> for String {
 	type Error = AllocError;
 
@@ -173,6 +182,14 @@ impl TryFrom<&[u8]> for String {
 		Ok(Self {
 			data: Vec::try_from(s)?,
 		})
+	}
+}
+
+impl TryFrom<&Path> for String {
+	type Error = AllocError;
+
+	fn try_from(path: &Path) -> Result<Self, Self::Error> {
+		Self::try_from(path.as_bytes())
 	}
 }
 

@@ -206,7 +206,7 @@ impl fmt::Display for IntFrame {
 			f.write_fmt(format_args!(" GS:  {:0LEN$x}", self.gs))?;
 			f.write_fmt(format_args!(" FS:  {:0LEN$x}", self.fs))?;
 			f.write_fmt(format_args!(" INT: {:0LEN$x}\n", self.int))?;
-			f.write_fmt(format_args!("CODE: {:0LEN$x}", self.code))?;
+			f.write_fmt(format_args!("ERR: {:0LEN$x}", self.code))?;
 			f.write_fmt(format_args!(" EIP: {:0LEN$x}", self.rip))?;
 			f.write_fmt(format_args!(" CS: {:0LEN$x}", self.cs))?;
 			f.write_fmt(format_args!(" EFL: {:0LEN$x}", self.rflags))?;
@@ -233,12 +233,12 @@ impl fmt::Display for IntFrame {
 			f.write_fmt(format_args!("GS:  {:0LEN$x}", self.gs))?;
 			f.write_fmt(format_args!(" FS:  {:0LEN$x}", self.fs))?;
 			f.write_fmt(format_args!(" INT: {:0LEN$x}\n", self.int))?;
-			f.write_fmt(format_args!("CODE:   {:0LEN$x}", self.code))?;
+			f.write_fmt(format_args!("ERR: {:0LEN$x}", self.code))?;
 			f.write_fmt(format_args!(" RIP: {:0LEN$x}", self.rip))?;
-			f.write_fmt(format_args!(" CS: {:0LEN$x}\n", self.cs))?;
+			f.write_fmt(format_args!(" CS:  {:0LEN$x}\n", self.cs))?;
 			f.write_fmt(format_args!("RFL: {:0LEN$x}", self.rflags))?;
 			f.write_fmt(format_args!(" RSP: {:0LEN$x}", self.rsp))?;
-			f.write_fmt(format_args!(" SS: {:0LEN$x}", self.ss))?;
+			f.write_fmt(format_args!(" SS:  {:0LEN$x}", self.ss))?;
 		}
 		Ok(())
 	}
