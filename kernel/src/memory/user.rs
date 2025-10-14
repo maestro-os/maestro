@@ -457,7 +457,7 @@ pub struct UserArrayIterator<'a> {
 impl UserArrayIterator<'_> {
 	fn next_impl(&mut self) -> EResult<Option<String>> {
 		let Some(ptr) = self.arr.ptr else {
-			return Err(errno!(EFAULT));
+			return Ok(None);
 		};
 		let str_ptr = if self.arr.compat {
 			let str_ptr = unsafe { ptr.cast::<u32>().add(self.i) };

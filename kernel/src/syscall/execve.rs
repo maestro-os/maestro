@@ -31,7 +31,11 @@ use crate::{
 };
 use core::{ffi::c_int, hint::unlikely};
 use utils::{
-	collections::{path::Path, string::String, vec::Vec},
+	collections::{
+		path::{Path, PathBuf},
+		string::String,
+		vec::Vec,
+	},
 	errno,
 	errno::{CollectResult, EResult},
 	ptr::arc::Arc,
@@ -45,86 +49,92 @@ const INTERP_MAX: usize = 4;
 
 // TODO Use ARG_MAX
 
-/// A buffer containing a shebang.
-struct ShebangBuffer {
-	/// The before to store the shebang read from file.
-	buf: [u8; SHEBANG_MAX],
-	/// The index of the end of the shebang in the buffer.
-	end: usize,
+struct Shebang<'b> {
+	interp_path: &'b Path,
+	optional_arg: Option<&'b [u8]>,
 }
 
-impl Default for ShebangBuffer {
-	fn default() -> Self {
-		Self {
-			buf: [0; SHEBANG_MAX],
-			end: 0,
+impl Shebang<'_> {
+	/// Pushes as arguments, in reversed order
+	fn push_args(&self, args: &mut Vec<String>) -> EResult<()> {
+		if let Some(arg) = self.optional_arg {
+			args.push(arg.try_into()?)?;
 		}
+		args.push(self.interp_path.try_into()?)?;
+		Ok(())
 	}
+}
+
+fn parse_shebang(buf: &mut [u8]) -> Option<Shebang> {
+	let mut split = buf
+		.strip_prefix(b"#!")?
+		.split(|b| matches!(*b, b' ' | b'\t'))
+		.filter(|s| !s.is_empty());
+	Some(Shebang {
+		interp_path: split.next().map(Path::new_unbounded)?,
+		optional_arg: split.next(),
+	})
+}
+
+fn read_shebang(buf: &mut [u8; SHEBANG_MAX], ent: Arc<vfs::Entry>) -> EResult<Option<Shebang>> {
+	// Check permission
+	let stat = ent.stat();
+	let ap = AccessProfile::cur_task();
+	if !ap.can_read_file(&stat) || !ap.can_execute_file(&stat) {
+		return Err(errno!(EACCES));
+	}
+	// Read file
+	let file = File::open_entry(ent, O_RDONLY)?;
+	let ptr = UserSlice::from_slice_mut(buf);
+	let len = file.ops.read(&file, 0, ptr)?;
+	// Find the end of the shebang
+	let end = buf.iter().position(|b| *b == b'\n').unwrap_or(len);
+	Ok(parse_shebang(&mut buf[..end]))
 }
 
 /// Returns the file for the given `path`.
 ///
-/// The function also parses and eventual shebang string and builds the resulting **argv**.
+/// The function also parses any eventual shebang strings and builds the resulting **argv**.
 ///
 /// Arguments:
-/// - `path` is the path of the executable file.
-/// - `rs` is the resolution settings to be used to open files.
-/// - `argv` is an iterator over the arguments passed to the system call.
-fn get_file<A: Iterator<Item = EResult<String>>>(
+/// - `ent` is the file to execute
+/// - `path` is the path to `ent`
+/// - `argv` is the list of arguments passed to the system call
+fn get_file(
 	mut ent: Arc<vfs::Entry>,
-	argv: A,
+	path: PathBuf,
+	argv: UserArray,
 ) -> EResult<(Arc<vfs::Entry>, Vec<String>)> {
-	let ap = AccessProfile::cur_task();
-	let mut shebangs: [ShebangBuffer; INTERP_MAX] = Default::default();
-	let mut i = 0;
-	loop {
-		// Check permission
-		let stat = ent.stat();
-		if !ap.can_read_file(&stat) || !ap.can_execute_file(&stat) {
-			return Err(errno!(EACCES));
-		}
-		// Read shebang
-		let shebang = &mut shebangs[i];
-		let len = {
-			let file = File::open_entry(ent.clone(), O_RDONLY)?;
-			let buf = UserSlice::from_slice_mut(&mut shebang.buf);
-			file.ops.read(&file, 0, buf)?
-		};
-		// Parse shebang
-		shebang.end = shebang.buf[..len]
-			.iter()
-			.position(|b| *b == b'\n')
-			.unwrap_or(len);
-		let Some(interp_path) = shebang.buf[..shebang.end].strip_prefix(b"#!") else {
-			break;
-		};
-		let interp_path = Path::new(interp_path)?;
+	// Collect arguments
+	let mut final_argv = argv.iter().collect::<EResult<CollectResult<Vec<_>>>>()?.0?;
+	let mut shebang_buf: [u8; SHEBANG_MAX] = [0; SHEBANG_MAX];
+	let Some(shebang) = read_shebang(&mut shebang_buf, ent.clone())? else {
+		// No shebang, stop here
+		return Ok((ent, final_argv));
+	};
+	// Reverse the list, to avoid shifting everything at each push
+	final_argv.reverse();
+	// Swap `argv[0]` for `path`
+	let path = path.into();
+	if let Some(a) = final_argv.last_mut() {
+		*a = path;
+	} else {
+		final_argv.push(path)?;
+	}
+	shebang.push_args(&mut final_argv)?;
+	ent = vfs::get_file_from_path(shebang.interp_path, true)?;
+	// Handle further shebangs
+	let mut i = 1;
+	while let Some(shebang) = read_shebang(&mut shebang_buf, ent.clone())? {
 		i += 1;
-		// If there is still an interpreter but the limit has been reached
-		if unlikely(i >= INTERP_MAX) {
+		if unlikely(i > INTERP_MAX) {
 			return Err(errno!(ELOOP));
 		}
-		// Read interpreter
-		ent = vfs::get_file_from_path(interp_path, true)?;
+		shebang.push_args(&mut final_argv)?;
+		ent = vfs::get_file_from_path(shebang.interp_path, true)?;
 	}
-	// Build arguments
-	let final_argv = shebangs[..i]
-		.iter()
-		.rev()
-		.enumerate()
-		.flat_map(|(i, shebang)| {
-			let mut words =
-				shebang.buf[2..shebang.end].split(|b| (*b as char).is_ascii_whitespace());
-			// Skip interpreters, except the first
-			if i > 0 {
-				words.next();
-			}
-			words
-		})
-		.map(|s| Ok(String::try_from(s)?))
-		.chain(argv)
-		.collect::<EResult<CollectResult<Vec<String>>>>()?
-		.0?;
+	// Put back in the original order
+	final_argv.reverse();
 	Ok((ent, final_argv))
 }
 
@@ -151,8 +161,7 @@ pub fn execveat(
 		let Resolved::Found(ent) = at::get_file(dirfd, Some(&path), flags, false, true)? else {
 			unreachable!();
 		};
-		let argv = argv.iter();
-		let (file, argv) = get_file(ent, argv)?;
+		let (file, argv) = get_file(ent, path, argv)?;
 		let envp = envp.iter().collect::<EResult<CollectResult<Vec<_>>>>()?.0?;
 		let program_image = elf::exec(file, argv, envp)?;
 		let proc = Process::current();
