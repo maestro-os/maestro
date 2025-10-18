@@ -29,7 +29,7 @@ use crate::{
 		PhysAddr, VirtAddr,
 		buddy::ZONE_USER,
 		cache::{FrameOwner, RcFrame},
-		vmem::{VMem, shootdown_page, write_ro},
+		vmem::{VMem, invalidate_page, shootdown_page, write_ro},
 	},
 	process::mem_space::{
 		COPY_BUFFER, MAP_ANONYMOUS, MAP_PRIVATE, MAP_SHARED, MemSpace, PROT_EXEC, PROT_WRITE, Page,
@@ -130,10 +130,12 @@ fn init_page(vmem: &VMem, prot: u8, src: Option<&RcFrame>, dst: VirtAddr) -> All
 	// Map source page to copy buffer if any
 	if let Some(src) = src {
 		vmem.map(src.phys_addr(), COPY_BUFFER, 0);
+		invalidate_page(COPY_BUFFER);
 	}
 	// Map destination page
 	let flags = vmem_flags(prot, false);
 	vmem.map(new_page.phys_addr(), dst, flags);
+	invalidate_page(dst);
 	// Copy or zero
 	unsafe {
 		// Required since the copy buffer is mapped without write permission
@@ -237,6 +239,7 @@ impl MemMapping {
 			// Map the page
 			let flags = vmem_flags(self.prot, false);
 			mem_space.vmem.map(phys_addr, virtaddr, flags);
+			shootdown_page(virtaddr, mem_space.bound_cpus());
 			return Ok(());
 		}
 		// Else, Allocate a page

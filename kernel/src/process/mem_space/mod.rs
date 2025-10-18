@@ -541,6 +541,9 @@ impl MemSpace {
 
 	/// Binds the memory space to the current CPU.
 	pub fn bind(this: &Arc<Self>) {
+		if this.vmem.is_bound() {
+			return;
+		}
 		critical(|| {
 			// Mark the memory space as bound
 			let prev = per_cpu().mem_space.replace(Some(this.clone()));
@@ -587,16 +590,13 @@ impl MemSpace {
 	/// replaced by the scheduler.
 	pub fn switch<F: FnOnce(&Arc<Self>) -> T, T>(this: &Arc<Self>, f: F) -> T {
 		critical(|| {
-			// Bind `this`
-			this.vmem.bind();
-			let old = per_cpu().mem_space.replace(Some(this.clone()));
-			// Execute function
+			let old = per_cpu().mem_space.get();
+			Self::bind(this);
 			let res = f(this);
-			// Restore previous
-			if let Some(old) = &old {
-				old.vmem.bind();
+			match old {
+				Some(old) => MemSpace::bind(&old),
+				None => MemSpace::unbind(),
 			}
-			per_cpu().mem_space.set(old);
 			res
 		})
 	}
