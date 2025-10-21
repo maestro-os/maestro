@@ -610,8 +610,10 @@ impl MemSpace {
 		let mappings = state.mappings.try_clone()?;
 		// Unmap to invalidate the virtual memory context
 		for (_, m) in &state.mappings {
-			self.vmem.unmap_range(m.addr, m.size.get());
-			shootdown_range(m.addr, m.size.get(), self.bound_cpus());
+			if m.prot & PROT_WRITE != 0 {
+				self.vmem.unmap_range(m.addr, m.size.get());
+				shootdown_range(m.addr, m.size.get(), self.bound_cpus());
+			}
 		}
 		Ok(Self {
 			state: IntRwLock::new(MemSpaceState {
