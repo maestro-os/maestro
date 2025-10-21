@@ -28,7 +28,8 @@ use utils::{errno, errno::EResult, list, list_type};
 
 /// Queue of processes waiting on a resource.
 ///
-/// While waiting, the process is turned to the [`State::IntSleeping`] or [`State::Sleeping`] state.
+/// While waiting, the process is turned to the [`State::IntSleeping`] or [`State::Sleeping`]
+/// state.
 pub struct WaitQueue(IntSpin<list_type!(Process, wait_queue)>);
 
 impl Default for WaitQueue {
