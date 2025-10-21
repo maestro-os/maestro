@@ -129,12 +129,12 @@ fn init_page(vmem: &VMem, prot: u8, src: Option<&RcFrame>, dst: VirtAddr) -> All
 	let new_page = RcFrame::new(0, ZONE_USER, FrameOwner::Anon, 0)?;
 	// Map source page to copy buffer if any
 	if let Some(src) = src {
-		vmem.map(src.phys_addr(), COPY_BUFFER, 0);
+		vmem.map(src.phys_addr(), COPY_BUFFER, 0, 0);
 		invalidate_page(COPY_BUFFER);
 	}
 	// Map destination page
 	let flags = vmem_flags(prot, false);
-	vmem.map(new_page.phys_addr(), dst, flags);
+	vmem.map(new_page.phys_addr(), dst, flags, 0);
 	invalidate_page(dst);
 	// Copy or zero
 	unsafe {
@@ -238,7 +238,7 @@ impl MemMapping {
 			}
 			// Map the page
 			let flags = vmem_flags(self.prot, false);
-			mem_space.vmem.map(phys_addr, virtaddr, flags);
+			mem_space.vmem.map(phys_addr, virtaddr, flags, 0);
 			shootdown_page(virtaddr, mem_space.bound_cpus());
 			return Ok(());
 		}
@@ -257,7 +257,7 @@ impl MemMapping {
 				};
 				// Map
 				let flags = vmem_flags(self.prot, !write);
-				mem_space.vmem.map(phys_addr, virtaddr, flags);
+				mem_space.vmem.map(phys_addr, virtaddr, flags, 0);
 			}
 			// Mapped file
 			Some(file) => {
@@ -273,7 +273,7 @@ impl MemMapping {
 				pages[offset] = Some(MappedFrame::new(page));
 				// Map
 				let flags = vmem_flags(self.prot, !write);
-				mem_space.vmem.map(phys_addr, virtaddr, flags);
+				mem_space.vmem.map(phys_addr, virtaddr, flags, 0);
 			}
 		}
 		shootdown_page(virtaddr, mem_space.bound_cpus());

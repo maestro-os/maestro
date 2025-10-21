@@ -907,7 +907,7 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		// TODO 0x0ca => syscall!(futex, frame),
 		// TODO 0x0cb => syscall!(sched_setaffinity, frame),
 		// TODO 0x0cc => syscall!(sched_getaffinity, frame),
-		// TODO 0x0cd => syscall!(set_thread_are, frame),
+		0x0cd => syscall!(set_thread_area, frame),
 		// TODO 0x0ce => syscall!(io_setup, frame),
 		// TODO 0x0cf => syscall!(io_destroy, frame),
 		// TODO 0x0d0 => syscall!(io_getevents, frame),
