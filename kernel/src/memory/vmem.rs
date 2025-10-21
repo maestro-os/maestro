@@ -94,16 +94,27 @@ impl VMem {
 	/// Maps a single page of virtual memory at `virtaddr` to a single page of physical memory at
 	/// `physaddr`.
 	///
-	/// `flags` is the set of flags to use for the mapping, which are architecture-dependent.
+	/// Arguments:
+	/// - `flags` is the set of flags to use for the mapping, which are architecture-dependent
+	/// - `page_size_order` the page order at which [`FLAG_PAGE_SIZE`] should be used (if possible)
 	///
 	/// **Note**: this function does *not* invalidate the cache. This is the caller's
 	/// responsibility
 	#[inline]
-	pub fn map(&self, physaddr: PhysAddr, virtaddr: VirtAddr, flags: usize) {
+	pub fn map(&self, physaddr: PhysAddr, virtaddr: VirtAddr, flags: usize, page_size_order: u8) {
+		// Sanitize
+		let physaddr = PhysAddr(physaddr.0 & !(PAGE_SIZE - 1));
+		let virtaddr = VirtAddr(virtaddr.0 & !(PAGE_SIZE - 1));
 		let _guard = self.spin.lock();
 		#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 		unsafe {
-			x86::paging::map(self.table.as_ref(), physaddr, virtaddr, flags);
+			x86::paging::map(
+				self.table.as_ref(),
+				physaddr,
+				virtaddr,
+				flags,
+				page_size_order,
+			);
 		}
 	}
 
@@ -111,14 +122,13 @@ impl VMem {
 	///
 	/// On overflow, the physical and virtual addresses wrap around the memory space.
 	pub fn map_range(&self, physaddr: PhysAddr, virtaddr: VirtAddr, pages: usize, flags: usize) {
+		// Sanitize
+		let physaddr = PhysAddr(physaddr.0 & !(PAGE_SIZE - 1));
+		let virtaddr = VirtAddr(virtaddr.0 & !(PAGE_SIZE - 1));
 		let _guard = self.spin.lock();
-		for i in 0..pages {
-			let physaddr = physaddr + i * PAGE_SIZE;
-			let virtaddr = virtaddr + i * PAGE_SIZE;
-			#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-			unsafe {
-				x86::paging::map(self.table.as_ref(), physaddr, virtaddr, flags);
-			}
+		#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+		unsafe {
+			x86::paging::map_range(self.table.as_ref(), physaddr, virtaddr, pages, flags);
 		}
 	}
 
@@ -128,6 +138,8 @@ impl VMem {
 	/// responsibility
 	#[inline]
 	pub fn unmap(&self, virtaddr: VirtAddr) {
+		// Sanitize
+		let virtaddr = VirtAddr(virtaddr.0 & !(PAGE_SIZE - 1));
 		let _guard = self.spin.lock();
 		#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 		unsafe {
@@ -139,13 +151,12 @@ impl VMem {
 	///
 	/// On overflow, the physical and virtual addresses wrap around the memory space.
 	pub fn unmap_range(&self, virtaddr: VirtAddr, pages: usize) {
+		// Sanitize
+		let virtaddr = VirtAddr(virtaddr.0 & !(PAGE_SIZE - 1));
 		let _guard = self.spin.lock();
-		for i in 0..pages {
-			let virtaddr = virtaddr + i * PAGE_SIZE;
-			#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-			unsafe {
-				x86::paging::unmap(self.table.as_ref(), virtaddr);
-			}
+		#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+		unsafe {
+			x86::paging::unmap_range(self.table.as_ref(), virtaddr, pages);
 		}
 	}
 
@@ -335,10 +346,12 @@ pub(crate) fn init() {
 			smp::TRAMPOLINE_PHYS_ADDR,
 			VirtAddr(smp::TRAMPOLINE_PHYS_ADDR.0),
 			0,
+			0,
 		);
 		kernel_vmem.map(
 			smp::TRAMPOLINE_PHYS_ADDR,
 			smp::TRAMPOLINE_PHYS_ADDR.kernel_to_virtual().unwrap(),
+			0,
 			0,
 		);
 		// Map VGA buffer
@@ -377,7 +390,7 @@ mod test {
 	#[test_case]
 	fn vmem_map0() {
 		let vmem = unsafe { VMem::new() };
-		vmem.map(PhysAddr(0x100000), VirtAddr(0x100000), 0);
+		vmem.map(PhysAddr(0x100000), VirtAddr(0x100000), 0, 0);
 		for i in (0..0xc0000000).step_by(PAGE_SIZE) {
 			let res = vmem.translate(VirtAddr(i));
 			if (0x100000..0x101000).contains(&i) {
@@ -391,8 +404,8 @@ mod test {
 	#[test_case]
 	fn vmem_map1() {
 		let vmem = unsafe { VMem::new() };
-		vmem.map(PhysAddr(0x100000), VirtAddr(0x100000), 0);
-		vmem.map(PhysAddr(0x200000), VirtAddr(0x100000), 0);
+		vmem.map(PhysAddr(0x100000), VirtAddr(0x100000), 0, 0);
+		vmem.map(PhysAddr(0x200000), VirtAddr(0x100000), 0, 0);
 		for i in (0..0xc0000000).step_by(PAGE_SIZE) {
 			let res = vmem.translate(VirtAddr(i));
 			if (0x100000..0x101000).contains(&i) {
@@ -406,7 +419,7 @@ mod test {
 	#[test_case]
 	fn vmem_unmap0() {
 		let vmem = unsafe { VMem::new() };
-		vmem.map(PhysAddr(0x100000), VirtAddr(0x100000), 0);
+		vmem.map(PhysAddr(0x100000), VirtAddr(0x100000), 0, 0);
 		vmem.unmap(VirtAddr(0x100000));
 		for i in (0..0xc0000000).step_by(PAGE_SIZE) {
 			assert_eq!(vmem.translate(VirtAddr(i)), None);

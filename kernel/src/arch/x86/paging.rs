@@ -19,11 +19,14 @@
 //! x86 virtual memory support.
 
 use crate::{
+	arch::x86::cpuid,
 	memory::{PhysAddr, VirtAddr, buddy, buddy::BUDDY_RETRY},
 	register_get,
+	sync::once::OnceInit,
 };
 use core::{
 	arch::asm,
+	hint::likely,
 	mem,
 	ops::{Deref, DerefMut},
 	ptr::NonNull,
@@ -98,6 +101,22 @@ const KERNELSPACE_TABLES: usize = ENTRIES_PER_TABLE - USERSPACE_TABLES;
 /// Kernel space entries flags.
 const KERNEL_FLAGS: usize = FLAG_PRESENT | FLAG_WRITE | FLAG_GLOBAL;
 
+/// Tells whether 1GB pages are supported
+static PAGE_SIZE_1GB: OnceInit<bool> = unsafe { OnceInit::new() };
+
+/// Detects supported page sizes. This is called only once at boot
+pub(crate) fn init() {
+	let supported = if cpuid::extended_max_leaf() >= 0x80000001 {
+		let edx = super::cpuid(0x80000001, 0).3;
+		edx & (1 << 26) != 0
+	} else {
+		false
+	};
+	unsafe {
+		OnceInit::init(&PAGE_SIZE_1GB, supported);
+	}
+}
+
 /// Paging table.
 #[repr(C, align(4096))]
 pub struct Table(pub [Entry; ENTRIES_PER_TABLE]);
@@ -134,25 +153,27 @@ impl Table {
 	///
 	/// This function allocates a new page table and fills it so that the memory mapping keeps the
 	/// same behavior.
-	pub fn expand(&self, index: usize) {
-		let entry = self[index].load(Relaxed);
-		if entry & FLAG_PRESENT == 0 || entry & FLAG_PAGE_SIZE == 0 {
+	pub fn expand(entry: &Entry, level: usize) {
+		let val = entry.load(Relaxed);
+		if val & FLAG_PRESENT == 0 || val & FLAG_PAGE_SIZE == 0 {
 			return;
 		}
-		let flags = entry & (FLAGS_MASK & !FLAG_PAGE_SIZE);
+		let flags = val & (FLAGS_MASK & !FLAG_PAGE_SIZE);
+		let stride = if level == 1 {
+			PAGE_SIZE
+		} else {
+			PAGE_SIZE * PAGE_SIZE
+		};
 		// Create table
 		let mut new_table = alloc_table();
 		let new_table_ref = unsafe { new_table.as_mut() };
 		new_table_ref.iter_mut().enumerate().for_each(|(i, e)| {
-			// FIXME the stride can be more than PAGE_SIZE depending on whether we are on 32 or 64
-			// bit and the level of the paging object
-			let addr = VirtAddr(entry & ADDR_MASK) + i * PAGE_SIZE;
-			let addr = addr.kernel_to_physical().unwrap();
+			let addr = PhysAddr(val & ADDR_MASK) + i * stride;
 			e.store(to_entry(addr, flags), Relaxed);
 		});
 		// Set new entry
 		let addr = VirtAddr::from(new_table).kernel_to_physical().unwrap();
-		self[index].store(to_entry(addr, flags), Relaxed);
+		entry.store(to_entry(addr, flags), Relaxed);
 	}
 
 	/// Tells whether the table at index `index` in the page directory is empty.
@@ -288,42 +309,95 @@ fn can_remove_table(level: usize, index: usize) -> bool {
 	(1..(DEPTH - 1)).contains(&level) || (level == DEPTH - 1 && index < USERSPACE_TABLES)
 }
 
+const PAGE_SIZE_ORDER_1: u8 = if cfg!(target_arch = "x86") { 10 } else { 9 };
+const PAGE_SIZE_ORDER_2: u8 = PAGE_SIZE_ORDER_1 * 2;
+
 /// Inner implementation of [`crate::memory::vmem::VMem::map`] for x86.
+///
+/// The function returns the size of the mapped entry in bytes.
 ///
 /// # Safety
 ///
 /// In case the mapped memory is in kernelspace, the caller must ensure the code and stack of the
 /// kernel remain accessible and valid.
-pub unsafe fn map(mut table: &Table, physaddr: PhysAddr, virtaddr: VirtAddr, flags: usize) {
-	// Sanitize
-	let physaddr = PhysAddr(physaddr.0 & !(PAGE_SIZE - 1));
-	let virtaddr = VirtAddr(virtaddr.0 & !(PAGE_SIZE - 1));
-	// TODO support FLAG_PAGE_SIZE (requires a way to specify a which level it must be enabled)
-	let flags = (flags & FLAGS_MASK & !FLAG_PAGE_SIZE) | FLAG_PRESENT;
-	// Set entries
+///
+/// The caller must make sure `physaddr` and `virtaddr` are properly aligned with respect to
+/// `page_size_order`.
+pub unsafe fn map(
+	mut table: &Table,
+	physaddr: PhysAddr,
+	virtaddr: VirtAddr,
+	flags: usize,
+	page_size_order: u8,
+) -> usize {
 	for level in (0..DEPTH).rev() {
-		let index = get_addr_element_index(virtaddr, level);
-		let previous = table[index].load(Relaxed);
-		if level == 0 {
-			table[index].store(to_entry(physaddr, flags), Relaxed);
-			break;
+		let ent = &table[get_addr_element_index(virtaddr, level)];
+		match (level, flags & FLAG_PAGE_SIZE != 0, page_size_order) {
+			(0, ..) => {
+				ent.store(to_entry(physaddr, flags & !FLAG_PAGE_SIZE), Relaxed);
+				return PAGE_SIZE;
+			}
+			// Use PAGE_SIZE if appropriate
+			(1, true, PAGE_SIZE_ORDER_1..) => {
+				ent.store(to_entry(physaddr, flags), Relaxed);
+				return PAGE_SIZE << PAGE_SIZE_ORDER_1;
+			}
+			(2, true, PAGE_SIZE_ORDER_2..) if likely(*PAGE_SIZE_1GB) => {
+				ent.store(to_entry(physaddr, flags), Relaxed);
+				return PAGE_SIZE << PAGE_SIZE_ORDER_2;
+			}
+			_ => {
+				// Disable FLAG_XD because it is inverted relative to other flags. Also
+				// FLAG_PAGE_SIZE is not supported here
+				let flags = flags & !(FLAG_XD | FLAG_PAGE_SIZE);
+				let val = ent.load(Relaxed);
+				if val & FLAG_PRESENT == 0 {
+					// No table is present, allocate one
+					let new_table = alloc_table();
+					let addr = VirtAddr::from(new_table).kernel_to_physical().unwrap();
+					ent.store(to_entry(addr, flags), Relaxed);
+				} else if val & FLAG_PAGE_SIZE != 0 {
+					// A PSE entry is present, need to expand it for the next iterations
+					Table::expand(ent, level);
+					ent.fetch_or(flags, Relaxed);
+				} else {
+					ent.fetch_or(flags, Relaxed);
+				}
+			}
 		}
-		#[cfg(target_arch = "x86_64")]
-		let flags = flags & !FLAG_XD;
-		// Allocate a table if necessary
-		if previous & FLAG_PRESENT == 0 {
-			// No table is present, allocate one
-			let new_table = alloc_table();
-			let addr = VirtAddr::from(new_table).kernel_to_physical().unwrap();
-			table[index].store(to_entry(addr, flags), Relaxed);
-		} else if previous & FLAG_PAGE_SIZE != 0 {
-			// A PSE entry is present, need to expand it for the mapping
-			table.expand(index);
-		}
-		table[index].fetch_or(flags, Relaxed);
 		// Jump to next table
-		let entry = table[index].load(Relaxed);
-		table = unsafe { unwrap_entry(entry).0.as_mut() };
+		let val = ent.load(Relaxed);
+		table = unsafe { unwrap_entry(val).0.as_mut() };
+	}
+	unreachable!();
+}
+
+/// Inner implementation of [`crate::memory::vmem::VMem::map_range`] for x86.
+///
+/// # Safety
+///
+/// In case the mapped memory is in kernelspace, the caller must ensure the code and stack of the
+/// kernel remain accessible and valid.
+pub unsafe fn map_range(
+	table: &Table,
+	mut physaddr: PhysAddr,
+	mut virtaddr: VirtAddr,
+	pages: usize,
+	flags: usize,
+) {
+	let end = virtaddr + pages * PAGE_SIZE;
+	while virtaddr < end {
+		// log2(PAGE_SIZE) = 12
+		let align_order = (physaddr.0 | (end.0 - virtaddr.0)).trailing_zeros() as u8 - 12;
+		let off = map(
+			table,
+			physaddr,
+			virtaddr,
+			flags | FLAG_PAGE_SIZE,
+			align_order,
+		);
+		*physaddr += off;
+		*virtaddr += off;
 	}
 }
 
@@ -334,8 +408,6 @@ pub unsafe fn map(mut table: &Table, physaddr: PhysAddr, virtaddr: VirtAddr, fla
 /// In case the unmapped memory is in kernelspace, the caller must ensure the code and stack of the
 /// kernel remain accessible and valid.
 pub unsafe fn unmap(mut table: &Table, virtaddr: VirtAddr) {
-	// Sanitize
-	let virtaddr = VirtAddr(virtaddr.0 & !(PAGE_SIZE - 1));
 	// Read entries
 	let mut tables: [Option<(NonNull<Table>, usize)>; DEPTH] = [None; DEPTH];
 	for level in (0..DEPTH).rev() {
@@ -358,6 +430,19 @@ pub unsafe fn unmap(mut table: &Table, virtaddr: VirtAddr) {
 		if !table.is_empty() {
 			break;
 		}
+	}
+}
+
+/// Inner implementation of [`crate::memory::vmem::VMem::unmap_range`] for x86.
+///
+/// # Safety
+///
+/// In case the mapped memory is in kernelspace, the caller must ensure the code and stack of the
+/// kernel remain accessible and valid.
+pub unsafe fn unmap_range(table: &Table, virtaddr: VirtAddr, pages: usize) {
+	for i in 0..pages {
+		let virtaddr = virtaddr + i * PAGE_SIZE;
+		unmap(table, virtaddr);
 	}
 }
 
