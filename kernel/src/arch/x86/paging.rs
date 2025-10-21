@@ -349,6 +349,9 @@ pub unsafe fn map(
 			_ => {
 				// Disable FLAG_XD because it is inverted relative to other flags. Also
 				// FLAG_PAGE_SIZE is not supported here
+				#[cfg(target_arch = "x86")]
+				let flags = flags & !FLAG_PAGE_SIZE;
+				#[cfg(target_arch = "x86_64")]
 				let flags = flags & !(FLAG_XD | FLAG_PAGE_SIZE);
 				let val = ent.load(Relaxed);
 				if val & FLAG_PRESENT == 0 {

@@ -96,7 +96,7 @@ impl VMem {
 	///
 	/// Arguments:
 	/// - `flags` is the set of flags to use for the mapping, which are architecture-dependent
-	/// - `page_size_order` the page order at which [`FLAG_PAGE_SIZE`] should be used (if possible)
+	/// - `page_size_order` the page order at which `FLAG_PAGE_SIZE` should be used (if possible)
 	///
 	/// **Note**: this function does *not* invalidate the cache. This is the caller's
 	/// responsibility
