@@ -194,7 +194,7 @@ impl<T: ?Sized> Mutex<T, true> {
 	/// is unlocked.
 	///
 	/// If the current process is interrupted by a signal while waiting, the function returns with
-	/// the errno [`EINTR`].
+	/// the errno [`errno::EINTR`].
 	pub fn lock(&self) -> EResult<MutexGuard<T, true>> {
 		lock::<true>(&self.queue)?;
 		Ok(MutexGuard {

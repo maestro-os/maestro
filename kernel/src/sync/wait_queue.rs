@@ -28,7 +28,7 @@ use utils::{errno, errno::EResult, list, list_type};
 
 /// Queue of processes waiting on a resource.
 ///
-/// While waiting, the process is turned to the [`IntSleeping`] or [`Sleeping`] state.
+/// While waiting, the process is turned to the [`State::IntSleeping`] or [`State::Sleeping`] state.
 pub struct WaitQueue(IntSpin<list_type!(Process, wait_queue)>);
 
 impl Default for WaitQueue {
@@ -45,7 +45,7 @@ impl WaitQueue {
 
 	/// Makes the current process wait (sleep) until woken up.
 	///
-	/// If the process has been interrupted while waiting, the function returns [`EINTR`].
+	/// If the process has been interrupted while waiting, the function returns [`errno::EINTR`].
 	pub fn wait(&self) -> EResult<()> {
 		// Enqueue and put the process to sleep
 		self.0.lock().insert_back(Process::current());
