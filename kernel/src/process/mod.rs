@@ -36,7 +36,7 @@ use crate::{
 	file::{
 		File, O_RDWR,
 		fd::{FileDescriptorTable, NewFDConstraint},
-		perm::AccessProfile,
+		perm::{AccessProfile, Gid},
 		vfs,
 	},
 	int,
@@ -76,6 +76,7 @@ use pid::Pid;
 use scheduler::cpu::{PerCpu, per_cpu};
 use signal::{Signal, SignalHandler};
 use utils::{
+	TryClone,
 	collections::{
 		btreemap::BTreeMap,
 		list::ListNode,
@@ -241,6 +242,9 @@ pub struct ProcessLinks {
 pub struct ProcessFs {
 	/// The process's access profile, containing user and group IDs.
 	pub access_profile: AccessProfile,
+	// TODO use for permission checks
+	/// Supplementary group IDs
+	pub groups: Vec<Gid>,
 	/// Current working directory
 	///
 	/// The field contains both the path and the directory.
@@ -249,13 +253,14 @@ pub struct ProcessFs {
 	pub chroot: Arc<vfs::Entry>,
 }
 
-impl Clone for ProcessFs {
-	fn clone(&self) -> Self {
-		Self {
+impl TryClone for ProcessFs {
+	fn try_clone(&self) -> Result<Self, Self::Error> {
+		Ok(Self {
 			access_profile: self.access_profile,
+			groups: self.groups.try_clone()?,
 			cwd: self.cwd.clone(),
 			chroot: self.chroot.clone(),
-		}
+		})
 	}
 }
 
@@ -611,6 +616,7 @@ impl Process {
 			mem_space: UnsafeMut::new(None),
 			fs: Some(Spin::new(ProcessFs {
 				access_profile: AccessProfile::KERNEL,
+				groups: Vec::new(),
 				cwd: root_dir.clone(),
 				chroot: root_dir,
 			})),
@@ -885,7 +891,7 @@ impl Process {
 			tls: Spin::new(*parent.tls.lock()),
 
 			mem_space: UnsafeMut::new(Some(mem_space)),
-			fs: Some(Spin::new(parent.fs().lock().clone())),
+			fs: Some(Spin::new(parent.fs().lock().try_clone()?)),
 			umask: AtomicU32::new(parent.umask.load(Relaxed)),
 			fd_table: UnsafeMut::new(fd_table),
 			// TODO if creating a thread: timer_manager: parent.timer_manager.clone(),

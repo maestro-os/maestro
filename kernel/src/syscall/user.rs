@@ -20,10 +20,10 @@
 
 use crate::{
 	file::perm::{AccessProfile, Gid, Uid},
-	memory::user::UserPtr,
+	memory::user::{UserPtr, UserSlice},
 	process::Process,
 };
-use core::ffi::c_int;
+use core::{ffi::c_int, hint::unlikely};
 use utils::{errno, errno::EResult};
 
 pub fn getuid() -> EResult<usize> {
@@ -187,4 +187,38 @@ pub fn setresgid(rgid: c_int, egid: c_int, sgid: c_int) -> EResult<usize> {
 		i => i as _,
 	};
 	Ok(0)
+}
+
+pub fn getgroups(size: c_int, list: *mut Gid) -> EResult<usize> {
+	let proc = Process::current();
+	let fs = proc.fs().lock();
+	if size > 0 {
+		if size as usize != fs.groups.len() {
+			return Err(errno!(EINVAL));
+		}
+		let list = UserSlice::from_user(list, size as _)?;
+		list.copy_to_user(0, &fs.groups)?;
+	}
+	Ok(fs.groups.len())
+}
+
+pub fn getgroups32(size: c_int, list: *mut Gid) -> EResult<usize> {
+	getgroups(size, list)
+}
+
+pub fn setgroups(size: usize, list: *mut Gid) -> EResult<usize> {
+	let proc = Process::current();
+	let mut fs = proc.fs().lock();
+	if unlikely(!fs.access_profile.is_privileged()) {
+		return Err(errno!(EPERM));
+	}
+	let list = UserSlice::from_user(list, size)?;
+	// TODO no need to zero-init
+	fs.groups.resize(size, 0)?;
+	list.copy_from_user(0, &mut fs.groups)?;
+	Ok(0)
+}
+
+pub fn setgroups32(size: usize, list: *mut Gid) -> EResult<usize> {
+	setgroups(size, list)
 }
