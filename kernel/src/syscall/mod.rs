@@ -102,8 +102,8 @@ use crate::{
 			timer_create, timer_delete, timer_settime,
 		},
 		user::{
-			getegid, geteuid, getgid, getresgid, getresuid, getuid, setgid, setregid, setresgid,
-			setresuid, setreuid, setuid,
+			getegid, geteuid, getgid, getgroups, getgroups32, getresgid, getresuid, getuid,
+			setgid, setgroups, setgroups32, setregid, setresgid, setresuid, setreuid, setuid,
 		},
 		wait::{wait4, waitpid},
 	},
@@ -336,8 +336,8 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		0x04d => syscall!(getrusage, frame),
 		// TODO 0x04e => syscall!(gettimeofday, frame),
 		// TODO 0x04f => syscall!(settimeofday, frame),
-		// TODO 0x050 => syscall!(getgroups, frame),
-		// TODO 0x051 => syscall!(setgroups, frame),
+		0x050 => syscall!(getgroups, frame),
+		0x051 => syscall!(setgroups, frame),
 		0x052 => syscall!(select, frame),
 		0x053 => syscall!(symlink, frame),
 		0x054 => syscall!(oldlstat, frame),
@@ -459,8 +459,8 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		0x0ca => syscall!(getegid, frame),  // getegid32
 		0x0cb => syscall!(setreuid, frame), // setreuid32
 		0x0cc => syscall!(setregid, frame), // setregid32
-		// TODO 0x0cd => syscall!(getgroups32, frame),
-		// TODO 0x0ce => syscall!(setgroups32, frame),
+		0x0cd => syscall!(getgroups32, frame),
+		0x0ce => syscall!(setgroups32, frame),
 		// TODO 0x0cf => syscall!(fchown32, frame),
 		0x0d0 => syscall!(setresuid, frame), // setresuid32
 		0x0d1 => syscall!(getresuid, frame), // getresuid32
@@ -817,8 +817,8 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		// TODO 0x070 => syscall!(setsid, frame),
 		0x071 => syscall!(setreuid, frame),
 		0x072 => syscall!(setregid, frame),
-		// TODO 0x073 => syscall!(getgroups, frame),
-		// TODO 0x074 => syscall!(setgroups, frame),
+		0x073 => syscall!(getgroups, frame),
+		0x074 => syscall!(setgroups, frame),
 		0x075 => syscall!(setresuid, frame),
 		0x076 => syscall!(getresuid, frame),
 		0x077 => syscall!(setresgid, frame),
