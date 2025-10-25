@@ -4,9 +4,9 @@
 
 Building the kernel requires the following dependencies:
 
-- A i386 toolchain (espicially `i386-elf-ld`)
+- An i686 toolchain (especially `i686-elf-ld`)
 - `grub`, to create the bootable disk image
-- `libisoburn`, needed to create the iso
+- `libisoburn`, needed to create the ISO
 - `mtools`
 - `qemu` to run it in QEMU (`cargo run`)
 
