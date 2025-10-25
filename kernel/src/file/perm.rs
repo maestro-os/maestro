@@ -21,7 +21,7 @@
 //! This module implements management of such permissions.
 
 use super::{FileType, Mode, Stat, vfs};
-use crate::{process::Process, sync::spin::Spin};
+use crate::process::Process;
 use utils::{TryClone, collections::vec::Vec, errno, errno::EResult, ptr::arc::Arc};
 
 /// Type representing a user ID.
@@ -208,13 +208,21 @@ pub fn is_privileged() -> bool {
 }
 
 #[inline]
-fn get_ids(effective: bool) -> (Uid, Gid) {
-	let ap = AccessProfile::current();
-	if effective {
-		(ap.euid, ap.egid)
+fn match_ids(stat: &Stat, effective: bool) -> (bool, bool) {
+	let proc = Process::current();
+	let Some(fs) = &proc.fs else {
+		return (true, true);
+	};
+	let fs = fs.lock();
+	let (uid, gid) = if effective {
+		(fs.ap.euid, fs.ap.egid)
 	} else {
-		(ap.uid, ap.gid)
-	}
+		(fs.ap.uid, fs.ap.gid)
+	};
+	(
+		stat.uid == uid,
+		stat.gid == gid || fs.groups.contains(&stat.gid),
+	)
 }
 
 /// Tells whether the current process can read a file with the given status.
@@ -224,11 +232,11 @@ pub fn can_read_file(stat: &Stat, effective: bool) -> bool {
 	if is_privileged() {
 		return true;
 	}
-	let (uid, gid) = get_ids(effective);
-	if stat.mode & S_IRUSR != 0 && stat.uid == uid {
+	let (uid, gid) = match_ids(stat, effective);
+	if stat.mode & S_IRUSR != 0 && uid {
 		return true;
 	}
-	if stat.mode & S_IRGRP != 0 && stat.gid == gid {
+	if stat.mode & S_IRGRP != 0 && gid {
 		return true;
 	}
 	stat.mode & S_IROTH != 0
@@ -248,11 +256,11 @@ pub fn can_write_file(stat: &Stat, effective: bool) -> bool {
 	if is_privileged() {
 		return true;
 	}
-	let (uid, gid) = get_ids(effective);
-	if stat.mode & S_IWUSR != 0 && stat.uid == uid {
+	let (uid, gid) = match_ids(stat, effective);
+	if stat.mode & S_IWUSR != 0 && uid {
 		return true;
 	}
-	if stat.mode & S_IWGRP != 0 && stat.gid == gid {
+	if stat.mode & S_IWGRP != 0 && gid {
 		return true;
 	}
 	stat.mode & S_IWOTH != 0
@@ -273,11 +281,11 @@ pub fn can_execute_file(stat: &Stat, effective: bool) -> bool {
 	if stat.get_type() != Some(FileType::Regular) && is_privileged() {
 		return true;
 	}
-	let (uid, gid) = get_ids(effective);
-	if stat.mode & S_IXUSR != 0 && stat.uid == uid {
+	let (uid, gid) = match_ids(stat, effective);
+	if stat.mode & S_IXUSR != 0 && uid {
 		return true;
 	}
-	if stat.mode & S_IXGRP != 0 && stat.gid == gid {
+	if stat.mode & S_IXGRP != 0 && gid {
 		return true;
 	}
 	stat.mode & S_IXOTH != 0
