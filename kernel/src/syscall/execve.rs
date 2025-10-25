@@ -20,7 +20,12 @@
 
 use crate::{
 	arch::x86::idt::IntFrame,
-	file::{File, O_RDONLY, perm::AccessProfile, vfs, vfs::Resolved},
+	file::{
+		File, O_RDONLY,
+		perm::{can_execute_file, can_read_file},
+		vfs,
+		vfs::Resolved,
+	},
 	memory::user::{UserArray, UserSlice, UserString},
 	process::{
 		Process,
@@ -79,8 +84,7 @@ fn parse_shebang(buf: &mut [u8]) -> Option<Shebang> {
 fn read_shebang(buf: &mut [u8; SHEBANG_MAX], ent: Arc<vfs::Entry>) -> EResult<Option<Shebang>> {
 	// Check permission
 	let stat = ent.stat();
-	let ap = AccessProfile::cur_task();
-	if !ap.can_read_file(&stat) || !ap.can_execute_file(&stat) {
+	if !can_read_file(&stat, true) || !can_execute_file(&stat, true) {
 		return Err(errno!(EACCES));
 	}
 	// Read file

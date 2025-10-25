@@ -25,10 +25,14 @@ use crate::{
 		ET_DYN, ET_EXEC, PF_X, PT_GNU_STACK, PT_LOAD,
 		parser::{Class, ELFParser, ProgramHeader},
 	},
-	file::{File, FileType, O_RDONLY, perm::AccessProfile, vfs},
+	file::{
+		File, FileType, O_RDONLY,
+		perm::{AccessProfile, can_execute_file},
+		vfs,
+	},
 	memory::{COMPAT_PROCESS_END, PROCESS_END, VirtAddr, vmem},
 	process::{
-		USER_STACK_SIZE,
+		Process, USER_STACK_SIZE,
 		exec::{ProgramImage, vdso::MappedVDSO},
 		mem_space,
 		mem_space::{
@@ -143,7 +147,7 @@ fn build_auxiliary<'s>(
 	load_info: &ELFLoadInfo,
 	vdso: &MappedVDSO,
 ) -> AllocResult<Vec<AuxEntryDesc<'s>>> {
-	let ap = AccessProfile::cur_task();
+	let ap = AccessProfile::current();
 	let mut vec = vec![
 		AuxEntryDesc {
 			a_type: AT_PHDR,
@@ -486,8 +490,7 @@ pub fn exec(ent: Arc<vfs::Entry>, argv: Vec<String>, envp: Vec<String>) -> EResu
 	if unlikely(stat.get_type() != Some(FileType::Regular)) {
 		return Err(errno!(EACCES));
 	}
-	let ap = AccessProfile::cur_task();
-	if unlikely(!ap.can_execute_file(&stat)) {
+	if unlikely(!can_execute_file(&stat, true)) {
 		return Err(errno!(EACCES));
 	}
 	// Read and parse file
@@ -525,7 +528,7 @@ pub fn exec(ent: Arc<vfs::Entry>, argv: Vec<String>, envp: Vec<String>) -> EResu
 		if unlikely(stat.get_type() != Some(FileType::Regular)) {
 			return Err(errno!(EACCES));
 		}
-		if unlikely(!ap.can_execute_file(&stat)) {
+		if unlikely(!can_execute_file(&stat, true)) {
 			return Err(errno!(EACCES));
 		}
 		// Read and parse file

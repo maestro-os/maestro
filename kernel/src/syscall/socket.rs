@@ -20,7 +20,7 @@
 
 use crate::{
 	file,
-	file::{File, fd::fd_to_file, perm::AccessProfile, socket::Socket},
+	file::{File, fd::fd_to_file, socket::Socket},
 	memory::user::{UserPtr, UserSlice},
 	net::{SocketDesc, SocketDomain, SocketType},
 	process::Process,
@@ -39,8 +39,7 @@ pub fn socket(domain: c_int, r#type: c_int, protocol: c_int) -> EResult<usize> {
 	let sock_domain = SocketDomain::try_from(domain as u32)?;
 	let sock_type = SocketType::try_from(r#type as u32)?;
 	// Check permissions
-	let ap = AccessProfile::cur_task();
-	if !ap.can_use_sock_domain(&sock_domain) || !ap.can_use_sock_type(&sock_type) {
+	if unlikely(!sock_domain.can_use() || !sock_type.can_use()) {
 		return Err(errno!(EACCES));
 	}
 	let desc = SocketDesc {
@@ -67,8 +66,7 @@ pub fn socketpair(
 	let sock_domain = SocketDomain::try_from(domain as u32)?;
 	let sock_type = SocketType::try_from(r#type as u32)?;
 	// Check permissions
-	let ap = AccessProfile::cur_task();
-	if !ap.can_use_sock_domain(&sock_domain) || !ap.can_use_sock_type(&sock_type) {
+	if unlikely(!sock_domain.can_use() || !sock_type.can_use()) {
 		return Err(errno!(EACCES));
 	}
 	let desc = SocketDesc {

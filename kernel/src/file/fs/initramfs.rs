@@ -45,7 +45,7 @@ fn update_parent<'p>(
 		Some(suffix) => {
 			let rs = ResolutionSettings {
 				cwd: Some(parent.1.clone()),
-				..ResolutionSettings::kernel_nofollow()
+				..ResolutionSettings::cur_task(false, false)
 			};
 			vfs::resolve_path(suffix, &rs).map(|r| {
 				let Resolved::Found(r) = r else {

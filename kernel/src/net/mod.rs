@@ -27,7 +27,7 @@ pub mod sockaddr;
 pub mod tcp;
 
 use crate::{
-	file::perm::AccessProfile,
+	file::perm::is_privileged,
 	net::sockaddr::{SockAddrIn, SockAddrIn6},
 	sync::spin::Spin,
 };
@@ -276,13 +276,11 @@ impl SocketDomain {
 			_ => 0,
 		}
 	}
-}
 
-impl AccessProfile {
-	/// Tells whether the agent has the permission to use the socket domain.
-	pub fn can_use_sock_domain(&self, domain: &SocketDomain) -> bool {
-		match domain {
-			SocketDomain::AfPacket => self.is_privileged(),
+	/// Tells whether the current process has the permission to use this socket domain.
+	pub fn can_use(&self) -> bool {
+		match self {
+			SocketDomain::AfPacket => is_privileged(),
 			_ => true,
 		}
 	}
@@ -332,13 +330,11 @@ impl SocketType {
 	pub fn is_stream(&self) -> bool {
 		matches!(self, Self::SockStream | Self::SockSeqpacket)
 	}
-}
 
-impl AccessProfile {
-	/// Tells whether the agent has the permission to use the socket type.
-	pub fn can_use_sock_type(&self, sock_type: &SocketType) -> bool {
-		match sock_type {
-			SocketType::SockRaw => self.is_privileged(),
+	/// Tells whether the current process has the permission to use this socket type.
+	pub fn can_use(&self) -> bool {
+		match self {
+			SocketType::SockRaw => is_privileged(),
 			_ => true,
 		}
 	}

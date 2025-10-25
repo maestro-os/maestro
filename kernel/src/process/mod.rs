@@ -36,7 +36,7 @@ use crate::{
 	file::{
 		File, O_RDWR,
 		fd::{FileDescriptorTable, NewFDConstraint},
-		perm::{AccessProfile, Gid},
+		perm::{AccessProfile, ProcessFs, ROOT_GID, ROOT_UID},
 		vfs,
 	},
 	int,
@@ -238,32 +238,6 @@ pub struct ProcessLinks {
 	pub process_group: Vec<Pid>,
 }
 
-/// A process's filesystem access information.
-pub struct ProcessFs {
-	/// The process's access profile, containing user and group IDs.
-	pub access_profile: AccessProfile,
-	// TODO use for permission checks
-	/// Supplementary group IDs
-	pub groups: Vec<Gid>,
-	/// Current working directory
-	///
-	/// The field contains both the path and the directory.
-	pub cwd: Arc<vfs::Entry>,
-	/// Current root path used by the process
-	pub chroot: Arc<vfs::Entry>,
-}
-
-impl TryClone for ProcessFs {
-	fn try_clone(&self) -> Result<Self, Self::Error> {
-		Ok(Self {
-			access_profile: self.access_profile,
-			groups: self.groups.try_clone()?,
-			cwd: self.cwd.clone(),
-			chroot: self.chroot.clone(),
-		})
-	}
-}
-
 /// A process's signal management information.
 pub struct ProcessSignal {
 	/// The alternative signal stack
@@ -366,7 +340,10 @@ pub struct Process {
 	/// The virtual memory of the process.
 	mem_space: UnsafeMut<Option<Arc<MemSpace>>>,
 	/// Filesystem access information.
-	pub fs: Option<Spin<ProcessFs>>, // TODO rwlock
+	///
+	/// This is an `Option` in order to solve a chicken-or-egg issue (initializing files
+	/// management or per-CPU structures first).
+	pub fs: Option<Spin<ProcessFs>>,
 	/// The process's current umask.
 	pub umask: AtomicU32,
 	/// The list of open file descriptors with their respective ID.
@@ -615,7 +592,7 @@ impl Process {
 
 			mem_space: UnsafeMut::new(None),
 			fs: Some(Spin::new(ProcessFs {
-				access_profile: AccessProfile::KERNEL,
+				ap: AccessProfile::new(ROOT_UID, ROOT_GID),
 				groups: Vec::new(),
 				cwd: root_dir.clone(),
 				chroot: root_dir,
@@ -1052,22 +1029,6 @@ impl Process {
 impl fmt::Debug for Process {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		f.debug_struct("Process").field("pid", &self.pid).finish()
-	}
-}
-
-impl AccessProfile {
-	/// Tells whether the agent can kill the process.
-	pub fn can_kill(&self, proc: &Process) -> bool {
-		// if privileged
-		if self.is_privileged() {
-			return true;
-		}
-		// if sender's `uid` or `euid` equals receiver's `uid` or `suid`
-		let fs = proc.fs().lock();
-		self.uid == fs.access_profile.uid
-			|| self.uid == fs.access_profile.suid
-			|| self.euid == fs.access_profile.uid
-			|| self.euid == fs.access_profile.suid
 	}
 }
 

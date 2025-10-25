@@ -38,7 +38,10 @@ use super::{
 	perm::{AccessProfile, S_ISVTX},
 };
 use crate::{
-	file::fs::StatSet,
+	file::{
+		fs::StatSet,
+		perm::{can_search_directory, can_set_file_permissions, can_write_directory},
+	},
 	process::Process,
 	sync::{mutex::Mutex, once::OnceInit, spin::Spin},
 };
@@ -271,9 +274,6 @@ pub struct ResolutionSettings {
 	/// If `None`, resolution starts from `root`.
 	pub cwd: Option<Arc<Entry>>,
 
-	/// The access profile to use for resolution.
-	pub access_profile: AccessProfile,
-
 	/// If `true`, the path is resolved for creation, meaning the operation will not fail if the
 	/// file does not exist.
 	pub create: bool,
@@ -283,27 +283,6 @@ pub struct ResolutionSettings {
 }
 
 impl ResolutionSettings {
-	/// Kernel access, following symbolic links.
-	pub fn kernel_follow() -> Self {
-		Self {
-			root: ROOT.clone(),
-			cwd: None,
-
-			access_profile: AccessProfile::KERNEL,
-
-			create: false,
-			follow_link: true,
-		}
-	}
-
-	/// Kernel access, without following symbolic links.
-	pub fn kernel_nofollow() -> Self {
-		Self {
-			follow_link: false,
-			..Self::kernel_follow()
-		}
-	}
-
 	/// Returns the settings for the current task.
 	///
 	/// Arguments:
@@ -318,16 +297,16 @@ impl ResolutionSettings {
 					root: fs.chroot.clone(),
 					cwd: Some(fs.cwd.clone()),
 
-					access_profile: fs.access_profile,
-
 					create,
 					follow_link,
 				}
 			}
 			None => Self {
+				root: ROOT.clone(),
+				cwd: None,
+
 				create,
 				follow_link,
-				..Self::kernel_follow()
 			},
 		}
 	}
@@ -395,7 +374,6 @@ fn resolve_link(
 	link: Arc<Entry>,
 	root: Arc<Entry>,
 	lookup_dir: Arc<Entry>,
-	access_profile: AccessProfile,
 	symlink_rec: usize,
 ) -> EResult<Arc<Entry>> {
 	// If too many recursions occur, error
@@ -407,7 +385,7 @@ fn resolve_link(
 	let rs = ResolutionSettings {
 		root,
 		cwd: Some(lookup_dir),
-		access_profile,
+
 		create: false,
 		follow_link: true,
 	};
@@ -440,10 +418,7 @@ fn resolve_path_impl<'p>(
 	for comp in components {
 		// Check lookup permission
 		let lookup_dir_stat = lookup_dir.stat();
-		if !settings
-			.access_profile
-			.can_search_directory(&lookup_dir_stat)
-		{
+		if !can_search_directory(&lookup_dir_stat) {
 			return Err(errno!(EACCES));
 		}
 		// Get the name of the next entry
@@ -466,13 +441,7 @@ fn resolve_path_impl<'p>(
 		match entry.get_type()? {
 			FileType::Directory => lookup_dir = entry,
 			FileType::Link => {
-				lookup_dir = resolve_link(
-					entry,
-					settings.root.clone(),
-					lookup_dir,
-					settings.access_profile,
-					symlink_rec,
-				)?;
+				lookup_dir = resolve_link(entry, settings.root.clone(), lookup_dir, symlink_rec)?;
 			}
 			_ => return Err(errno!(ENOTDIR)),
 		}
@@ -494,10 +463,7 @@ fn resolve_path_impl<'p>(
 	};
 	// Check lookup permission
 	let lookup_dir_stat = lookup_dir.stat();
-	if !settings
-		.access_profile
-		.can_search_directory(&lookup_dir_stat)
-	{
+	if !can_search_directory(&lookup_dir_stat) {
 		return Err(errno!(EACCES));
 	}
 	// Get entry
@@ -519,7 +485,6 @@ fn resolve_path_impl<'p>(
 			entry,
 			settings.root.clone(),
 			lookup_dir,
-			settings.access_profile,
 			symlink_rec,
 		)?))
 	} else {
@@ -572,7 +537,7 @@ pub fn get_file_from_path(path: &Path, follow_link: bool) -> EResult<Arc<Entry>>
 pub fn set_stat(node: &Node, set: &StatSet) -> EResult<()> {
 	let mut stat = node.stat.lock();
 	// Check permissions
-	if !AccessProfile::cur_task().can_set_file_permissions(&stat) {
+	if !can_set_file_permissions(&stat) {
 		return Err(errno!(EPERM));
 	}
 	// Update stat
@@ -619,10 +584,10 @@ pub fn create_file(parent: Arc<Entry>, name: &[u8], mut stat: Stat) -> EResult<A
 	if parent_stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
 	}
-	let ap = AccessProfile::cur_task();
-	if !ap.can_write_directory(&parent_stat) {
+	if !can_write_directory(&parent_stat) {
 		return Err(errno!(EACCES));
 	}
+	let ap = AccessProfile::current();
 	stat.nlink = 0;
 	stat.uid = ap.euid;
 	stat.gid = if parent_stat.mode & perm::S_ISGID != 0 {
@@ -669,7 +634,7 @@ pub fn link(parent: &Arc<Entry>, name: String, target: Arc<Node>) -> EResult<()>
 	if target_stat.nlink >= LINK_MAX as u16 {
 		return Err(errno!(EMLINK));
 	}
-	if !AccessProfile::cur_task().can_write_directory(&parent_stat) {
+	if !can_write_directory(&parent_stat) {
 		return Err(errno!(EACCES));
 	}
 	if !parent.node().is_same_fs(&target) {
@@ -703,12 +668,12 @@ pub fn unlink(entry: Arc<Entry>) -> EResult<()> {
 	if parent_stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
 	}
-	let ap = AccessProfile::cur_task();
-	if !ap.can_write_directory(&parent_stat) {
+	if !can_write_directory(&parent_stat) {
 		return Err(errno!(EACCES));
 	}
 	let stat = entry.stat();
 	let has_sticky_bit = parent_stat.mode & S_ISVTX != 0;
+	let ap = AccessProfile::current();
 	if has_sticky_bit && ap.euid != stat.uid && ap.euid != parent_stat.uid {
 		return Err(errno!(EACCES));
 	}
@@ -748,10 +713,10 @@ pub fn symlink(parent: &Arc<Entry>, name: &[u8], target: &[u8], mut stat: Stat) 
 	if parent_stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
 	}
-	let ap = AccessProfile::cur_task();
-	if !ap.can_write_directory(&parent_stat) {
+	if !can_write_directory(&parent_stat) {
 		return Err(errno!(EACCES));
 	}
+	let ap = AccessProfile::current();
 	stat.mode = FileType::Link.to_mode() | 0o777;
 	stat.nlink = 0;
 	stat.uid = ap.euid;
@@ -796,18 +761,18 @@ pub fn rename(old: Arc<Entry>, new_parent: Arc<Entry>, new_name: &[u8]) -> EResu
 		return Err(errno!(EBUSY));
 	}
 	// Check permissions on `old`
-	let ap = AccessProfile::cur_task();
 	let old_parent_stat = old_parent.stat();
-	if !ap.can_write_directory(&old_parent_stat) {
+	if !can_write_directory(&old_parent_stat) {
 		return Err(errno!(EACCES));
 	}
 	let old_stat = old.stat();
+	let ap = AccessProfile::current();
 	if old_stat.mode & S_ISVTX != 0 && ap.euid != old_stat.uid && ap.euid != old_parent_stat.uid {
 		return Err(errno!(EACCES));
 	}
 	// Check permissions on `new`
 	let new_parent_stat = new_parent.stat();
-	if !ap.can_write_directory(&new_parent_stat) {
+	if !can_write_directory(&new_parent_stat) {
 		return Err(errno!(EACCES));
 	}
 	let new = resolve_entry(&new_parent, new_name)?;

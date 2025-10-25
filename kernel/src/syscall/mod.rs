@@ -79,10 +79,9 @@ use crate::{
 		pipe::{pipe, pipe2},
 		process::{
 			_exit, arch_prctl, clone, compat_clone, exit_group, fork, getpgid, getpid, getppid,
-			getrusage, gettid, prlimit64, sched_yield, set_thread_area, set_tid_address, setpgid,
-			vfork,
+			getpriority, getrusage, gettid, nice, prlimit64, sched_yield, set_thread_area,
+			set_tid_address, setpgid, setpriority, vfork,
 		},
-		process::{getpriority, nice, setpriority},
 		select::{_newselect, poll, pselect6, select},
 		signal::{
 			compat_rt_sigaction, compat_sigaltstack, kill, rt_sigaction, rt_sigprocmask,
