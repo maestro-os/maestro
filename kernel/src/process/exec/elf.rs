@@ -32,7 +32,7 @@ use crate::{
 	},
 	memory::{COMPAT_PROCESS_END, PROCESS_END, VirtAddr, vmem},
 	process::{
-		Process, USER_STACK_SIZE,
+		USER_STACK_SIZE,
 		exec::{ProgramImage, vdso::MappedVDSO},
 		mem_space,
 		mem_space::{
