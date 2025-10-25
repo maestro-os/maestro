@@ -20,7 +20,11 @@
 //! status of the process.
 
 use crate::{
-	file::{File, fs::FileOps, perm::AccessProfile},
+	file::{
+		File,
+		fs::FileOps,
+		perm::{AccessProfile, ROOT_GID, ROOT_UID},
+	},
 	format_content,
 	memory::user::UserSlice,
 	process::{Process, pid::Pid},
@@ -46,8 +50,8 @@ impl FileOps for Status {
 			let ap = proc
 				.fs
 				.as_ref()
-				.map(|fs| fs.lock().access_profile)
-				.unwrap_or(AccessProfile::KERNEL);
+				.map(|fs| fs.lock().ap)
+				.unwrap_or(AccessProfile::new(ROOT_UID, ROOT_GID));
 			// TODO Fill every fields with process's data
 			writeln!(
 				f,

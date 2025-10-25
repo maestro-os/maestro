@@ -20,7 +20,7 @@
 
 use crate::{
 	arch::x86::idt::IntFrame,
-	file::perm::AccessProfile,
+	file::perm::can_kill,
 	memory::user::UserPtr,
 	process::{
 		PROCESSES, Process, State,
@@ -182,8 +182,7 @@ fn try_kill(pid: Pid, sig: Option<Signal>) -> EResult<()> {
 	if matches!(target.get_state(), State::Zombie) {
 		return Ok(());
 	}
-	let ap = Process::current().fs().lock().access_profile;
-	if !ap.can_kill(&target) {
+	if !can_kill(&target) {
 		return Err(errno!(EPERM));
 	}
 	if let Some(sig) = sig {
@@ -247,7 +246,7 @@ pub fn kill(pid: c_int, sig: c_int) -> EResult<usize> {
 pub fn tkill(tid: Pid, sig: c_int) -> EResult<usize> {
 	let sig = Signal::try_from(sig)?;
 	let thread = Process::get_by_tid(tid).ok_or(errno!(ESRCH))?;
-	if !AccessProfile::cur_task().can_kill(&thread) {
+	if unlikely(!can_kill(&thread)) {
 		return Err(errno!(EPERM));
 	}
 	Process::kill(&thread, sig);

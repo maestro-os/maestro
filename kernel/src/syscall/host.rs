@@ -21,7 +21,7 @@
 use crate::{
 	NAME, VERSION,
 	arch::ARCH,
-	file::perm::AccessProfile,
+	file::perm::is_privileged,
 	memory::{
 		stats::MEM_INFO,
 		user::{UserPtr, UserSlice},
@@ -146,7 +146,7 @@ pub fn sethostname(name: *mut u8, len: usize) -> EResult<usize> {
 		return Err(errno!(EINVAL));
 	}
 	// Check permission
-	if !AccessProfile::cur_task().is_privileged() {
+	if unlikely(!is_privileged()) {
 		return Err(errno!(EPERM));
 	}
 	// Copy
@@ -161,7 +161,7 @@ pub fn reboot(magic: c_int, magic2: c_int, cmd: c_int, _arg: *const c_void) -> E
 	if magic != MAGIC || magic2 != MAGIC2 {
 		return Err(errno!(EINVAL));
 	}
-	if !AccessProfile::cur_task().is_privileged() {
+	if unlikely(!is_privileged()) {
 		return Err(errno!(EPERM));
 	}
 	// Debug commands: shutdown with QEMU

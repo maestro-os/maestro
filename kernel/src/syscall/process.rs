@@ -22,6 +22,7 @@
 use crate::{arch::x86, syscall::FromSyscallArg};
 use crate::{
 	arch::x86::{cli, gdt, idt::IntFrame},
+	file::perm::can_kill,
 	memory::user::UserPtr,
 	process,
 	process::{
@@ -443,7 +444,7 @@ pub fn getpriority(which: c_int, who: Pid) -> EResult<usize> {
 				&cur
 			};
 			// Check permission
-			if unlikely(!cur.fs().lock().access_profile.can_kill(proc)) {
+			if unlikely(!can_kill(proc)) {
 				return Err(errno!(EPERM));
 			}
 			// Update value
@@ -464,8 +465,7 @@ pub fn setpriority(which: c_int, who: Pid, prio: c_int) -> EResult<usize> {
 		PRIO_PROCESS => {
 			let proc = Process::get_by_pid(who).ok_or_else(|| errno!(ESRCH))?;
 			// Check permission
-			let cur = Process::current();
-			if unlikely(!cur.fs().lock().access_profile.can_kill(&proc)) {
+			if unlikely(!can_kill(&proc)) {
 				return Err(errno!(EPERM));
 			}
 			// Update value

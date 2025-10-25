@@ -65,7 +65,7 @@ fn get_proc_owner(pid: Pid) -> (Uid, Gid) {
 		.and_then(|proc| proc.fs.as_ref())
 		.map(|fs| {
 			let fs = fs.lock();
-			(fs.access_profile.euid, fs.access_profile.egid)
+			(fs.ap.euid, fs.ap.egid)
 		})
 		.unwrap_or((0, 0))
 }
