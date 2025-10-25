@@ -26,7 +26,9 @@ use crate::{
 		O_RDWR, O_TRUNC, O_WRONLY, Stat,
 		fd::{FD_CLOEXEC, fd_to_file},
 		fs::StatSet,
-		perm::AccessProfile,
+		perm::{
+			can_execute_file, can_list_directory, can_read_file, can_write_file, is_privileged,
+		},
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
 	},
@@ -107,8 +109,7 @@ pub fn mknodat(dirfd: c_int, path: UserString, mode: file::Mode, dev: u64) -> ER
 	// Check file type and permissions
 	let mode = mode & !Process::current().umask();
 	let file_type = FileType::from_mode(mode).ok_or(errno!(EPERM))?;
-	let privileged = AccessProfile::cur_task().is_privileged();
-	match (file_type, privileged) {
+	match (file_type, is_privileged()) {
 		(FileType::Regular | FileType::Fifo | FileType::Socket, _) => {}
 		(FileType::BlockDevice | FileType::CharDevice, true) => {}
 		(_, false) => return Err(errno!(EPERM)),
@@ -286,12 +287,11 @@ pub fn do_openat(
 		O_RDWR => (true, true),
 		_ => return Err(errno!(EINVAL)),
 	};
-	let ap = AccessProfile::cur_task();
 	let stat = file.stat();
-	if read && !ap.can_read_file(&stat) {
+	if read && !can_read_file(&stat, true) {
 		return Err(errno!(EACCES));
 	}
-	if write && !ap.can_write_file(&stat) {
+	if write && !can_write_file(&stat, true) {
 		return Err(errno!(EACCES));
 	}
 	let file_type = stat.get_type();
@@ -351,16 +351,15 @@ pub fn do_access(
 	else {
 		unreachable!();
 	};
-	let ap = AccessProfile::cur_task();
 	let stat = file.stat();
 	let eaccess = flags & AT_EACCESS != 0;
-	if (mode & R_OK != 0) && !ap.check_read_access(&stat, eaccess) {
+	if (mode & R_OK != 0) && !can_read_file(&stat, eaccess) {
 		return Err(errno!(EACCES));
 	}
-	if (mode & W_OK != 0) && !ap.check_write_access(&stat, eaccess) {
+	if (mode & W_OK != 0) && !can_write_file(&stat, eaccess) {
 		return Err(errno!(EACCES));
 	}
-	if (mode & X_OK != 0) && !ap.check_execute_access(&stat, eaccess) {
+	if (mode & X_OK != 0) && !can_execute_file(&stat, eaccess) {
 		return Err(errno!(EACCES));
 	}
 	Ok(0)
@@ -448,7 +447,7 @@ fn do_fchownat(
 		unreachable!();
 	};
 	// TODO allow changing group to any group whose owner is member
-	if !AccessProfile::cur_task().is_privileged() {
+	if unlikely(!is_privileged()) {
 		return Err(errno!(EPERM));
 	}
 	vfs::set_stat(
@@ -504,7 +503,7 @@ pub fn chdir(path: UserString) -> EResult<usize> {
 	if stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
 	}
-	if !AccessProfile::cur_task().can_list_directory(&stat) {
+	if !can_list_directory(&stat) {
 		return Err(errno!(EACCES));
 	}
 	// Set new cwd
@@ -518,7 +517,7 @@ pub fn chroot(path: UserString) -> EResult<usize> {
 		..ResolutionSettings::cur_task(false, true)
 	};
 	// Check permission
-	if !rs.access_profile.is_privileged() {
+	if !is_privileged() {
 		return Err(errno!(EPERM));
 	}
 	let path = path.copy_path_from_user()?;
@@ -543,7 +542,7 @@ pub fn fchdir(fd: c_int) -> EResult<usize> {
 	if stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
 	}
-	if !AccessProfile::cur_task().can_list_directory(&stat) {
+	if !can_list_directory(&stat) {
 		return Err(errno!(EACCES));
 	}
 	Process::current().fs().lock().cwd = file;
@@ -665,7 +664,7 @@ pub fn truncate(path: UserString, length: usize) -> EResult<usize> {
 	let path = path.copy_path_from_user()?;
 	let ent = vfs::get_file_from_path(&path, true)?;
 	// Permission check
-	if !AccessProfile::cur_task().can_write_file(&ent.stat()) {
+	if !can_write_file(&ent.stat(), true) {
 		return Err(errno!(EACCES));
 	}
 	// Truncate

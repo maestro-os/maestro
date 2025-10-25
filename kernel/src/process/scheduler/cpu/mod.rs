@@ -40,7 +40,6 @@ use utils::{
 	list,
 	ptr::arc::{AtomicArc, AtomicOptionalArc},
 };
-
 // TODO allow to declare per-core variables everywhere in the codebase using a dedicated ELF
 // section
 

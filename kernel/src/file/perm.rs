@@ -20,9 +20,9 @@
 //!
 //! This module implements management of such permissions.
 
-use super::Mode;
-use crate::process::Process;
-use utils::{errno, errno::EResult};
+use super::{FileType, Mode, Stat, vfs};
+use crate::{process::Process, sync::spin::Spin};
+use utils::{TryClone, collections::vec::Vec, errno, errno::EResult, ptr::arc::Arc};
 
 /// Type representing a user ID.
 pub type Uid = u16;
@@ -65,55 +65,30 @@ pub const S_ISGID: Mode = 0o2000;
 /// Sticky bit.
 pub const S_ISVTX: Mode = 0o1000;
 
-/// A set of informations determining whether an agent (example: a process) can access a resource.
-///
-/// Implementations of this structure may contain functions to check access to an object. Custom
-/// implementations may be added.
-///
-/// Example:
-/// ```rust
-/// impl AccessProfile {
-/// 	pub fn can_use(&self, obj: &Obj) -> bool {
-/// 		// your implementation
-/// 		// ...
-/// 	}
-/// }
-/// ```
+/// A set of information determining whether a process can access a resource.
 ///
 /// Fields of this structure are not directly accessible because mishandling them is prone to
 /// cause privilege escalations. Instead, they should be modified only through the structure's
 /// functions.
 #[derive(Clone, Copy, Debug)]
 pub struct AccessProfile {
-	/// Real ID of user.
+	/// Real ID of user
 	pub uid: Uid,
-	/// Real ID of group.
+	/// Real ID of group
 	pub gid: Gid,
 
-	/// The effective ID of user.
+	/// The effective ID of user
 	pub euid: Uid,
-	/// The effective ID of group.
+	/// The effective ID of group
 	pub egid: Gid,
 
-	/// The saved user ID.
+	/// The saved user ID
 	pub suid: Uid,
-	/// The saved group ID.
+	/// The saved group ID
 	pub sgid: Gid,
 }
 
 impl AccessProfile {
-	/// Permissions to be used to access files being the kernel itself (or root user).
-	pub const KERNEL: Self = Self {
-		uid: 0,
-		gid: 0,
-
-		euid: 0,
-		egid: 0,
-
-		suid: 0,
-		sgid: 0,
-	};
-
 	/// Creates a profile from the given IDs.
 	pub fn new(uid: Uid, gid: Gid) -> Self {
 		Self {
@@ -128,17 +103,12 @@ impl AccessProfile {
 		}
 	}
 
-	/// Returns the access profile of the current task.
-	pub fn cur_task() -> Self {
+	/// Returns a copy of the current process's instance.
+	pub fn current() -> Self {
 		match &Process::current().fs {
-			Some(fs) => fs.lock().access_profile,
-			None => Self::KERNEL,
+			Some(fs) => fs.lock().ap,
+			None => Self::new(ROOT_UID, ROOT_GID),
 		}
-	}
-
-	/// Tells whether the agent is privileged (root).
-	pub fn is_privileged(&self) -> bool {
-		self.euid == ROOT_UID || self.egid == ROOT_GID
 	}
 
 	/// Sets the user ID in the same way the `setgid` system call does.
@@ -146,7 +116,7 @@ impl AccessProfile {
 	/// If the agent is not privileged enough to make the change, the function returns an error.
 	pub fn set_uid(&mut self, uid: Uid) -> EResult<()> {
 		if self.euid == ROOT_UID {
-			// privileged
+			// Privileged
 			self.uid = uid;
 			self.euid = uid;
 			self.suid = uid;
@@ -176,7 +146,7 @@ impl AccessProfile {
 	/// If the agent is not privileged enough to make the change, the function returns an error.
 	pub fn set_gid(&mut self, gid: Gid) -> EResult<()> {
 		if self.egid == ROOT_GID {
-			// privileged
+			// Privileged
 			self.gid = gid;
 			self.egid = gid;
 			self.sgid = gid;
@@ -200,4 +170,142 @@ impl AccessProfile {
 			Err(errno!(EPERM))
 		}
 	}
+}
+
+/// A process's filesystem access information.
+pub struct ProcessFs {
+	/// The process's access profile, containing user and group IDs.
+	pub ap: AccessProfile,
+	/// Supplementary group IDs
+	pub groups: Vec<Gid>,
+
+	/// Current working directory
+	///
+	/// If `None`, using the root directory of the VFS.
+	pub cwd: Arc<vfs::Entry>,
+	/// Current root path used by the process
+	///
+	/// If `None`, using the root directory of the VFS.
+	pub chroot: Arc<vfs::Entry>,
+}
+
+impl TryClone for ProcessFs {
+	fn try_clone(&self) -> Result<Self, Self::Error> {
+		Ok(Self {
+			ap: self.ap,
+			groups: self.groups.try_clone()?,
+
+			cwd: self.cwd.clone(),
+			chroot: self.chroot.clone(),
+		})
+	}
+}
+
+/// Tells whether the current process is privileged (root).
+pub fn is_privileged() -> bool {
+	let ap = AccessProfile::current();
+	ap.euid == ROOT_UID || ap.egid == ROOT_GID
+}
+
+#[inline]
+fn get_ids(effective: bool) -> (Uid, Gid) {
+	let ap = AccessProfile::current();
+	if effective {
+		(ap.euid, ap.egid)
+	} else {
+		(ap.uid, ap.gid)
+	}
+}
+
+/// Tells whether the current process can read a file with the given status.
+///
+/// `effective` tells whether to use effective IDs. If not, real IDs are used.
+pub fn can_read_file(stat: &Stat, effective: bool) -> bool {
+	if is_privileged() {
+		return true;
+	}
+	let (uid, gid) = get_ids(effective);
+	if stat.mode & S_IRUSR != 0 && stat.uid == uid {
+		return true;
+	}
+	if stat.mode & S_IRGRP != 0 && stat.gid == gid {
+		return true;
+	}
+	stat.mode & S_IROTH != 0
+}
+
+/// Tells whether the agent can list files of a directory with the given status, **not**
+/// including access to files' contents and metadata.
+#[inline]
+pub fn can_list_directory(stat: &Stat) -> bool {
+	can_read_file(stat, true)
+}
+
+/// Tells whether the agent can write a file with the given status.
+///
+/// `effective` tells whether to use effective IDs. If not, real IDs are used.
+pub fn can_write_file(stat: &Stat, effective: bool) -> bool {
+	if is_privileged() {
+		return true;
+	}
+	let (uid, gid) = get_ids(effective);
+	if stat.mode & S_IWUSR != 0 && stat.uid == uid {
+		return true;
+	}
+	if stat.mode & S_IWGRP != 0 && stat.gid == gid {
+		return true;
+	}
+	stat.mode & S_IWOTH != 0
+}
+
+/// Tells whether the agent can modify entries in a directory with the given status, including
+/// creating files, deleting files, and renaming files.
+#[inline]
+pub fn can_write_directory(stat: &Stat) -> bool {
+	can_write_file(stat, true) && can_execute_file(stat, true)
+}
+
+/// Tells whether the agent can execute a file with the given status.
+///
+/// `effective` tells whether to use effective IDs. If not, real IDs are used.
+pub fn can_execute_file(stat: &Stat, effective: bool) -> bool {
+	// If root, bypass checks (unless the file is a regular file)
+	if stat.get_type() != Some(FileType::Regular) && is_privileged() {
+		return true;
+	}
+	let (uid, gid) = get_ids(effective);
+	if stat.mode & S_IXUSR != 0 && stat.uid == uid {
+		return true;
+	}
+	if stat.mode & S_IXGRP != 0 && stat.gid == gid {
+		return true;
+	}
+	stat.mode & S_IXOTH != 0
+}
+
+/// Tells whether the current process can access files of a directory with the given status, *if
+/// the name of the file is known*.
+#[inline]
+pub fn can_search_directory(stat: &Stat) -> bool {
+	can_execute_file(stat, true)
+}
+
+/// Tells whether the current process can set permissions for a file with the given status.
+pub fn can_set_file_permissions(stat: &Stat) -> bool {
+	let ap = AccessProfile::current();
+	ap.uid == ROOT_UID || ap.uid == stat.uid
+}
+
+/// Tells whether the current process can kill `proc`.
+pub fn can_kill(proc: &Process) -> bool {
+	if is_privileged() {
+		return true;
+	}
+	let ap = AccessProfile::current();
+	let other_ap = proc.fs().lock().ap;
+	// if sender's `uid` or `euid` equals receiver's `uid` or `suid`
+	ap.uid == other_ap.uid
+		|| ap.uid == other_ap.suid
+		|| ap.euid == other_ap.uid
+		|| ap.euid == other_ap.suid
 }

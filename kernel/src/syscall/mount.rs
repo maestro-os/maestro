@@ -21,13 +21,16 @@
 use crate::{
 	file::{
 		FileType, fs,
-		perm::AccessProfile,
+		perm::is_privileged,
 		vfs,
 		vfs::{mountpoint, mountpoint::MountSource},
 	},
 	memory::user::{UserPtr, UserString},
 };
-use core::ffi::{c_int, c_ulong, c_void};
+use core::{
+	ffi::{c_int, c_ulong, c_void},
+	hint::unlikely,
+};
 use utils::{errno, errno::EResult};
 
 pub fn mount(
@@ -37,7 +40,7 @@ pub fn mount(
 	mountflags: c_ulong,
 	_data: UserPtr<c_void>,
 ) -> EResult<usize> {
-	if !AccessProfile::cur_task().is_privileged() {
+	if unlikely(!is_privileged()) {
 		return Err(errno!(EPERM));
 	}
 	// Read arguments
@@ -65,7 +68,7 @@ pub fn umount(target: UserString) -> EResult<usize> {
 pub fn umount2(target: UserString, _flags: c_int) -> EResult<usize> {
 	// TODO handle flags
 	// Check permission
-	if !AccessProfile::cur_task().is_privileged() {
+	if unlikely(!is_privileged()) {
 		return Err(errno!(EPERM));
 	}
 	// Get target directory

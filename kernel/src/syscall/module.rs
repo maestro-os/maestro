@@ -19,7 +19,7 @@
 //! Kernel module system calls.
 
 use crate::{
-	file::{fd::fd_to_file, perm::AccessProfile},
+	file::{fd::fd_to_file, perm::is_privileged},
 	memory::user::{UserSlice, UserString},
 	module,
 	module::Module,
@@ -36,7 +36,7 @@ pub fn init_module(
 	_param_values: UserString,
 ) -> EResult<usize> {
 	let module_image = UserSlice::from_user(module_image, len as _)?;
-	if unlikely(!AccessProfile::cur_task().is_privileged()) {
+	if unlikely(!is_privileged()) {
 		return Err(errno!(EPERM));
 	}
 	let image = module_image
@@ -48,7 +48,7 @@ pub fn init_module(
 }
 
 pub fn finit_module(fd: c_int, _param_values: UserString, _flags: c_int) -> EResult<usize> {
-	if unlikely(!AccessProfile::cur_task().is_privileged()) {
+	if unlikely(!is_privileged()) {
 		return Err(errno!(EPERM));
 	}
 	// Read file
@@ -61,7 +61,7 @@ pub fn finit_module(fd: c_int, _param_values: UserString, _flags: c_int) -> ERes
 
 // TODO handle flags
 pub fn delete_module(name: UserString, _flags: c_uint) -> EResult<usize> {
-	if unlikely(!AccessProfile::cur_task().is_privileged()) {
+	if unlikely(!is_privileged()) {
 		return Err(errno!(EPERM));
 	}
 	let name = name.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
