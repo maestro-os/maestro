@@ -65,6 +65,12 @@ impl<T: Sized + fmt::Debug> FromSyscallArg for UserPtr<T> {
 }
 
 impl<T: Sized + fmt::Debug> UserPtr<T> {
+	/// Tells whether this is a null pointer.
+	#[inline]
+	pub fn is_null(&self) -> bool {
+		self.0.is_none()
+	}
+
 	/// Returns a mutable pointer to the data.
 	pub fn as_ptr(&self) -> *mut T {
 		self.0.map(NonNull::as_ptr).unwrap_or_default()
@@ -192,6 +198,12 @@ impl<'a, T: Sized + fmt::Debug> UserSlice<'a, T> {
 
 			phantom: PhantomData,
 		}
+	}
+
+	/// Tells whether this is a null pointer.
+	#[inline]
+	pub fn is_null(&self) -> bool {
+		self.ptr.is_none()
 	}
 
 	/// Returns a mutable pointer to the data.

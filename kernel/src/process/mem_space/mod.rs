@@ -41,16 +41,12 @@ use crate::{
 	},
 	process::{
 		mem_space::mapping::MappedFrame,
-		scheduler::{
-			cpu::{bitmap_clear, bitmap_iter, bitmap_set, init_bitmap, per_cpu},
-			critical,
-		},
+		scheduler::{cpu, cpu::per_cpu, critical},
 	},
 	sync::rwlock::IntRwLock,
 };
 use core::{
 	alloc::AllocError, cmp::min, ffi::c_void, fmt, hint::unlikely, mem, num::NonZeroUsize,
-	sync::atomic::AtomicUsize,
 };
 use gap::MemGap;
 use mapping::MemMapping;
@@ -232,7 +228,7 @@ pub struct MemSpace {
 	pub exe_info: ExeInfo,
 
 	/// Bitmap of CPUs currently binding the memory space
-	bound_cpus: Vec<AtomicUsize>,
+	bound_cpus: cpu::Bitmap,
 }
 
 impl MemSpace {
@@ -260,7 +256,7 @@ impl MemSpace {
 				envp_end: Default::default(),
 			},
 
-			bound_cpus: init_bitmap(false)?,
+			bound_cpus: cpu::Bitmap::new(false)?,
 		};
 		// Allocation begin and end addresses
 		let begin = VirtAddr(PAGE_SIZE);
@@ -549,12 +545,12 @@ impl MemSpace {
 			let prev = per_cpu().mem_space.replace(Some(this.clone()));
 			// Update new bitmap
 			let core_id = core_id() as usize;
-			bitmap_set(&this.bound_cpus, core_id);
+			this.bound_cpus.set_bit(core_id);
 			// Do actual bind
 			this.vmem.bind();
 			// Update old bitmap if any
 			if let Some(prev) = prev {
-				bitmap_clear(&prev.bound_cpus, core_id);
+				prev.bound_cpus.clear_bit(core_id);
 			}
 		});
 	}
@@ -569,14 +565,15 @@ impl MemSpace {
 			// Update old bitmap if any
 			if let Some(prev) = prev {
 				let core_id = core_id() as usize;
-				bitmap_clear(&prev.bound_cpus, core_id);
+				prev.bound_cpus.clear_bit(core_id);
 			}
 		});
 	}
 
 	/// Returns an iterator over the IDs of CPUs bounding the memory space.
 	pub fn bound_cpus(&self) -> impl Iterator<Item = u32> {
-		bitmap_iter(&self.bound_cpus)
+		self.bound_cpus
+			.iter()
 			.enumerate()
 			.filter(|(_, b)| *b)
 			.map(|(i, _)| i as _)
@@ -603,7 +600,7 @@ impl MemSpace {
 
 	/// Clones the current memory space for process forking.
 	pub fn fork(&self) -> AllocResult<MemSpace> {
-		let bound_cpus = init_bitmap(false)?;
+		let bound_cpus = cpu::Bitmap::new(false)?;
 		// Lock
 		let state = self.state.read();
 		// Clone first to mark as shared
