@@ -147,7 +147,8 @@ pub(crate) fn enqueue(proc: &Arc<Process>) {
 		})
 		.or_else(|| {
 			// Attempt to find an idle CPU
-			cpu::bitmap_iter(&IDLE_CPUS)
+			IDLE_CPUS
+				.iter()
 				.enumerate()
 				.find(|(_, idle)| *idle)
 				.map(|(id, _)| &CPU[id])
@@ -322,9 +323,9 @@ pub fn schedule() {
 			}
 			// Update the idle bitmap if necessary
 			if prev.is_idle_task() {
-				cpu::bitmap_clear(&IDLE_CPUS, core_id() as _);
+				IDLE_CPUS.clear_bit(core_id() as _);
 			} else if next.is_idle_task() {
-				cpu::bitmap_set(&IDLE_CPUS, core_id() as _);
+				IDLE_CPUS.set_bit(core_id() as _);
 			}
 			// Swap current running process. We use pointers to avoid cloning the Arc
 			let next_ptr = Arc::as_ptr(&next);

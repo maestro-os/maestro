@@ -46,7 +46,7 @@ use crate::{
 		pid::{IDLE_PID, INIT_PID, PidHandle},
 		rusage::Rusage,
 		scheduler::{
-			critical, dequeue, enqueue, switch,
+			cpu, critical, dequeue, enqueue, switch,
 			switch::{KThreadEntry, idle_task, save_segments},
 		},
 		signal::{AltStack, SIGNALS_COUNT, SigSet, SignalAction},
@@ -314,6 +314,8 @@ pub struct Process {
 
 	/// The node in the scheduler's run queue.
 	sched_node: ListNode,
+	/// The process's affinity mask
+	pub affinity: cpu::Bitmap,
 	/// Process's niceness (`-20..=19`). Defines its scheduling priority (lower = higher priority)
 	pub nice: AtomicI8,
 	/// A queue the process is inserted in when waiting on a resource
@@ -505,6 +507,7 @@ impl Process {
 			links: Default::default(),
 
 			sched_node: ListNode::default(),
+			affinity: cpu::Bitmap::new(true)?,
 			nice: AtomicI8::new(nice),
 			wait_queue: ListNode::default(),
 
@@ -577,6 +580,7 @@ impl Process {
 			links: Spin::new(ProcessLinks::default()),
 
 			sched_node: ListNode::default(),
+			affinity: cpu::Bitmap::new(true)?,
 			nice: AtomicI8::new(0),
 			wait_queue: ListNode::default(),
 
@@ -854,6 +858,7 @@ impl Process {
 			}),
 
 			sched_node: ListNode::default(),
+			affinity: parent.affinity.try_clone()?,
 			nice: AtomicI8::new(0),
 			wait_queue: ListNode::default(),
 
