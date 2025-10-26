@@ -22,11 +22,14 @@
 use crate::{arch::x86, syscall::FromSyscallArg};
 use crate::{
 	arch::x86::{cli, gdt, idt::IntFrame},
-	file::perm::can_kill,
-	memory::user::UserPtr,
+	file::perm::{can_kill, is_privileged},
+	memory::user::{UserPtr, UserSlice},
 	process,
 	process::{
-		ForkOptions, Process, State, pid::Pid, rusage::Rusage, scheduler::schedule,
+		ForkOptions, Process, State,
+		pid::Pid,
+		rusage::Rusage,
+		scheduler::{cpu::CPU, schedule},
 		user_desc::UserDesc,
 	},
 };
@@ -34,7 +37,10 @@ use core::{
 	ffi::{c_int, c_ulong, c_void},
 	hint::unlikely,
 	ptr::null_mut,
-	sync::atomic::Ordering::{Acquire, Release},
+	sync::atomic::{
+		AtomicUsize,
+		Ordering::{Acquire, Release},
+	},
 };
 use utils::{errno, errno::EResult};
 
@@ -478,6 +484,68 @@ pub fn setpriority(which: c_int, who: Pid, prio: c_int) -> EResult<usize> {
 		PRIO_USER => Ok(0),
 		_ => Err(errno!(EINVAL)),
 	}
+}
+
+pub fn sched_getaffinity(pid: Pid, cpusetsize: usize, mask: *mut AtomicUsize) -> EResult<usize> {
+	// Get process
+	let proc = if pid == 0 {
+		Process::current()
+	} else {
+		Process::get_by_pid(pid).ok_or_else(|| errno!(ESRCH))?
+	};
+	// Check pointer
+	let slice = UserSlice::from_user(mask, cpusetsize)?;
+	if unlikely(slice.is_null()) {
+		return Err(errno!(EFAULT));
+	}
+	// Copy
+	let len = slice.copy_to_user(0, &proc.affinity)?;
+	Ok(len)
+}
+
+fn is_valid_affinity_mask(mask: &[usize]) -> bool {
+	let mut iter = mask.iter().rev();
+	// Check last unit (special case since it may not be used entirely)
+	let Some(last) = iter.next() else {
+		return true;
+	};
+	let bit_cnt = CPU.len() % usize::BITS as usize;
+	let mask = (1 << bit_cnt) - 1;
+	if *last & mask != 0 {
+		return true;
+	}
+	// Check remaining units
+	iter.any(|n| *n != 0)
+}
+
+pub fn sched_setaffinity(pid: Pid, cpusetsize: usize, mask: *mut usize) -> EResult<usize> {
+	// Get process
+	let src_euid = Process::current().fs().lock().ap.euid;
+	let dst = if pid == 0 {
+		Process::current()
+	} else {
+		Process::get_by_pid(pid).ok_or_else(|| errno!(ESRCH))?
+	};
+	// Check permission
+	if !is_privileged() {
+		let fs = dst.fs().lock();
+		if unlikely(src_euid != fs.ap.uid && src_euid != fs.ap.euid) {
+			return Err(errno!(EPERM));
+		}
+	}
+	// Check pointer
+	let slice = UserSlice::from_user(mask, cpusetsize)?;
+	let Some(mask) = slice.copy_from_user_vec(0)? else {
+		return Err(errno!(EFAULT));
+	};
+	// Validate mask
+	if unlikely(!is_valid_affinity_mask(&mask)) {
+		return Err(errno!(EINVAL));
+	}
+	// Copy
+	dst.affinity.copy_from(&mask);
+	// TODO if the process is not on a core that can run it anymore, migrate it
+	Ok(0)
 }
 
 pub fn sched_yield() -> EResult<usize> {
