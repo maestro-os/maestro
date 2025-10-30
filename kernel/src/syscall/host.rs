@@ -27,12 +27,13 @@ use crate::{
 		user::{UserPtr, UserSlice},
 	},
 	power,
-	process::PROCESSES,
+	process::{PROCESS_FLAG_LINUX, PROCESSES, Process},
 	time::clock::{Clock, current_time_sec},
 };
 use core::{
 	ffi::{c_char, c_int, c_uint, c_ulong, c_ushort, c_void},
 	hint::unlikely,
+	sync::atomic::Ordering::Acquire,
 };
 use utils::{errno, errno::EResult, limits::HOST_NAME_MAX, slice_copy};
 
@@ -70,6 +71,8 @@ pub struct Utsname {
 }
 
 pub fn uname(buf: UserPtr<Utsname>) -> EResult<usize> {
+	let linux = Process::current().flags.load(Acquire) & PROCESS_FLAG_LINUX == 0;
+	let sysname = if linux { b"Linux" } else { NAME.as_bytes() };
 	let mut utsname = Utsname {
 		sysname: [0; UTSNAME_LENGTH],
 		nodename: [0; UTSNAME_LENGTH],
@@ -77,7 +80,7 @@ pub fn uname(buf: UserPtr<Utsname>) -> EResult<usize> {
 		version: [0; UTSNAME_LENGTH],
 		machine: [0; UTSNAME_LENGTH],
 	};
-	slice_copy(NAME.as_bytes(), &mut utsname.sysname);
+	slice_copy(sysname, &mut utsname.sysname);
 	slice_copy(&crate::HOSTNAME.lock(), &mut utsname.nodename);
 	slice_copy(VERSION.as_bytes(), &mut utsname.release);
 	slice_copy(&[], &mut utsname.version);
