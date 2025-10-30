@@ -125,6 +125,9 @@ pub const TLS_ENTRIES_COUNT: usize = 3;
 /// added.
 const REDZONE_SIZE: usize = 128;
 
+/// Process flag: if set, the kernel pretends to be Linux for this process
+pub const PROCESS_FLAG_LINUX: u8 = 0b1;
+
 /// An enumeration containing possible states for a process.
 #[repr(u8)]
 #[derive(Clone, Copy, Eq, Debug, PartialEq)]
@@ -328,6 +331,8 @@ pub struct Process {
 	/// The process's FPU state.
 	fpu: Spin<FxState>,
 
+	/// Process flags
+	pub flags: AtomicU8,
 	/// FS segment selector
 	fs_selector: AtomicU16,
 	/// GS segment selector
@@ -515,6 +520,7 @@ impl Process {
 			kernel_sp: AtomicPtr::new(kernel_sp),
 			fpu: Spin::new(FxState([0; 512])),
 
+			flags: AtomicU8::new(0),
 			fs_selector: Default::default(),
 			gs_selector: Default::default(),
 			fs_base: Default::default(),
@@ -588,6 +594,7 @@ impl Process {
 			kernel_sp: AtomicPtr::default(),
 			fpu: Spin::new(FxState([0; 512])),
 
+			flags: AtomicU8::new(0),
 			fs_selector: Default::default(),
 			gs_selector: Default::default(),
 			fs_base: Default::default(),
@@ -866,6 +873,7 @@ impl Process {
 			kernel_sp: AtomicPtr::new(kernel_sp),
 			fpu: Spin::new(parent.fpu.lock().clone()),
 
+			flags: AtomicU8::new(parent.flags.load(Relaxed)),
 			fs_selector: Default::default(),
 			gs_selector: Default::default(),
 			fs_base: Default::default(),

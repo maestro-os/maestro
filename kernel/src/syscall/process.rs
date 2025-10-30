@@ -26,7 +26,7 @@ use crate::{
 	memory::user::{UserPtr, UserSlice},
 	process,
 	process::{
-		ForkOptions, Process, State,
+		ForkOptions, PROCESS_FLAG_LINUX, Process, State,
 		pid::Pid,
 		rusage::Rusage,
 		scheduler::{cpu::CPU, schedule},
@@ -110,6 +110,11 @@ const ARCH_GET_GS: c_int = 0x1004;
 const ARCH_GET_CPUID: c_int = 0x1011;
 /// Enable or disable cpuid instruction.
 const ARCH_SET_CPUID: c_int = 0x1012;
+
+// `prctl` command: Maestro-specific subcommands
+const PR_MAESTRO: c_int = 0x4d535452;
+// [`PR_MAESTRO`] subcommand: pretend to be Linux
+const PR_MAESTRO_LINUX: c_int = 0;
 
 /// Returns the resource usage of the current process.
 const RUSAGE_SELF: i32 = 0;
@@ -367,6 +372,23 @@ pub fn arch_prctl(code: c_int, addr: usize) -> EResult<usize> {
 	}
 	#[allow(unreachable_code)]
 	Ok(0)
+}
+
+#[allow(unused_variables)]
+pub fn prctl(op: c_int, arg0: usize, arg1: usize, arg2: usize, arg3: usize) -> EResult<usize> {
+	let proc = Process::current();
+	match op {
+		PR_MAESTRO if arg0 == PR_MAESTRO_LINUX as usize => {
+			let linux = arg1 != 0;
+			if linux {
+				proc.flags.fetch_or(PROCESS_FLAG_LINUX, Release);
+			} else {
+				proc.flags.fetch_and(!PROCESS_FLAG_LINUX, Release);
+			}
+			Ok(0)
+		}
+		_ => Err(errno!(EINVAL)),
+	}
 }
 
 pub fn getrusage(who: c_int, usage: UserPtr<Rusage>) -> EResult<usize> {
