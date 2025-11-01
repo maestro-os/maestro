@@ -84,7 +84,10 @@ pub mod tty;
 
 use crate::{
 	arch::x86::{idt::IntFrame, smp},
-	file::{fs::initramfs, vfs},
+	file::{
+		fs::{float, initramfs},
+		vfs,
+	},
 	logger::LOGGER,
 	memory::{cache, vmem},
 	process::{
@@ -168,6 +171,8 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	// Init kernel symbols map
 	elf::kernel::init().expect("cannot initialize kernel symbols map");
 
+	// Necessary for selftesting
+	float::init().expect("floatfs initialization failed");
 	// Perform kernel self-tests
 	#[cfg(test)]
 	kernel_selftest();
