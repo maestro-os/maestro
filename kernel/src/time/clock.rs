@@ -24,7 +24,7 @@ use crate::{
 };
 use core::{
 	cmp::max,
-	sync::atomic::Ordering::{Acquire, Release},
+	sync::atomic::Ordering::{Acquire, Relaxed, Release},
 };
 
 /// Available clocks
@@ -78,11 +78,18 @@ static MONOTONIC: AtomicU64 = AtomicU64::new(0);
 /// The time elapsed since boot time, in nanoseconds.
 static BOOTTIME: AtomicU64 = AtomicU64::new(0);
 
+/// Initializes clocks with the given value in nanoseconds.
+pub(crate) fn init(ts: Timestamp) {
+	REALTIME.store(ts, Relaxed);
+	MONOTONIC.store(ts, Relaxed);
+	BOOTTIME.store(ts, Relaxed);
+}
+
 /// Updates clocks with the given delta value in nanoseconds.
 pub fn update(delta: Timestamp) {
-	REALTIME.fetch_add(delta as _, Release);
-	MONOTONIC.fetch_add(delta as _, Release);
-	BOOTTIME.fetch_add(delta as _, Release);
+	REALTIME.fetch_add(delta, Release);
+	MONOTONIC.fetch_add(delta, Release);
+	BOOTTIME.fetch_add(delta, Release);
 }
 
 /// Returns the current timestamp in nanoseconds.
