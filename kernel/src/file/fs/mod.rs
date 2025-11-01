@@ -617,7 +617,6 @@ pub fn detect(dev: &Arc<BlkDev>) -> EResult<Arc<dyn FilesystemType>> {
 ///
 /// This function must be called only once, at initialization.
 pub(crate) fn register_defaults() -> EResult<()> {
-	float::init()?;
 	register(ext2::Ext2FsType)?;
 	register(tmp::TmpFsType)?;
 	register(proc::ProcFsType)?;

@@ -316,14 +316,8 @@ mod test {
 	use super::*;
 	use crate::file::{
 		File, FileType,
-		fs::{DummyOps, FileOps, float},
+		fs::{DummyOps, float},
 	};
-
-	/// Dummy node ops for testing purpose.
-	#[derive(Debug)]
-	struct Dummy;
-
-	impl FileOps for Dummy {}
 
 	/// Creates a dummy open file for testing purpose.
 	fn dummy_file() -> Arc<File> {
