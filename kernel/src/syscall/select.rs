@@ -85,16 +85,16 @@ pub fn do_select<T: TimeUnit>(
 	_sigmask: Option<*mut u8>,
 ) -> EResult<usize> {
 	let proc = Process::current();
-	let start = current_time_ns(Clock::Monotonic);
 	// Get timeout
-	let timeout = timeout
+	let end_ts = timeout
 		.copy_from_user()?
-		.map(|t| t.to_nano())
-		.unwrap_or_default();
+		.map(|t| {
+			let ts = current_time_ns(Clock::Monotonic);
+			ts.checked_add(t.to_nano()).ok_or_else(|| errno!(EINVAL))
+		})
+		.transpose()?;
 	// Tells whether the syscall immediately returns
-	let polling = timeout == 0;
-	// The end timestamp
-	let end = start + timeout;
+	let polling = end_ts.map(|ts| ts == 0).unwrap_or(false);
 	// Read
 	let mut readfds_set = readfds.copy_from_user()?;
 	let mut writefds_set = writefds.copy_from_user()?;
@@ -162,12 +162,13 @@ pub fn do_select<T: TimeUnit>(
 		if all_zeros || polling || events_count > 0 {
 			break events_count;
 		}
-		let ts = current_time_ns(Clock::Monotonic);
-		// On timeout, return 0
-		if ts >= end {
-			break 0;
+		if let Some(end_ts) = end_ts {
+			// On timeout, return 0
+			if current_time_ns(Clock::Monotonic) >= end_ts {
+				break 0;
+			}
 		}
-		// TODO Make the process sleep?
+		// TODO Make the process sleep
 		schedule();
 	};
 	// Write back

@@ -79,6 +79,7 @@ pub fn sleep_for(clock: Clock, delay: Timestamp, remain: &mut Timestamp) -> ERes
 
 /// Initializes timekeeping
 pub(crate) fn init() -> EResult<()> {
+	clock::init(rtc::read_time());
 	const FREQUENCY: u32 = 1024;
 	rtc::set_frequency(FREQUENCY);
 	if apic::is_present() {
