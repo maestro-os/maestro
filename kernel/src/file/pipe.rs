@@ -20,7 +20,7 @@
 //! and another writing, with a buffer in between.
 
 use crate::{
-	file::{File, FileType, O_NONBLOCK, Stat, fs::FileOps},
+	file::{File, O_NONBLOCK, fs::FileOps},
 	memory::{
 		ring_buffer::RingBuffer,
 		user::{UserPtr, UserSlice},
@@ -86,13 +86,6 @@ impl PipeBuffer {
 }
 
 impl FileOps for PipeBuffer {
-	fn get_stat(&self, _file: &File) -> EResult<Stat> {
-		Ok(Stat {
-			mode: FileType::Fifo.to_mode() | 0o666,
-			..Default::default()
-		})
-	}
-
 	fn acquire(&self, file: &File) {
 		let mut inner = self.inner.lock();
 		if file.can_read() {

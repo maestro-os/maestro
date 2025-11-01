@@ -24,7 +24,7 @@ use crate::file::{
 	vfs,
 	vfs::{ResolutionSettings, Resolved},
 };
-use core::ffi::c_int;
+use core::{ffi::c_int, hint::likely};
 use utils::{collections::path::Path, errno, errno::EResult};
 
 /// Special value to be used as file descriptor, telling to take the path relative to the
@@ -61,44 +61,30 @@ pub const AT_STATX_DONT_SYNC: c_int = 0x4000;
 /// - `follow_link` if `true`, links are followed (unless bypassed by a flag)
 pub fn get_file(
 	dirfd: c_int,
-	path: Option<&Path>,
+	path: &Path,
 	flags: c_int,
 	create: bool,
 	follow_link: bool,
 ) -> EResult<Resolved> {
-	let mut rs = ResolutionSettings::cur_task(create, follow_link);
-	// If not starting from current directory, get location
-	if dirfd != AT_FDCWD {
-		let cwd = fd_to_file(dirfd)?
-			.vfs_entry
-			.clone()
-			.ok_or_else(|| errno!(ENOTDIR))?;
-		rs.cwd = Some(cwd);
-	}
-	match path {
-		Some(path) if !path.is_empty() => {
-			let follow_link = if rs.follow_link {
-				flags & AT_SYMLINK_NOFOLLOW == 0
-			} else {
-				flags & AT_SYMLINK_FOLLOW != 0
-			};
-			rs.follow_link = follow_link;
-			vfs::resolve_path(path, &rs)
+	if path.is_empty() {
+		if likely(flags & AT_EMPTY_PATH != 0) {
+			Ok(Resolved::Found(fd_to_file(dirfd)?.vfs_entry.clone()))
+		} else {
+			Err(errno!(ENOENT))
 		}
-		// Empty path
-		Some(_) => {
-			// Validation
-			if flags & AT_EMPTY_PATH == 0 {
-				return Err(errno!(ENOENT));
-			}
-			Ok(Resolved::Found(rs.cwd.unwrap()))
+	} else {
+		let mut rs = ResolutionSettings::cur_task(create, follow_link);
+		// If not starting from current directory, get location
+		if dirfd != AT_FDCWD {
+			let cwd = fd_to_file(dirfd)?.vfs_entry.clone();
+			rs.cwd = Some(cwd);
 		}
-		None => {
-			// Validation
-			if dirfd == AT_FDCWD {
-				return Err(errno!(EFAULT));
-			}
-			Ok(Resolved::Found(rs.cwd.unwrap()))
-		}
+		let follow_link = if rs.follow_link {
+			flags & AT_SYMLINK_NOFOLLOW == 0
+		} else {
+			flags & AT_SYMLINK_FOLLOW != 0
+		};
+		rs.follow_link = follow_link;
+		vfs::resolve_path(path, &rs)
 	}
 }

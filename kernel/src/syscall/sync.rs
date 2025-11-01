@@ -47,11 +47,8 @@ pub fn syncfs(fd: c_int) -> EResult<usize> {
 		return Err(errno!(EBADF));
 	}
 	let file = fd_to_file(fd)?;
-	let Some(ent) = &file.vfs_entry else {
-		return Ok(0);
-	};
 	// TODO warn on failure?
-	let _ = ent.node().fs.sync();
+	let _ = file.vfs_entry.node().fs.sync();
 	Ok(0)
 }
 
@@ -60,9 +57,7 @@ fn do_fsync(fd: c_int, metadata: bool) -> EResult<usize> {
 		return Err(errno!(EBADF));
 	}
 	let file = fd_to_file(fd)?;
-	let Some(node) = file.node() else {
-		return Ok(0);
-	};
+	let node = file.node();
 	node.sync_data()?;
 	if metadata {
 		// TODO sync only the file, not the whole filesystem

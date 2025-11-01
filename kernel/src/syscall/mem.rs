@@ -61,7 +61,7 @@ pub fn do_mmap(
 		// Get file
 		let file = fd_to_file(fd)?;
 		// Check permissions
-		if unlikely(file.stat()?.get_type() != Some(FileType::Regular)) {
+		if unlikely(file.stat().get_type() != Some(FileType::Regular)) {
 			return Err(errno!(EACCES));
 		}
 		if unlikely(flags & MAP_SHARED != 0 && prot & PROT_WRITE != 0 && !file.can_write()) {

@@ -19,7 +19,7 @@
 //! TODO doc
 
 use crate::{
-	file::{File, FileType, Stat, fs::FileOps},
+	file::{File, fs::FileOps},
 	format_content,
 	memory::user::UserSlice,
 };
@@ -30,13 +30,6 @@ use utils::errno::EResult;
 pub struct OsRelease;
 
 impl FileOps for OsRelease {
-	fn get_stat(&self, _file: &File) -> EResult<Stat> {
-		Ok(Stat {
-			mode: FileType::Regular.to_mode() | 0o444,
-			..Default::default()
-		})
-	}
-
 	fn read(&self, _file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		format_content!(off, buf, "{}\n", crate::VERSION)
 	}

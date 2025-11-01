@@ -563,7 +563,7 @@ impl Process {
 		let mut fd_table = FileDescriptorTable::default();
 		let tty_path = PathBuf::try_from(TTY_DEVICE_PATH.as_bytes())?;
 		let tty_ent = vfs::get_file_from_path(&tty_path, true)?;
-		let tty_file = File::open_entry(tty_ent, O_RDWR)?;
+		let tty_file = File::open(tty_ent, O_RDWR)?;
 		let (stdin_fd_id, _) = fd_table.create_fd(0, tty_file)?;
 		assert_eq!(stdin_fd_id, STDIN_FILENO);
 		fd_table.duplicate_fd(

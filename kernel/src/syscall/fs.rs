@@ -44,7 +44,7 @@ use crate::{
 	},
 };
 use core::{ffi::c_int, hint::unlikely, sync::atomic::Ordering::Release};
-use utils::{collections::path::Path, errno, errno::EResult, limits::SYMLINK_MAX, ptr::arc::Arc};
+use utils::{errno, errno::EResult, limits::SYMLINK_MAX};
 
 /// `access` flag: Checks for existence of the file.
 const F_OK: i32 = 0;
@@ -73,7 +73,7 @@ pub fn mkdirat(dirfd: c_int, path: UserString, mode: file::Mode) -> EResult<usiz
 	let Resolved::Creatable {
 		parent,
 		name,
-	} = at::get_file(dirfd, Some(&path), 0, true, false)?
+	} = at::get_file(dirfd, &path, 0, true, false)?
 	else {
 		return Err(errno!(EEXIST));
 	};
@@ -102,7 +102,7 @@ pub fn mknodat(dirfd: c_int, path: UserString, mode: file::Mode, dev: u64) -> ER
 	let Resolved::Creatable {
 		parent,
 		name,
-	} = at::get_file(dirfd, Some(&path), 0, true, false)?
+	} = at::get_file(dirfd, &path, 0, true, false)?
 	else {
 		return Err(errno!(EEXIST));
 	};
@@ -146,7 +146,7 @@ pub fn linkat(
 	let oldpath = oldpath.copy_path_from_user()?;
 	let newpath = newpath.copy_path_from_user()?;
 	// Get old file
-	let Resolved::Found(old) = at::get_file(olddirfd, Some(&oldpath), flags, false, false)? else {
+	let Resolved::Found(old) = at::get_file(olddirfd, &oldpath, flags, false, false)? else {
 		unreachable!();
 	};
 	if old.get_type()? == FileType::Directory {
@@ -156,7 +156,7 @@ pub fn linkat(
 	let Resolved::Creatable {
 		parent: new_parent,
 		name: new_name,
-	} = at::get_file(newdirfd, Some(&newpath), 0, true, true)?
+	} = at::get_file(newdirfd, &newpath, 0, true, true)?
 	else {
 		return Err(errno!(EEXIST));
 	};
@@ -174,12 +174,12 @@ pub fn symlinkat(target: UserString, newdirfd: c_int, linkpath: UserString) -> E
 	if target.len() > SYMLINK_MAX {
 		return Err(errno!(ENAMETOOLONG));
 	}
-	let linkpath = linkpath.copy_path_opt_from_user()?;
+	let linkpath = linkpath.copy_path_from_user()?;
 	// Create link
 	let Resolved::Creatable {
 		parent,
 		name,
-	} = at::get_file(newdirfd, linkpath.as_deref(), 0, true, true)?
+	} = at::get_file(newdirfd, &linkpath, 0, true, true)?
 	else {
 		return Err(errno!(EEXIST));
 	};
@@ -204,7 +204,7 @@ pub fn readlink(pathname: UserString, buf: *mut u8, bufsiz: usize) -> EResult<us
 
 pub fn readlinkat(dirfd: c_int, path: UserString, buf: *mut u8, bufsiz: usize) -> EResult<usize> {
 	let path = path.copy_path_from_user()?;
-	let Resolved::Found(ent) = at::get_file(dirfd, Some(&path), 0, false, false)? else {
+	let Resolved::Found(ent) = at::get_file(dirfd, &path, 0, false, false)? else {
 		unreachable!();
 	};
 	if ent.get_type()? != FileType::Link {
@@ -220,33 +220,26 @@ pub fn open(pathname: UserString, flags: c_int, mode: file::Mode) -> EResult<usi
 	do_openat(AT_FDCWD, pathname, flags, mode)
 }
 
-// TODO Implement all flags
-// TODO rewrite doc
-/// Returns the file at the given path.
-///
-/// Arguments:
-/// - `dirfd` a file descriptor to the directory from which the file will be searched.
-/// - `pathname` the path relative to the directory.
-/// - `flags` is a set of open file flags.
-/// - `mode` is the set of permissions to use if the file needs to be created.
-///
-/// If the file doesn't exist and the `O_CREAT` flag is set, the file is created,
-/// then the function returns it.
-///
-/// If the flag is not set, the function returns an error with the appropriate errno.
-///
-/// If the file is to be created, the function uses `mode` to set its permissions.
-fn get_file(
+/// Perform the `openat` system call.
+pub fn do_openat(
 	dirfd: c_int,
-	path: Option<&Path>,
+	pathname: UserString,
 	flags: c_int,
 	mode: file::Mode,
-) -> EResult<Arc<vfs::Entry>> {
-	let creat = flags & O_CREAT != 0;
-	let follow_link = flags & O_NOFOLLOW == 0;
-	let resolved = at::get_file(dirfd, path, flags, creat, follow_link)?;
-	match resolved {
-		Resolved::Found(file) => Ok(file),
+) -> EResult<usize> {
+	let proc = Process::current();
+	let pathname = pathname.copy_path_from_user()?;
+	let mode = mode & !proc.umask();
+	// Get file
+	let resolved = at::get_file(
+		dirfd,
+		&pathname,
+		flags,
+		flags & O_CREAT != 0,
+		flags & O_NOFOLLOW == 0,
+	)?;
+	let file = match resolved {
+		Resolved::Found(file) => file,
 		Resolved::Creatable {
 			parent,
 			name,
@@ -262,24 +255,9 @@ fn get_file(
 					atime: ts,
 					..Default::default()
 				},
-			)
+			)?
 		}
-	}
-}
-
-/// Perform the `openat` system call.
-pub fn do_openat(
-	dirfd: c_int,
-	pathname: UserString,
-	flags: c_int,
-	mode: file::Mode,
-) -> EResult<usize> {
-	let proc = Process::current();
-	let pathname = pathname.copy_path_from_user()?;
-	let mode = mode & !proc.umask();
-
-	// Get file
-	let file = get_file(dirfd, Some(&pathname), flags, mode)?;
+	};
 	// Check permissions
 	let (read, write) = match flags & 0b11 {
 		O_RDONLY => (true, false),
@@ -302,7 +280,7 @@ pub fn do_openat(
 	// Open file
 	const FLAGS_MASK: i32 =
 		!(O_CLOEXEC | O_CREAT | O_DIRECTORY | O_EXCL | O_NOCTTY | O_NOFOLLOW | O_TRUNC);
-	let file = File::open_entry(file, flags & FLAGS_MASK)?;
+	let file = File::open(file, flags & FLAGS_MASK)?;
 	// Truncate if necessary
 	if flags & O_TRUNC != 0 && file_type == Some(FileType::Regular) {
 		file.ops.truncate(&file, 0)?;
@@ -340,14 +318,9 @@ pub fn do_access(
 	mode: i32,
 	flags: i32,
 ) -> EResult<usize> {
-	let pathname = pathname.copy_path_opt_from_user()?;
-	let Resolved::Found(file) = at::get_file(
-		dirfd.unwrap_or(AT_FDCWD),
-		pathname.as_deref(),
-		flags,
-		false,
-		true,
-	)?
+	let pathname = pathname.copy_path_from_user()?;
+	let Resolved::Found(file) =
+		at::get_file(dirfd.unwrap_or(AT_FDCWD), &pathname, flags, false, true)?
 	else {
 		unreachable!();
 	};
@@ -392,12 +365,9 @@ pub fn chmod(pathname: UserString, mode: file::Mode) -> EResult<usize> {
 }
 
 pub fn fchmod(fd: c_int, mode: file::Mode) -> EResult<usize> {
-	let file = fd_to_file(fd)?
-		.vfs_entry
-		.clone()
-		.ok_or_else(|| errno!(EROFS))?;
+	let file = fd_to_file(fd)?;
 	vfs::set_stat(
-		file.node(),
+		file.vfs_entry.node(),
 		&StatSet {
 			mode: Some(mode),
 			..Default::default()
@@ -412,10 +382,9 @@ pub fn fchmodat(
 	mode: file::Mode,
 	flags: c_int,
 ) -> EResult<usize> {
-	let pathname = pathname.copy_path_opt_from_user()?;
+	let pathname = pathname.copy_path_from_user()?;
 	// Get file
-	let Resolved::Found(file) = at::get_file(dirfd, pathname.as_deref(), flags, false, true)?
-	else {
+	let Resolved::Found(file) = at::get_file(dirfd, &pathname, flags, false, true)? else {
 		unreachable!();
 	};
 	vfs::set_stat(
@@ -441,9 +410,10 @@ fn do_fchownat(
 	}
 	let path = pathname
 		.map(|pathname| pathname.copy_path_from_user())
-		.transpose()?;
+		.transpose()?
+		.unwrap_or_default();
 	// Get file
-	let Resolved::Found(ent) = at::get_file(dirfd, path.as_deref(), flags, false, true)? else {
+	let Resolved::Found(ent) = at::get_file(dirfd, &path, flags, false, true)? else {
 		unreachable!();
 	};
 	// TODO allow changing group to any group whose owner is member
@@ -533,10 +503,7 @@ pub fn chroot(path: UserString) -> EResult<usize> {
 }
 
 pub fn fchdir(fd: c_int) -> EResult<usize> {
-	let file = fd_to_file(fd)?
-		.vfs_entry
-		.clone()
-		.ok_or_else(|| errno!(ENOTDIR))?;
+	let file = fd_to_file(fd)?.vfs_entry.clone();
 	let stat = file.stat();
 	// Check the file is an accessible directory
 	if stat.get_type() != Some(FileType::Directory) {
@@ -560,9 +527,8 @@ fn do_utimensat<T: TimeUnit>(
 	times: [T; 2],
 	flags: c_int,
 ) -> EResult<usize> {
-	let pathname = pathname.copy_path_opt_from_user()?;
-	let Resolved::Found(file) = at::get_file(dirfd, pathname.as_deref(), flags, false, true)?
-	else {
+	let pathname = pathname.copy_path_from_user()?;
+	let Resolved::Found(file) = at::get_file(dirfd, &pathname, flags, false, true)? else {
 		unreachable!();
 	};
 	vfs::set_stat(
@@ -617,12 +583,12 @@ pub(super) fn do_renameat2(
 ) -> EResult<usize> {
 	// Get old file
 	let oldpath = oldpath.copy_path_from_user()?;
-	let Resolved::Found(old) = at::get_file(olddirfd, Some(&oldpath), 0, false, false)? else {
+	let Resolved::Found(old) = at::get_file(olddirfd, &oldpath, 0, false, false)? else {
 		unreachable!();
 	};
 	// Get new file
 	let newpath = newpath.copy_path_from_user()?;
-	let res = at::get_file(newdirfd, Some(&newpath), 0, true, true)?;
+	let res = at::get_file(newdirfd, &newpath, 0, true, true)?;
 	match res {
 		Resolved::Found(new) => {
 			// cannot move the root of the vfs
@@ -668,7 +634,7 @@ pub fn truncate(path: UserString, length: usize) -> EResult<usize> {
 		return Err(errno!(EACCES));
 	}
 	// Truncate
-	let file = File::open_entry(ent, O_WRONLY)?;
+	let file = File::open(ent, O_WRONLY)?;
 	file.ops.truncate(&file, length as _)?;
 	Ok(0)
 }
@@ -681,7 +647,7 @@ pub fn unlink(pathname: UserString) -> EResult<usize> {
 pub fn do_unlinkat(dirfd: c_int, pathname: UserString, flags: c_int) -> EResult<usize> {
 	let pathname = pathname.copy_path_from_user()?;
 	// AT_EMPTY_PATH is required in case the path has only one component
-	let resolved = at::get_file(dirfd, Some(&pathname), flags | AT_EMPTY_PATH, false, false)?;
+	let resolved = at::get_file(dirfd, &pathname, flags | AT_EMPTY_PATH, false, false)?;
 	let Resolved::Found(ent) = resolved else {
 		return Err(errno!(ENOENT));
 	};

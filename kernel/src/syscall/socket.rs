@@ -19,14 +19,13 @@
 //! Socket interface system calls.
 
 use crate::{
-	file,
-	file::{File, fd::fd_to_file, socket::Socket},
+	file::{File, FileType, O_RDWR, fd::fd_to_file, fs::float, socket::Socket},
 	memory::user::{UserPtr, UserSlice},
 	net::{SocketDesc, SocketDomain, SocketType},
 	process::Process,
 };
 use core::{cmp::min, ffi::c_int, hint::unlikely};
-use utils::{errno, errno::EResult, ptr::arc::Arc};
+use utils::{errno, errno::EResult};
 
 /// Shutdown receive side of the connection.
 const SHUT_RD: c_int = 0;
@@ -48,8 +47,8 @@ pub fn socket(domain: c_int, r#type: c_int, protocol: c_int) -> EResult<usize> {
 		protocol,
 	};
 	// Create socket
-	let sock = Arc::new(Socket::new(desc)?)?;
-	let file = File::open_floating(sock, file::O_RDWR)?;
+	let sock = float::get_entry(Socket::new(desc)?, FileType::Socket)?;
+	let file = File::open_floating(sock, O_RDWR)?;
 	let (sock_fd_id, _) = Process::current()
 		.file_descriptors()
 		.lock()
@@ -75,9 +74,9 @@ pub fn socketpair(
 		protocol,
 	};
 	// Create socket
-	let sock = Arc::new(Socket::new(desc)?)?;
-	let file0 = File::open_floating(sock.clone(), file::O_RDWR)?;
-	let file1 = File::open_floating(sock, file::O_RDWR)?;
+	let sock = float::get_entry(Socket::new(desc)?, FileType::Socket)?;
+	let file0 = File::open_floating(sock.clone(), O_RDWR)?;
+	let file1 = File::open_floating(sock, O_RDWR)?;
 	// Create file descriptors
 	let (fd0_id, fd1_id) = Process::current()
 		.file_descriptors()
