@@ -88,7 +88,7 @@ fn read_shebang(buf: &mut [u8; SHEBANG_MAX], ent: Arc<vfs::Entry>) -> EResult<Op
 		return Err(errno!(EACCES));
 	}
 	// Read file
-	let file = File::open_entry(ent, O_RDONLY)?;
+	let file = File::open(ent, O_RDONLY)?;
 	let ptr = UserSlice::from_slice_mut(buf);
 	let len = file.ops.read(&file, 0, ptr)?;
 	// Find the end of the shebang
@@ -162,7 +162,7 @@ pub fn execveat(
 	// Use scope to drop everything before calling `init_ctx`
 	{
 		let path = path.copy_path_from_user()?;
-		let Resolved::Found(ent) = at::get_file(dirfd, Some(&path), flags, false, true)? else {
+		let Resolved::Found(ent) = at::get_file(dirfd, &path, flags, false, true)? else {
 			unreachable!();
 		};
 		let (file, argv) = get_file(ent, path, argv)?;

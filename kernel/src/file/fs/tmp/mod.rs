@@ -337,7 +337,7 @@ impl FileOps for TmpFSFile {
 	}
 
 	fn write(&self, file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
-		let node = file.node().unwrap();
+		let node = file.node();
 		let fs = downcast_fs::<TmpFS>(&*node.fs.ops);
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
@@ -346,7 +346,7 @@ impl FileOps for TmpFSFile {
 	}
 
 	fn truncate(&self, file: &File, size: u64) -> EResult<()> {
-		let node = file.node().unwrap();
+		let node = file.node();
 		let pages = NodeContent::from_ops(&*node.node_ops);
 		let NodeContent::Regular(pages) = pages else {
 			return Err(errno!(EINVAL));

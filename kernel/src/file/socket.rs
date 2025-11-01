@@ -19,7 +19,7 @@
 //! This file implements sockets.
 
 use crate::{
-	file::{File, FileType, Stat, fs::FileOps},
+	file::{File, fs::FileOps},
 	memory::{ring_buffer::RingBuffer, user::UserSlice},
 	net::{SocketDesc, osi},
 	sync::{spin::Spin, wait_queue::WaitQueue},
@@ -160,13 +160,6 @@ impl Socket {
 }
 
 impl FileOps for Socket {
-	fn get_stat(&self, _file: &File) -> EResult<Stat> {
-		Ok(Stat {
-			mode: FileType::Socket.to_mode() | 0o666,
-			..Default::default()
-		})
-	}
-
 	fn acquire(&self, _file: &File) {
 		self.open_count.fetch_add(1, atomic::Ordering::Acquire);
 	}

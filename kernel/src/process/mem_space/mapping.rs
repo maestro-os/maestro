@@ -262,7 +262,7 @@ impl MemMapping {
 			// Mapped file
 			Some(file) => {
 				// Get page from file
-				let node = file.node().unwrap();
+				let node = file.node();
 				let file_off = self.off / PAGE_SIZE as u64 + offset as u64;
 				let mut page = node.node_ops.read_page(node, file_off)?;
 				// If the mapping is private, we need our own copy

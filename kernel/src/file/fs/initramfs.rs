@@ -113,7 +113,7 @@ pub fn load(data: &[u8]) -> EResult<()> {
 		};
 		if matches!(file.get_type()?, FileType::Regular | FileType::Link) {
 			let content = unsafe { UserSlice::from_slice(entry.get_content()) };
-			let file = File::open_entry(file, O_WRONLY)?;
+			let file = File::open(file, O_WRONLY)?;
 			file.ops.write(&file, 0, content)?;
 		}
 	}

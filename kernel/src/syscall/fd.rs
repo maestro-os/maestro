@@ -306,7 +306,7 @@ fn do_lseek(
 	let base = match whence {
 		SEEK_SET => 0,
 		SEEK_CUR => file.off.load(Acquire),
-		SEEK_END => file.stat()?.size,
+		SEEK_END => file.stat().size,
 		_ => return Err(errno!(EINVAL)),
 	};
 	let offset = match offset {

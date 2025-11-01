@@ -314,7 +314,10 @@ pub fn fd_to_file(fd: c_int) -> EResult<Arc<File>> {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::file::{File, fs::FileOps};
+	use crate::file::{
+		File, FileType,
+		fs::{DummyOps, FileOps, float},
+	};
 
 	/// Dummy node ops for testing purpose.
 	#[derive(Debug)]
@@ -324,7 +327,8 @@ mod test {
 
 	/// Creates a dummy open file for testing purpose.
 	fn dummy_file() -> Arc<File> {
-		File::open_floating(Arc::new(Dummy).unwrap(), 0).unwrap()
+		let ent = float::get_entry(DummyOps, FileType::Regular).unwrap();
+		File::open_floating(ent, 0).unwrap()
 	}
 
 	#[test_case]

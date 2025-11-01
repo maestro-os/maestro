@@ -53,17 +53,13 @@ impl fmt::Display for MapsDisplay<'_> {
 			for (begin, mapping) in mappings.iter() {
 				let end = *begin + mapping.size.get() * PAGE_SIZE;
 				let perms = Perms(mapping);
-				let vfs_entry = mapping.file.as_ref().and_then(|f| f.vfs_entry.as_ref());
-				let (major, minor, inode, pathname) = match vfs_entry {
-					Some(vfs_entry) => {
-						let node = vfs_entry
-							.node
-							.as_ref()
-							// cannot be a negative entry
-							.unwrap();
+				let (major, minor, inode, pathname) = match &mapping.file {
+					Some(file) => {
+						let node = file.vfs_entry.node();
 						let stat = node.stat();
 						// TODO figure how to handle memory allocation failures
-						let path = vfs::Entry::get_path(vfs_entry).unwrap_or(PathBuf::empty());
+						let path =
+							vfs::Entry::get_path(&file.vfs_entry).unwrap_or(PathBuf::empty());
 						(stat.dev_major, stat.dev_minor, node.inode, path)
 					}
 					None => (0, 0, 0, PathBuf::empty()),
