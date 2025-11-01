@@ -133,8 +133,8 @@ fn entry_info(entry: &vfs::Entry) -> (u64, INode) {
 	(node.fs.dev, node.inode)
 }
 
-fn do_oldstat(stat: Stat, entry: Option<&vfs::Entry>, statbuf: UserPtr<OldStat>) -> EResult<()> {
-	let (st_dev, st_ino) = entry.map(entry_info).unwrap_or_default();
+fn do_oldstat(stat: Stat, entry: &vfs::Entry, statbuf: UserPtr<OldStat>) -> EResult<()> {
+	let (st_dev, st_ino) = entry_info(entry);
 	statbuf.copy_to_user(&OldStat {
 		st_dev: st_dev as _,
 		st_ino: st_ino as _,
@@ -150,8 +150,8 @@ fn do_oldstat(stat: Stat, entry: Option<&vfs::Entry>, statbuf: UserPtr<OldStat>)
 	})
 }
 
-fn do_stat32(stat: Stat, entry: Option<&vfs::Entry>, statbuf: UserPtr<Stat32>) -> EResult<()> {
-	let (st_dev, st_ino) = entry.map(entry_info).unwrap_or_default();
+fn do_stat32(stat: Stat, entry: &vfs::Entry, statbuf: UserPtr<Stat32>) -> EResult<()> {
+	let (st_dev, st_ino) = entry_info(entry);
 	statbuf.copy_to_user(&Stat32 {
 		st_dev: st_dev as _,
 		st_ino: st_ino as _,
@@ -173,8 +173,8 @@ fn do_stat32(stat: Stat, entry: Option<&vfs::Entry>, statbuf: UserPtr<Stat32>) -
 	})
 }
 
-fn do_stat64(stat: Stat, entry: Option<&vfs::Entry>, statbuf: UserPtr<Stat64>) -> EResult<()> {
-	let (st_dev, st_ino) = entry.map(entry_info).unwrap_or_default();
+fn do_stat64(stat: Stat, entry: &vfs::Entry, statbuf: UserPtr<Stat64>) -> EResult<()> {
+	let (st_dev, st_ino) = entry_info(entry);
 	statbuf.copy_to_user(&Stat64 {
 		st_dev,
 		st_ino,
@@ -199,60 +199,60 @@ fn do_stat64(stat: Stat, entry: Option<&vfs::Entry>, statbuf: UserPtr<Stat64>) -
 pub fn oldstat(pathname: UserString, statbuf: UserPtr<OldStat>) -> EResult<usize> {
 	let pathname = pathname.copy_path_from_user()?;
 	let ent = vfs::get_file_from_path(&pathname, true)?;
-	do_oldstat(ent.stat(), Some(&ent), statbuf)?;
+	do_oldstat(ent.stat(), &ent, statbuf)?;
 	Ok(0)
 }
 
 pub fn oldfstat(fd: c_int, statbuf: UserPtr<OldStat>) -> EResult<usize> {
 	let file = fd_to_file(fd)?;
-	do_oldstat(file.stat()?, file.vfs_entry.as_deref(), statbuf)?;
+	do_oldstat(file.stat(), &file.vfs_entry, statbuf)?;
 	Ok(0)
 }
 
 pub fn oldlstat(pathname: UserString, statbuf: UserPtr<OldStat>) -> EResult<usize> {
 	let pathname = pathname.copy_path_from_user()?;
 	let ent = vfs::get_file_from_path(&pathname, false)?;
-	do_oldstat(ent.stat(), Some(&ent), statbuf)?;
+	do_oldstat(ent.stat(), &ent, statbuf)?;
 	Ok(0)
 }
 
 pub fn stat(pathname: UserString, statbuf: UserPtr<Stat32>) -> EResult<usize> {
 	let pathname = pathname.copy_path_from_user()?;
 	let ent = vfs::get_file_from_path(&pathname, true)?;
-	do_stat32(ent.stat(), Some(&ent), statbuf)?;
+	do_stat32(ent.stat(), &ent, statbuf)?;
 	Ok(0)
 }
 
 pub fn stat64(pathname: UserString, statbuf: UserPtr<Stat64>) -> EResult<usize> {
 	let pathname = pathname.copy_path_from_user()?;
 	let ent = vfs::get_file_from_path(&pathname, true)?;
-	do_stat64(ent.stat(), Some(&ent), statbuf)?;
+	do_stat64(ent.stat(), &ent, statbuf)?;
 	Ok(0)
 }
 
 pub fn fstat(fd: c_int, statbuf: UserPtr<Stat32>) -> EResult<usize> {
 	let file = fd_to_file(fd)?;
-	do_stat32(file.stat()?, file.vfs_entry.as_deref(), statbuf)?;
+	do_stat32(file.stat(), &file.vfs_entry, statbuf)?;
 	Ok(0)
 }
 
 pub fn fstat64(fd: c_int, statbuf: UserPtr<Stat64>) -> EResult<usize> {
 	let file = fd_to_file(fd)?;
-	do_stat64(file.stat()?, file.vfs_entry.as_deref(), statbuf)?;
+	do_stat64(file.stat(), &file.vfs_entry, statbuf)?;
 	Ok(0)
 }
 
 pub fn lstat(pathname: UserString, statbuf: UserPtr<Stat32>) -> EResult<usize> {
 	let pathname = pathname.copy_path_from_user()?;
 	let ent = vfs::get_file_from_path(&pathname, false)?;
-	do_stat32(ent.stat(), Some(&ent), statbuf)?;
+	do_stat32(ent.stat(), &ent, statbuf)?;
 	Ok(0)
 }
 
 pub fn lstat64(pathname: UserString, statbuf: UserPtr<Stat64>) -> EResult<usize> {
 	let pathname = pathname.copy_path_from_user()?;
 	let ent = vfs::get_file_from_path(&pathname, false)?;
-	do_stat64(ent.stat(), Some(&ent), statbuf)?;
+	do_stat64(ent.stat(), &ent, statbuf)?;
 	Ok(0)
 }
 
@@ -262,11 +262,11 @@ pub fn fstatat64(
 	statbuf: UserPtr<Stat64>,
 	flags: c_int,
 ) -> EResult<usize> {
-	let path = path.copy_path_opt_from_user()?;
-	let Resolved::Found(ent) = at::get_file(dirfd, path.as_deref(), flags, false, true)? else {
+	let path = path.copy_path_from_user()?;
+	let Resolved::Found(ent) = at::get_file(dirfd, &path, flags, false, true)? else {
 		unreachable!();
 	};
-	do_stat64(ent.stat(), Some(&ent), statbuf)?;
+	do_stat64(ent.stat(), &ent, statbuf)?;
 	Ok(0)
 }
 
@@ -366,9 +366,8 @@ pub fn statx(
 	}
 	// TODO Implement all flags
 	// Get the file
-	let pathname = pathname.copy_path_opt_from_user()?;
-	let Resolved::Found(file) = at::get_file(dirfd, pathname.as_deref(), flags, false, true)?
-	else {
+	let pathname = pathname.copy_path_from_user()?;
+	let Resolved::Found(file) = at::get_file(dirfd, &pathname, flags, false, true)? else {
 		unreachable!();
 	};
 	// Get file's stat
@@ -454,14 +453,7 @@ pub fn statfs64(path: UserString, _sz: usize, buf: UserPtr<Statfs>) -> EResult<u
 /// Performs the `fstatfs` system call.
 pub fn do_fstatfs(fd: c_int, _sz: usize, buf: UserPtr<Statfs>) -> EResult<usize> {
 	// TODO use `sz`
-	let stat = fd_to_file(fd)?
-		.vfs_entry
-		.as_ref()
-		.ok_or_else(|| errno!(ENOSYS))?
-		.node()
-		.fs
-		.ops
-		.get_stat()?;
+	let stat = fd_to_file(fd)?.vfs_entry.node().fs.ops.get_stat()?;
 	buf.copy_to_user(&stat)?;
 	Ok(0)
 }

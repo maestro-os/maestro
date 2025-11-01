@@ -494,7 +494,7 @@ pub fn exec(ent: Arc<vfs::Entry>, argv: Vec<String>, envp: Vec<String>) -> EResu
 		return Err(errno!(EACCES));
 	}
 	// Read and parse file
-	let file = File::open_entry(ent.clone(), O_RDONLY)?;
+	let file = File::open(ent.clone(), O_RDONLY)?;
 	let parser = ELFParser::from_file(&file)?;
 	if unlikely(!matches!(parser.hdr().e_type, ET_EXEC | ET_DYN)) {
 		return Err(errno!(ENOEXEC));
@@ -532,7 +532,7 @@ pub fn exec(ent: Arc<vfs::Entry>, argv: Vec<String>, envp: Vec<String>) -> EResu
 			return Err(errno!(EACCES));
 		}
 		// Read and parse file
-		let file = File::open_entry(interp_ent, O_RDONLY)?;
+		let file = File::open(interp_ent, O_RDONLY)?;
 		let parser = ELFParser::from_file(&file)?;
 		// Cannot load the interpreter at the beginning since it might be used by the program
 		// itself

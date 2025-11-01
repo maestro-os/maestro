@@ -338,13 +338,13 @@ impl Deref for FileOpsWrapper {
 /// An open file description.
 #[derive(Debug)]
 pub struct File {
-	/// The VFS entry of the file.
-	pub vfs_entry: Option<Arc<vfs::Entry>>,
-	/// Handle for file operations.
+	/// The VFS entry of the file
+	pub vfs_entry: Arc<vfs::Entry>,
+	/// Handle for file operations
 	pub ops: FileOpsWrapper,
-	/// Open file description flags.
-	pub flags: Spin<i32>,
-	/// The current offset in the file.
+	/// Open file description flags
+	flags: Spin<i32>,
+	/// The current offset in the file
 	pub off: AtomicU64,
 }
 
@@ -352,13 +352,13 @@ impl File {
 	/// Opens a file from a [`vfs::Entry`].
 	///
 	/// Arguments:
-	/// - `entry` is the VFS entry of the file.
+	/// - `vfs_entry` is the VFS entry of the file.
 	/// - `flags` is the open file description's flags.
 	///
 	/// If the entry is negative, the function returns [`errno::ENOENT`].
-	pub fn open_entry(entry: Arc<vfs::Entry>, flags: i32) -> EResult<Arc<Self>> {
-		let node = entry.node.as_ref().ok_or_else(|| errno!(ENOENT))?;
-		let stat = node.stat.lock().clone();
+	pub fn open(vfs_entry: Arc<vfs::Entry>, flags: i32) -> EResult<Arc<Self>> {
+		let node = vfs_entry.node.as_ref().ok_or_else(|| errno!(ENOENT))?;
+		let stat = node.stat();
 		// Get or create ops
 		let ops = match stat.get_type() {
 			Some(FileType::Fifo) => {
@@ -387,7 +387,7 @@ impl File {
 			_ => FileOpsWrapper::Borrowed(NonNull::from(node.file_ops.as_ref())),
 		};
 		let file = Self {
-			vfs_entry: Some(entry),
+			vfs_entry,
 			ops,
 			flags: Spin::new(flags),
 			off: Default::default(),
@@ -396,11 +396,13 @@ impl File {
 		Ok(Arc::new(file)?)
 	}
 
-	/// Open a file with no associated VFS entry.
-	pub fn open_floating(ops: Arc<dyn FileOps>, flags: i32) -> EResult<Arc<Self>> {
+	/// Open a floating file (for use with the floatfs)
+	pub fn open_floating(vfs_entry: Arc<vfs::Entry>, flags: i32) -> EResult<Arc<Self>> {
+		let node = vfs_entry.node.as_ref().ok_or_else(|| errno!(ENOENT))?;
+		let ops = FileOpsWrapper::Borrowed(NonNull::from(node.file_ops.as_ref()));
 		let file = Self {
-			vfs_entry: None,
-			ops: FileOpsWrapper::Owned(ops),
+			vfs_entry,
+			ops,
 			flags: Spin::new(flags),
 			off: Default::default(),
 		};
@@ -409,8 +411,8 @@ impl File {
 	}
 
 	/// Returns a reference to the file's node.
-	pub fn node(&self) -> Option<&Arc<Node>> {
-		self.vfs_entry.as_ref().map(|e| e.node())
+	pub fn node(&self) -> &Arc<Node> {
+		self.vfs_entry.node()
 	}
 
 	/// Returns the underlying buffer, if any.
@@ -420,7 +422,7 @@ impl File {
 
 	/// If the file is a block device, returns the associated device.
 	pub fn as_block_device(&self) -> Option<Arc<BlkDev>> {
-		let stat = self.stat().unwrap();
+		let stat = self.stat();
 		if stat.get_type()? != FileType::BlockDevice {
 			return None;
 		}
@@ -463,17 +465,13 @@ impl File {
 	}
 
 	/// Returns the file's status.
-	pub fn stat(&self) -> EResult<Stat> {
-		if let Some(node) = self.node() {
-			Ok(node.stat())
-		} else {
-			self.ops.get_stat(self)
-		}
+	pub fn stat(&self) -> Stat {
+		self.node().stat()
 	}
 
 	/// Returns the type of the file.
 	pub fn get_type(&self) -> EResult<FileType> {
-		let stat = self.stat()?;
+		let stat = self.stat();
 		FileType::from_mode(stat.mode).ok_or_else(|| errno!(EUCLEAN))
 	}
 
@@ -483,11 +481,7 @@ impl File {
 	/// on an infinite file.
 	pub fn read_all(&self) -> EResult<Vec<u8>> {
 		const INCREMENT: usize = 512;
-		let len: usize = self
-			.stat()?
-			.size
-			.try_into()
-			.map_err(|_| errno!(EOVERFLOW))?;
+		let len: usize = self.stat().size.try_into().map_err(|_| errno!(EOVERFLOW))?;
 		let len = len
 			.checked_add(INCREMENT)
 			.ok_or_else(|| errno!(EOVERFLOW))?;
@@ -521,10 +515,7 @@ impl File {
 	/// use of it.
 	pub fn close(self) -> EResult<()> {
 		self.ops.release(&self);
-		if let Some(ent) = self.vfs_entry {
-			vfs::Entry::release(ent)?;
-		}
-		Ok(())
+		vfs::Entry::release(self.vfs_entry)
 	}
 }
 

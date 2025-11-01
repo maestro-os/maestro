@@ -469,7 +469,7 @@ pub struct Ext2FileOps;
 impl FileOps for Ext2FileOps {
 	fn read(&self, file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		// TODO replace by filetype-specific FileOps
-		let node = file.node().unwrap();
+		let node = file.node();
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
 		{
 			let inode_ = Ext2INode::get(node, fs)?;
@@ -482,7 +482,7 @@ impl FileOps for Ext2FileOps {
 	}
 
 	fn write(&self, file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
-		let node = file.node().unwrap();
+		let node = file.node();
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
@@ -499,7 +499,7 @@ impl FileOps for Ext2FileOps {
 	}
 
 	fn truncate(&self, file: &File, size: u64) -> EResult<()> {
-		let node = file.node().unwrap();
+		let node = file.node();
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));

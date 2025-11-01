@@ -551,7 +551,7 @@ impl ELFParser<'static> {
 	/// **Note**: this function does not parse the sections table. As such, sections and symbols
 	/// will not be available.
 	pub fn from_file(file: &File) -> EResult<Self> {
-		let len = file.stat()?.size;
+		let len = file.stat().size;
 		if unlikely(len < EI_NIDENT as u64) {
 			return Err(errno!(ENOEXEC));
 		}
