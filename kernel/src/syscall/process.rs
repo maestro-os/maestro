@@ -22,21 +22,27 @@
 use crate::{arch::x86, syscall::FromSyscallArg};
 use crate::{
 	arch::x86::{cli, gdt, idt::IntFrame},
-	memory::user::UserPtr,
+	file::perm::{can_kill, is_privileged},
+	memory::user::{UserPtr, UserSlice},
 	process,
 	process::{
-		ForkOptions, Process, State, pid::Pid, rusage::Rusage, scheduler::schedule,
+		ForkOptions, PROCESS_FLAG_LINUX, Process, State,
+		pid::Pid,
+		rusage::Rusage,
+		scheduler::{cpu::CPU, schedule},
 		user_desc::UserDesc,
 	},
-	syscall::Args,
 };
 use core::{
 	ffi::{c_int, c_ulong, c_void},
 	hint::unlikely,
 	ptr::null_mut,
-	sync::atomic::Ordering::{Acquire, Release},
+	sync::atomic::{
+		AtomicUsize,
+		Ordering::{Acquire, Release},
+	},
 };
-use utils::{errno, errno::EResult, ptr::arc::Arc};
+use utils::{errno, errno::EResult};
 
 /// TODO doc
 pub const CLONE_IO: c_ulong = -0x80000000 as _;
@@ -105,6 +111,11 @@ const ARCH_GET_CPUID: c_int = 0x1011;
 /// Enable or disable cpuid instruction.
 const ARCH_SET_CPUID: c_int = 0x1012;
 
+// `prctl` command: Maestro-specific subcommands
+const PR_MAESTRO: c_int = 0x4d535452;
+// [`PR_MAESTRO`] subcommand: pretend to be Linux
+const PR_MAESTRO_LINUX: c_int = 0;
+
 /// Returns the resource usage of the current process.
 const RUSAGE_SELF: i32 = 0;
 /// Returns the resource usage of the process's children.
@@ -159,18 +170,17 @@ const PRIO_PGRP: c_int = 1;
 /// Process priority type: User
 const PRIO_USER: c_int = 2;
 
-pub fn getpid(proc: Arc<Process>) -> EResult<usize> {
-	Ok(proc.get_pid() as _)
+pub fn getpid() -> EResult<usize> {
+	Ok(Process::current().get_pid() as _)
 }
 
-pub fn getppid(proc: Arc<Process>) -> EResult<usize> {
-	Ok(proc.get_parent_pid() as _)
+pub fn getppid() -> EResult<usize> {
+	Ok(Process::current().get_parent_pid() as _)
 }
 
-pub fn getpgid(Args(pid): Args<Pid>) -> EResult<usize> {
+pub fn getpgid(pid: Pid) -> EResult<usize> {
 	if pid == 0 {
-		let proc = Process::current();
-		Ok(proc.get_pgid() as _)
+		Ok(Process::current().get_pgid() as _)
 	} else {
 		let Some(proc) = Process::get_by_pid(pid) else {
 			return Err(errno!(ESRCH));
@@ -179,8 +189,9 @@ pub fn getpgid(Args(pid): Args<Pid>) -> EResult<usize> {
 	}
 }
 
-pub fn setpgid(Args((mut pid, mut pgid)): Args<(Pid, Pid)>, proc: Arc<Process>) -> EResult<usize> {
+pub fn setpgid(mut pid: Pid, mut pgid: Pid) -> EResult<usize> {
 	// TODO Check processes SID
+	let proc = Process::current();
 	if pid == 0 {
 		pid = proc.get_pid();
 	}
@@ -190,8 +201,6 @@ pub fn setpgid(Args((mut pid, mut pgid)): Args<(Pid, Pid)>, proc: Arc<Process>) 
 	if pid == proc.get_pid() {
 		proc.set_pgid(pgid)?;
 	} else {
-		// Avoid deadlock
-		drop(proc);
 		Process::get_by_pid(pid)
 			.ok_or_else(|| errno!(ESRCH))?
 			.set_pgid(pgid)?;
@@ -199,13 +208,13 @@ pub fn setpgid(Args((mut pid, mut pgid)): Args<(Pid, Pid)>, proc: Arc<Process>) 
 	Ok(0)
 }
 
-pub fn gettid(proc: Arc<Process>) -> EResult<usize> {
-	Ok(proc.tid as _)
+pub fn gettid() -> EResult<usize> {
+	Ok(Process::current().tid as _)
 }
 
-pub fn set_tid_address(Args(_tidptr): Args<UserPtr<c_int>>, proc: Arc<Process>) -> EResult<usize> {
+pub fn set_tid_address(_tidptr: UserPtr<c_int>) -> EResult<usize> {
 	// TODO set process's clear_child_tid
-	Ok(proc.tid as _)
+	Ok(Process::current().tid as _)
 }
 
 /// Wait for the vfork operation to complete.
@@ -214,7 +223,6 @@ fn wait_vfork_done(child_pid: Pid) {
 		// Use a scope to avoid holding references that could be lost, since `schedule` could never
 		// return
 		{
-			let proc = Process::current();
 			let Some(child) = Process::get_by_pid(child_pid) else {
 				// Child disappeared for some reason, stop
 				break;
@@ -224,10 +232,10 @@ fn wait_vfork_done(child_pid: Pid) {
 				break;
 			}
 			// Sleep until done
-			Process::set_state(&proc, State::Sleeping);
+			process::set_state(State::Sleeping);
 			// If vfork has completed in between, cancel sleeping
 			if unlikely(child.is_vfork_done()) {
-				Process::set_state(&proc, State::Running);
+				Process::wake_from(&Process::current(), State::Sleeping as u8);
 				break;
 			}
 		}
@@ -238,13 +246,11 @@ fn wait_vfork_done(child_pid: Pid) {
 
 #[allow(clippy::type_complexity)]
 pub fn compat_clone(
-	Args((flags, stack, _parent_tid, _tls, _child_tid)): Args<(
-		c_ulong,
-		*mut c_void,
-		UserPtr<c_int>,
-		c_ulong,
-		UserPtr<c_int>,
-	)>,
+	flags: c_ulong,
+	stack: *mut c_void,
+	_parent_tid: UserPtr<c_int>,
+	_tls: c_ulong,
+	_child_tid: UserPtr<c_int>,
 	frame: &mut IntFrame,
 ) -> EResult<usize> {
 	let (child_pid, child_tid) = {
@@ -267,34 +273,27 @@ pub fn compat_clone(
 
 #[allow(clippy::type_complexity)]
 pub fn clone(
-	Args((flags, stack, parent_tid, child_tid, tls)): Args<(
-		c_ulong,
-		*mut c_void,
-		UserPtr<c_int>,
-		UserPtr<c_int>,
-		c_ulong,
-	)>,
+	flags: c_ulong,
+	stack: *mut c_void,
+	parent_tid: UserPtr<c_int>,
+	child_tid: UserPtr<c_int>,
+	tls: c_ulong,
 	frame: &mut IntFrame,
 ) -> EResult<usize> {
-	compat_clone(Args((flags, stack, parent_tid, tls, child_tid)), frame)
+	compat_clone(flags, stack, parent_tid, tls, child_tid, frame)
 }
 
 pub fn fork(frame: &mut IntFrame) -> EResult<usize> {
-	clone(
-		Args((0, null_mut(), UserPtr(None), UserPtr(None), 0)),
-		frame,
-	)
+	clone(0, null_mut(), UserPtr(None), UserPtr(None), 0, frame)
 }
 
 pub fn vfork(frame: &mut IntFrame) -> EResult<usize> {
 	clone(
-		Args((
-			CLONE_VFORK | CLONE_VM,
-			null_mut(),
-			UserPtr(None),
-			UserPtr(None),
-			0,
-		)),
+		CLONE_VFORK | CLONE_VM,
+		null_mut(),
+		UserPtr(None),
+		UserPtr(None),
+		0,
 		frame,
 	)
 }
@@ -324,13 +323,11 @@ fn get_tls_entry(
 	Ok((id, &mut entries[id]))
 }
 
-pub fn set_thread_area(
-	Args(u_info): Args<UserPtr<UserDesc>>,
-	proc: Arc<Process>,
-) -> EResult<usize> {
+pub fn set_thread_area(u_info: UserPtr<UserDesc>) -> EResult<usize> {
 	// Read user_desc
 	let mut info = u_info.copy_from_user()?.ok_or(errno!(EFAULT))?;
 	// Get the entry with its id
+	let proc = Process::current();
 	let mut entries = proc.tls.lock();
 	let (id, entry) = get_tls_entry(&mut entries, info.get_entry_number())?;
 	// If the entry is allocated, tell the userspace its ID
@@ -349,7 +346,7 @@ pub fn set_thread_area(
 }
 
 #[allow(unused_variables)]
-pub fn arch_prctl(Args((code, addr)): Args<(c_int, usize)>) -> EResult<usize> {
+pub fn arch_prctl(code: c_int, addr: usize) -> EResult<usize> {
 	// For `gs`, use kernel base because it will get swapped when returning to userspace
 	match code {
 		#[cfg(target_arch = "x86_64")]
@@ -377,7 +374,24 @@ pub fn arch_prctl(Args((code, addr)): Args<(c_int, usize)>) -> EResult<usize> {
 	Ok(0)
 }
 
-pub fn getrusage(Args((who, usage)): Args<(c_int, UserPtr<Rusage>)>) -> EResult<usize> {
+#[allow(unused_variables)]
+pub fn prctl(op: c_int, arg0: usize, arg1: usize, arg2: usize, arg3: usize) -> EResult<usize> {
+	let proc = Process::current();
+	match op {
+		PR_MAESTRO if arg0 == PR_MAESTRO_LINUX as usize => {
+			let linux = arg1 != 0;
+			if linux {
+				proc.flags.fetch_or(PROCESS_FLAG_LINUX, Release);
+			} else {
+				proc.flags.fetch_and(!PROCESS_FLAG_LINUX, Release);
+			}
+			Ok(0)
+		}
+		_ => Err(errno!(EINVAL)),
+	}
+}
+
+pub fn getrusage(who: c_int, usage: UserPtr<Rusage>) -> EResult<usize> {
 	let proc = Process::current();
 	let rusage = match who {
 		RUSAGE_SELF => proc.rusage.lock().clone(),
@@ -402,12 +416,10 @@ pub struct RLimit {
 }
 
 pub fn prlimit64(
-	Args((pid, resource, _new_limit, _old_limit)): Args<(
-		Pid,
-		c_int,
-		UserPtr<RLimit>,
-		UserPtr<RLimit>,
-	)>,
+	pid: Pid,
+	resource: c_int,
+	_new_limit: UserPtr<RLimit>,
+	_old_limit: UserPtr<RLimit>,
 ) -> EResult<usize> {
 	// The target process. If None, the current process is the target
 	let _target_proc = if pid != 0 {
@@ -440,7 +452,7 @@ pub fn prlimit64(
 	Ok(0)
 }
 
-pub fn nice(Args(inc): Args<c_int>) -> EResult<usize> {
+pub fn nice(inc: c_int) -> EResult<usize> {
 	let nice = Process::current()
 		.nice
 		.fetch_update(Release, Acquire, |old| {
@@ -450,7 +462,7 @@ pub fn nice(Args(inc): Args<c_int>) -> EResult<usize> {
 	Ok(nice as _)
 }
 
-pub fn getpriority(Args((which, who)): Args<(c_int, Pid)>) -> EResult<usize> {
+pub fn getpriority(which: c_int, who: Pid) -> EResult<usize> {
 	match which {
 		PRIO_PROCESS => {
 			let cur = Process::current();
@@ -460,7 +472,7 @@ pub fn getpriority(Args((which, who)): Args<(c_int, Pid)>) -> EResult<usize> {
 				&cur
 			};
 			// Check permission
-			if unlikely(!cur.fs().lock().access_profile.can_kill(proc)) {
+			if unlikely(!can_kill(proc)) {
 				return Err(errno!(EPERM));
 			}
 			// Update value
@@ -475,14 +487,13 @@ pub fn getpriority(Args((which, who)): Args<(c_int, Pid)>) -> EResult<usize> {
 	}
 }
 
-pub fn setpriority(Args((which, who, prio)): Args<(c_int, Pid, c_int)>) -> EResult<usize> {
+pub fn setpriority(which: c_int, who: Pid, prio: c_int) -> EResult<usize> {
 	let nice = prio.clamp(-20, 19);
 	match which {
 		PRIO_PROCESS => {
 			let proc = Process::get_by_pid(who).ok_or_else(|| errno!(ESRCH))?;
 			// Check permission
-			let cur = Process::current();
-			if unlikely(!cur.fs().lock().access_profile.can_kill(&proc)) {
+			if unlikely(!can_kill(&proc)) {
 				return Err(errno!(EPERM));
 			}
 			// Update value
@@ -497,6 +508,68 @@ pub fn setpriority(Args((which, who, prio)): Args<(c_int, Pid, c_int)>) -> EResu
 	}
 }
 
+pub fn sched_getaffinity(pid: Pid, cpusetsize: usize, mask: *mut AtomicUsize) -> EResult<usize> {
+	// Get process
+	let proc = if pid == 0 {
+		Process::current()
+	} else {
+		Process::get_by_pid(pid).ok_or_else(|| errno!(ESRCH))?
+	};
+	// Check pointer
+	let slice = UserSlice::from_user(mask, cpusetsize)?;
+	if unlikely(slice.is_null()) {
+		return Err(errno!(EFAULT));
+	}
+	// Copy
+	let len = slice.copy_to_user(0, &proc.affinity)?;
+	Ok(len)
+}
+
+fn is_valid_affinity_mask(mask: &[usize]) -> bool {
+	let mut iter = mask.iter().rev();
+	// Check last unit (special case since it may not be used entirely)
+	let Some(last) = iter.next() else {
+		return true;
+	};
+	let bit_cnt = CPU.len() % usize::BITS as usize;
+	let mask = (1 << bit_cnt) - 1;
+	if *last & mask != 0 {
+		return true;
+	}
+	// Check remaining units
+	iter.any(|n| *n != 0)
+}
+
+pub fn sched_setaffinity(pid: Pid, cpusetsize: usize, mask: *mut usize) -> EResult<usize> {
+	// Get process
+	let src_euid = Process::current().fs().lock().ap.euid;
+	let dst = if pid == 0 {
+		Process::current()
+	} else {
+		Process::get_by_pid(pid).ok_or_else(|| errno!(ESRCH))?
+	};
+	// Check permission
+	if !is_privileged() {
+		let fs = dst.fs().lock();
+		if unlikely(src_euid != fs.ap.uid && src_euid != fs.ap.euid) {
+			return Err(errno!(EPERM));
+		}
+	}
+	// Check pointer
+	let slice = UserSlice::from_user(mask, cpusetsize)?;
+	let Some(mask) = slice.copy_from_user_vec(0)? else {
+		return Err(errno!(EFAULT));
+	};
+	// Validate mask
+	if unlikely(!is_valid_affinity_mask(&mask)) {
+		return Err(errno!(EINVAL));
+	}
+	// Copy
+	dst.affinity.copy_from(&mask);
+	// TODO if the process is not on a core that can run it anymore, migrate it
+	Ok(0)
+}
+
 pub fn sched_yield() -> EResult<usize> {
 	schedule();
 	Ok(0)
@@ -507,19 +580,14 @@ pub fn sched_yield() -> EResult<usize> {
 /// Arguments:
 /// - `status` is the exit status.
 /// - `thread_group`: if `true`, the function exits the whole process group.
-/// - `proc` is the current process.
 pub fn do_exit(status: u32, thread_group: bool) -> ! {
 	// Disable interruptions to prevent execution from being stopped before the reference to
 	// `Process` is dropped
 	cli();
 	{
-		let proc = Process::current();
-		Process::exit(&proc, status);
-		let _pid = proc.get_pid();
-		let _tid = proc.tid;
+		process::exit(status);
 		if thread_group {
-			// TODO Iterate on every process of thread group `tid`, except the
-			// process with pid `pid`
+			// TODO Iterate on every task of thread group, except the current task
 		}
 	}
 	schedule();
@@ -527,10 +595,10 @@ pub fn do_exit(status: u32, thread_group: bool) -> ! {
 	unreachable!();
 }
 
-pub fn _exit(Args(status): Args<c_int>) -> EResult<usize> {
+pub fn _exit(status: c_int) -> EResult<usize> {
 	do_exit(status as _, false);
 }
 
-pub fn exit_group(Args(status): Args<c_int>) -> EResult<usize> {
+pub fn exit_group(status: c_int) -> EResult<usize> {
 	do_exit(status as _, true);
 }

@@ -20,13 +20,13 @@
 //! and another writing, with a buffer in between.
 
 use crate::{
-	file::{File, FileType, O_NONBLOCK, Stat, fs::FileOps, wait_queue::WaitQueue},
+	file::{File, O_NONBLOCK, fs::FileOps},
 	memory::{
 		ring_buffer::RingBuffer,
 		user::{UserPtr, UserSlice},
 	},
 	process::{Process, signal::Signal},
-	sync::mutex::Mutex,
+	sync::{spin::Spin, wait_queue::WaitQueue},
 	syscall::{FromSyscallArg, ioctl},
 };
 use core::{
@@ -37,8 +37,12 @@ use core::{
 use utils::{
 	errno,
 	errno::{AllocResult, EResult},
-	limits::PIPE_BUF,
 };
+
+/// The capacity of a pipe in bytes.
+const CAPACITY: usize = 65536;
+
+// TODO guarantee atomicity on transfer <= PIPE_BUF
 
 #[derive(Debug)]
 struct PipeInner {
@@ -54,7 +58,7 @@ struct PipeInner {
 #[derive(Debug)]
 pub struct PipeBuffer {
 	/// Inner with locking.
-	inner: Mutex<PipeInner>,
+	inner: Spin<PipeInner>,
 	/// The queue of processing waiting to read from the pipe.
 	rd_queue: WaitQueue,
 	/// The queue of processing waiting to write to the pipe.
@@ -65,8 +69,8 @@ impl PipeBuffer {
 	/// Creates a new instance.
 	pub fn new() -> AllocResult<Self> {
 		Ok(Self {
-			inner: Mutex::new(PipeInner {
-				buffer: RingBuffer::new(NonZeroUsize::new(PIPE_BUF).unwrap())?,
+			inner: Spin::new(PipeInner {
+				buffer: RingBuffer::new(NonZeroUsize::new(CAPACITY).unwrap())?,
 				readers: 0,
 				writers: 0,
 			}),
@@ -77,18 +81,11 @@ impl PipeBuffer {
 
 	/// Returns the capacity of the pipe in bytes.
 	pub fn get_capacity(&self) -> usize {
-		PIPE_BUF
+		CAPACITY
 	}
 }
 
 impl FileOps for PipeBuffer {
-	fn get_stat(&self, _file: &File) -> EResult<Stat> {
-		Ok(Stat {
-			mode: FileType::Fifo.to_mode() | 0o666,
-			..Default::default()
-		})
-	}
-
 	fn acquire(&self, file: &File) {
 		let mut inner = self.inner.lock();
 		if file.can_read() {
@@ -163,7 +160,7 @@ impl FileOps for PipeBuffer {
 		let len = self.wr_queue.wait_until(|| {
 			let mut inner = self.inner.lock();
 			if inner.readers == 0 {
-				Process::current().kill(Signal::SIGPIPE);
+				Process::kill(&Process::current(), Signal::SIGPIPE);
 				return Some(Err(errno!(EPIPE)));
 			}
 			let len = match inner.buffer.write(buf) {

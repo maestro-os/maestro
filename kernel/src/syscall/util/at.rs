@@ -18,15 +18,13 @@
 
 //! `*at` system calls allow to perform operations on files without having to redo the whole
 //! path-resolution each time.
-//!
-//! This module implements utility functions for those system calls.
 
 use crate::file::{
-	fd::FileDescriptorTable,
+	fd::fd_to_file,
 	vfs,
 	vfs::{ResolutionSettings, Resolved},
 };
-use core::ffi::c_int;
+use core::{ffi::c_int, hint::likely};
 use utils::{collections::path::Path, errno, errno::EResult};
 
 /// Special value to be used as file descriptor, telling to take the path relative to the
@@ -55,54 +53,38 @@ pub const AT_STATX_DONT_SYNC: c_int = 0x4000;
 /// Returns the file for the given path `path`.
 ///
 /// Arguments:
-/// - `fds` is the file descriptors table to use
-/// - `rs` is the path resolution settings to use
 /// - `dirfd` is the file descriptor of the parent directory
 /// - `path` is the path relative to the parent directory
 /// - `flags` is the set of `AT_*` flags
-///
-/// **Note**: the `start` field of [`ResolutionSettings`] must be set as it is used as the current
-/// working directory.
-pub fn get_file<'p>(
-	fds: &FileDescriptorTable,
-	mut rs: ResolutionSettings,
+/// - `create`: if `true`, the function might return [`Resolved::Creatable`] if the file does not
+///   exist
+/// - `follow_link` if `true`, links are followed (unless bypassed by a flag)
+pub fn get_file(
 	dirfd: c_int,
-	path: Option<&'p Path>,
+	path: &Path,
 	flags: c_int,
-) -> EResult<Resolved<'p>> {
-	// Prepare resolution settings
-	let follow_links = if rs.follow_link {
-		flags & AT_SYMLINK_NOFOLLOW == 0
+	create: bool,
+	follow_link: bool,
+) -> EResult<Resolved> {
+	if path.is_empty() {
+		if likely(flags & AT_EMPTY_PATH != 0) {
+			Ok(Resolved::Found(fd_to_file(dirfd)?.vfs_entry.clone()))
+		} else {
+			Err(errno!(ENOENT))
+		}
 	} else {
-		flags & AT_SYMLINK_FOLLOW != 0
-	};
-	rs.follow_link = follow_links;
-	// If not starting from current directory, get location
-	if dirfd != AT_FDCWD {
-		let cwd = fds
-			.get_fd(dirfd)?
-			.get_file()
-			.vfs_entry
-			.clone()
-			.ok_or_else(|| errno!(ENOTDIR))?;
-		rs.cwd = Some(cwd);
-	}
-	match path {
-		Some(path) if !path.is_empty() => vfs::resolve_path(path, &rs),
-		// Empty path
-		Some(_) => {
-			// Validation
-			if flags & AT_EMPTY_PATH == 0 {
-				return Err(errno!(ENOENT));
-			}
-			Ok(Resolved::Found(rs.cwd.unwrap()))
+		let mut rs = ResolutionSettings::cur_task(create, follow_link);
+		// If not starting from current directory, get location
+		if dirfd != AT_FDCWD {
+			let cwd = fd_to_file(dirfd)?.vfs_entry.clone();
+			rs.cwd = Some(cwd);
 		}
-		None => {
-			// Validation
-			if dirfd == AT_FDCWD {
-				return Err(errno!(EFAULT));
-			}
-			Ok(Resolved::Found(rs.cwd.unwrap()))
-		}
+		let follow_link = if rs.follow_link {
+			flags & AT_SYMLINK_NOFOLLOW == 0
+		} else {
+			flags & AT_SYMLINK_FOLLOW != 0
+		};
+		rs.follow_link = follow_link;
+		vfs::resolve_path(path, &rs)
 	}
 }

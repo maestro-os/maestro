@@ -21,7 +21,7 @@
 //! A file descriptor is an ID held by a process pointing to an entry in the
 //! open file description table.
 
-use crate::file::File;
+use crate::{file::File, process::Process};
 use core::{cmp::max, ffi::c_int, mem};
 use utils::{
 	collections::vec::Vec,
@@ -297,20 +297,32 @@ impl Drop for FileDescriptorTable {
 	}
 }
 
+/// Returns a reference to the file associated with the file descriptor `fd` on the current
+/// process.
+///
+/// If the file descriptor does not exist, the function returns [`errno::EBADF`].
+pub fn fd_to_file(fd: c_int) -> EResult<Arc<File>> {
+	let file = Process::current()
+		.file_descriptors()
+		.lock()
+		.get_fd(fd)?
+		.get_file()
+		.clone();
+	Ok(file)
+}
+
 #[cfg(test)]
 mod test {
 	use super::*;
-	use crate::file::{File, fs::FileOps};
-
-	/// Dummy node ops for testing purpose.
-	#[derive(Debug)]
-	struct Dummy;
-
-	impl FileOps for Dummy {}
+	use crate::file::{
+		File, FileType,
+		fs::{DummyOps, float},
+	};
 
 	/// Creates a dummy open file for testing purpose.
 	fn dummy_file() -> Arc<File> {
-		File::open_floating(Arc::new(Dummy).unwrap(), 0).unwrap()
+		let ent = float::get_entry(DummyOps, FileType::Regular).unwrap();
+		File::open_floating(ent, 0).unwrap()
 	}
 
 	#[test_case]

@@ -37,7 +37,7 @@ impl FileOps for StatNode {
 		let proc = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
 		let disp = fmt::from_fn(|f| {
 			let (name, vmem_usage) = proc
-				.mem_space
+				.mem_space_opt()
 				.as_ref()
 				.map(|m| (m.exe_info.exe.name.as_bytes(), m.get_vmem_usage()))
 				.unwrap_or_default();

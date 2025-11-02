@@ -25,22 +25,30 @@ use crate::{
 	arch::x86::idt::IntFrame,
 	file::perm::Uid,
 	memory::VirtAddr,
+	process,
 	process::{mem_space::MemSpace, pid::Pid},
-	syscall::wait::{WCONTINUED, WUNTRACED},
+	syscall::wait::{WCONTINUED, WEXITED, WUNTRACED},
 	time::unit::ClockIdT,
 };
 use core::{
 	ffi::{c_int, c_void},
+	hint::likely,
 	mem::{size_of, transmute},
 	ptr,
 	ptr::NonNull,
 	slice,
-	sync::atomic::Ordering::Release,
 };
 use ucontext::UContext32;
 #[cfg(target_pointer_width = "64")]
 use ucontext::UContext64;
-use utils::{errno, errno::Errno, ptr::arc::Arc};
+use utils::{errno, errno::Errno};
+
+/// sigaltstack flag: Currently executing on the alternate signal stack
+pub const SS_ONSTACK: i32 = 1;
+/// sigaltstack flag: The alternate signal stack is currently disabled
+pub const SS_DISABLE: i32 = 2;
+/// sigaltstack flag: Autodisarm on signal handler entry
+pub const SS_AUTODISARM: i32 = 1 << 31;
 
 /// Signal handler value: Ignoring the signal.
 pub const SIG_IGN: usize = 0x0;
@@ -52,6 +60,8 @@ pub const SIG_DFL: usize = 0x1;
 pub const SA_SIGINFO: u64 = 0x00000004;
 /// [`SigAction`] flag: If set, use [`SigAction::sa_restorer`] as signal trampoline.
 pub const SA_RESTORER: u64 = 0x04000000;
+/// [`SigAction`] flag: If set, use an alternate stack if available
+pub const SA_ONSTACK: u64 = 0x08000000;
 /// [`SigAction`] flag: If set, the system call must restart after being interrupted by a signal.
 pub const SA_RESTART: u64 = 0x10000000;
 /// [`SigAction`] flag: If set, the signal is not added to the signal mask of the process when
@@ -68,6 +78,77 @@ pub const SIGEV_THREAD: c_int = 2;
 /// The size of the signal handlers table (the number of signals + 1, since
 /// indexing begins at 1 instead of 0).
 pub const SIGNALS_COUNT: usize = 32;
+
+/// 32-bit version of `stack_t`
+#[repr(C)]
+#[derive(Clone, Debug)]
+pub struct Stack32 {
+	/// Stack pointer
+	pub ss_sp: u32,
+	/// Flags
+	pub ss_flags: i32,
+	/// Stack size
+	pub ss_size: u32,
+}
+
+impl Default for Stack32 {
+	fn default() -> Self {
+		Self {
+			ss_sp: 0,
+			ss_flags: SS_DISABLE,
+			ss_size: 0,
+		}
+	}
+}
+
+impl From<Stack64> for Stack32 {
+	fn from(ss: Stack64) -> Self {
+		Self {
+			ss_sp: ss.ss_sp as _,
+			ss_flags: ss.ss_flags,
+			ss_size: ss.ss_size as _,
+		}
+	}
+}
+
+/// 64-bit version of `stack_t`
+#[repr(C)]
+#[derive(Clone, Debug)]
+pub struct Stack64 {
+	/// Stack pointer
+	pub ss_sp: u64,
+	/// Flags
+	pub ss_flags: i32,
+	/// Stack size
+	pub ss_size: usize,
+}
+
+impl Default for Stack64 {
+	fn default() -> Self {
+		Self {
+			ss_sp: 0,
+			ss_flags: SS_DISABLE,
+			ss_size: 0,
+		}
+	}
+}
+
+impl From<Stack32> for Stack64 {
+	fn from(ss: Stack32) -> Self {
+		Self {
+			ss_sp: ss.ss_sp as _,
+			ss_flags: ss.ss_flags,
+			ss_size: ss.ss_size as _,
+		}
+	}
+}
+
+#[cfg(target_pointer_width = "32")]
+/// Kernelspace alternative stack structure
+pub type AltStack = Stack32;
+#[cfg(target_pointer_width = "64")]
+/// Kernelspace alternative stack structure
+pub type AltStack = Stack64;
 
 /// Enumeration representing the action to perform for a signal.
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -86,21 +167,22 @@ pub enum SignalAction {
 
 impl SignalAction {
 	/// Executes the signal action for the given process.
-	pub fn exec(self, process: &Arc<Process>) {
+	pub fn exec(self, sig: Signal) {
+		let proc = Process::current();
 		match self {
 			// TODO when `Abort`ing, dump core
 			SignalAction::Terminate | SignalAction::Abort => {
-				Process::set_state(process, State::Zombie)
+				proc.signal.lock().termsig = sig as u8;
+				process::set_state(State::Zombie);
+				proc.notify_parent(WEXITED as u8);
 			}
 			SignalAction::Ignore => {}
 			SignalAction::Stop => {
-				Process::set_state(process, State::Stopped);
-				process.parent_event.fetch_or(WUNTRACED as _, Release);
+				proc.signal.lock().termsig = sig as u8;
+				process::set_state(State::Stopped);
+				proc.notify_parent(WUNTRACED as u8);
 			}
-			SignalAction::Continue => {
-				Process::set_state(process, State::Running);
-				process.parent_event.fetch_or(WCONTINUED as _, Release);
-			}
+			SignalAction::Continue => proc.notify_parent(WCONTINUED as u8),
 		}
 	}
 }
@@ -274,9 +356,8 @@ impl SigEvent {
 	pub fn is_valid(&self) -> bool {
 		// TODO check sigev_notify_thread_id
 		match self.sigev_notify {
-			SIGEV_NONE => true,
+			SIGEV_NONE | SIGEV_THREAD => true,
 			SIGEV_SIGNAL => Signal::try_from(self.sigev_signo).is_ok(),
-			SIGEV_THREAD => true,
 			_ => false,
 		}
 	}
@@ -350,12 +431,9 @@ impl SignalHandler {
 		}
 	}
 
-	/// Executes the action for `signal` on the **current** process `process`.
-	pub fn exec(&self, signal: Signal, process: &Arc<Process>, frame: &mut IntFrame) {
-		let process_state = process.get_state();
-		if matches!(process_state, State::Zombie) {
-			return;
-		}
+	/// Executes the action for `signal` on the current process.
+	pub fn exec(&self, signal: Signal, frame: &mut IntFrame) {
+		let proc = Process::current();
 		let action = match self {
 			Self::Handler(action) if signal.can_catch() => action,
 			Self::Ignore => return,
@@ -363,18 +441,32 @@ impl SignalHandler {
 			_ => {
 				// Signals on the init process can be executed only if the process has set a
 				// signal handler
-				if !process.is_init() || !signal.can_catch() {
-					signal.get_default_action().exec(process);
+				if !proc.is_init() || !signal.can_catch() {
+					signal.get_default_action().exec(signal);
 				}
 				return;
 			}
 		};
 		// TODO trigger EFAULT if SA_RESTORER is not set
 		// TODO handle SA_SIGINFO
-		// TODO Handle the case where an alternate stack is specified (sigaltstack + flag
-		// SA_ONSTACK)
 		// Prepare the signal handler stack
-		let stack_addr = VirtAddr(frame.get_stack_address()) - REDZONE_SIZE;
+		let (stack_addr, altstack, sigmask) = {
+			let mut sig = proc.signal.lock();
+			let altstack = sig.altstack.clone();
+			let stack_addr = if action.sa_flags & SA_ONSTACK != 0
+				&& sig.altstack.ss_flags & SS_DISABLE == 0
+				&& likely(sig.altstack.ss_sp != 0)
+			{
+				sig.altstack.ss_flags |= SS_ONSTACK;
+				if sig.altstack.ss_flags & SS_AUTODISARM != 0 {
+					sig.altstack = Default::default();
+				}
+				VirtAddr(altstack.ss_sp as _)
+			} else {
+				VirtAddr(frame.get_stack_address()) - REDZONE_SIZE
+			};
+			(stack_addr, altstack, sig.sigmask)
+		};
 		// Size of the `ucontext_t` struct and arguments *on the stack*
 		let (ctx_size, ctx_align, arg_len) = if frame.is_compat() {
 			(
@@ -395,12 +487,15 @@ impl SignalHandler {
 		let ctx_addr = (stack_addr - ctx_size).down_align_to(ctx_align);
 		let signal_sp = ctx_addr - arg_len;
 		// Bind virtual memory
-		let mem_space = process.mem_space.as_ref().unwrap();
+		let mem_space = proc.mem_space.as_ref().unwrap();
 		MemSpace::bind(mem_space);
 		// Write data on stack
 		if frame.is_compat() {
 			let args = unsafe {
-				ptr::write_volatile(ctx_addr.as_ptr(), UContext32::new(process, frame));
+				ptr::write_volatile(
+					ctx_addr.as_ptr(),
+					UContext32::new(altstack.into(), sigmask, frame),
+				);
 				// Arguments slice
 				slice::from_raw_parts_mut(signal_sp.as_ptr::<u32>(), 2)
 			};
@@ -411,14 +506,14 @@ impl SignalHandler {
 		} else {
 			#[cfg(target_pointer_width = "64")]
 			unsafe {
-				ptr::write_volatile(ctx_addr.as_ptr(), UContext64::new(process, frame));
+				ptr::write_volatile(ctx_addr.as_ptr(), UContext64::new(altstack, sigmask, frame));
 				// Return pointer
 				ptr::write_volatile(signal_sp.as_ptr::<u64>(), action.sa_restorer as _);
 			}
 		}
 		// Block signal from `sa_mask`
 		{
-			let mut signals_manager = process.signal.lock();
+			let mut signals_manager = proc.signal.lock();
 			signals_manager.sigmask.0 |= action.sa_mask.0;
 			if action.sa_flags & SA_NODEFER == 0 {
 				signals_manager.sigmask.set(signal as _);

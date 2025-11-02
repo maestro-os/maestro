@@ -22,7 +22,10 @@
 
 use crate::{
 	arch::x86::{gdt, idt::IntFrame},
-	process::{Process, signal::SigSet},
+	process::{
+		Process,
+		signal::{SigSet, Stack32},
+	},
 };
 
 // TODO restore everything
@@ -69,16 +72,11 @@ pub struct UContext32 {
 
 impl UContext32 {
 	/// Creates a context structure from the current.
-	pub fn new(process: &Process, frame: &IntFrame) -> Self {
+	pub fn new(uc_stack: Stack32, uc_sigmask: SigSet, frame: &IntFrame) -> Self {
 		Self {
 			uc_flags: 0, // TODO
 			uc_link: 0,
-			// TODO
-			uc_stack: Stack32 {
-				ss_sp: 0,
-				ss_flags: 0,
-				ss_size: 0,
-			},
+			uc_stack,
 			uc_mcontext: MContext32 {
 				gregs: [
 					frame.gs as _,
@@ -105,7 +103,7 @@ impl UContext32 {
 				oldmask: 0, // TODO
 				cr2: 0,
 			},
-			uc_sigmask: process.signal.lock().sigmask,
+			uc_sigmask,
 			// TODO
 			__fpregs_mem: FpState32 {
 				cw: 0,
@@ -126,7 +124,9 @@ impl UContext32 {
 	}
 
 	/// Restores the context.
-	pub fn restore_regs(&self, proc: &Process, frame: &mut IntFrame) {
+	pub fn restore(self, proc: &Process, frame: &mut IntFrame) {
+		// Restore alternative stack setting
+		proc.signal.lock().altstack = self.uc_stack.into();
 		// Restore general registers
 		frame.gs = self.uc_mcontext.gregs[GReg32::Gs as usize] as _;
 		frame.fs = self.uc_mcontext.gregs[GReg32::Fs as usize] as _;
@@ -143,15 +143,6 @@ impl UContext32 {
 		// TODO restore fpstate
 		proc.signal.lock().sigmask = self.uc_sigmask;
 	}
-}
-
-/// 32-bit description of a signal stack.
-#[repr(C)]
-#[derive(Debug)]
-pub struct Stack32 {
-	pub ss_sp: u32, // 32 bit pointer
-	pub ss_flags: i32,
-	pub ss_size: u32,
 }
 
 /// 32-bit registers state.
@@ -195,7 +186,11 @@ pub struct FpReg32 {
 mod long {
 	use crate::{
 		arch::x86::idt::IntFrame,
-		process::{Process, mem_space::bound_check, signal::SigSet},
+		process::{
+			Process,
+			mem_space::bound_check,
+			signal::{SigSet, Stack64},
+		},
 	};
 	use core::hint::unlikely;
 	use utils::{errno, errno::EResult};
@@ -243,16 +238,11 @@ mod long {
 
 	impl UContext64 {
 		/// Creates a context structure from the current.
-		pub fn new(process: &Process, frame: &IntFrame) -> Self {
+		pub fn new(uc_stack: Stack64, uc_sigmask: SigSet, frame: &IntFrame) -> Self {
 			Self {
 				uc_flags: 0, // TODO
 				uc_link: 0,
-				// TODO
-				uc_stack: Stack64 {
-					ss_sp: 0,
-					ss_flags: 0,
-					ss_size: 0,
-				},
+				uc_stack,
 				uc_mcontext: MContext64 {
 					gregs: [
 						frame.r8,
@@ -282,7 +272,7 @@ mod long {
 					fpregs: 0, // TODO
 					__reserved1: [0; 8],
 				},
-				uc_sigmask: process.signal.lock().sigmask,
+				uc_sigmask,
 				// TODO
 				__fpregs_mem: FpState64 {
 					cwd: 0,
@@ -308,7 +298,9 @@ mod long {
 		}
 
 		/// Restores the context.
-		pub fn restore_regs(&self, proc: &Process, frame: &mut IntFrame) -> EResult<()> {
+		pub fn restore(self, proc: &Process, frame: &mut IntFrame) -> EResult<()> {
+			// Restore alternative stack setting
+			proc.signal.lock().altstack = self.uc_stack;
 			// Restore general registers
 			frame.rax = self.uc_mcontext.gregs[GReg64::Rax as usize] as _;
 			frame.rbx = self.uc_mcontext.gregs[GReg64::Rbx as usize] as _;
@@ -338,15 +330,6 @@ mod long {
 			proc.signal.lock().sigmask = self.uc_sigmask;
 			Ok(())
 		}
-	}
-
-	/// 64-bit description of a signal stack.
-	#[repr(C)]
-	#[derive(Debug)]
-	pub struct Stack64 {
-		pub ss_sp: u64, // 64 bit pointer
-		pub ss_flags: i32,
-		pub ss_size: usize,
 	}
 
 	/// 64-bit registers state.

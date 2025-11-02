@@ -19,7 +19,7 @@
 //! The Open Systems Interconnection (OSI) model defines the architecure of a network stack.
 
 use super::{SocketDesc, SocketDomain, SocketType, buf::BufList, ip};
-use crate::sync::mutex::Mutex;
+use crate::sync::spin::Spin;
 use core::fmt::Debug;
 use utils::{boxed::Box, collections::hashmap::HashMap, errno, errno::EResult};
 
@@ -44,14 +44,14 @@ pub trait Layer: Debug {
 pub type LayerBuilder = fn(&[u8]) -> EResult<Box<dyn Layer>>;
 
 /// Collection of OSI layers 3 (network)
-static DOMAINS: Mutex<HashMap<u32, LayerBuilder>> = Mutex::new(HashMap::new());
+static DOMAINS: Spin<HashMap<u32, LayerBuilder>> = Spin::new(HashMap::new());
 /// Collection of OSI layers 4 (transport)
-static PROTOCOLS: Mutex<HashMap<u32, LayerBuilder>> = Mutex::new(HashMap::new());
+static PROTOCOLS: Spin<HashMap<u32, LayerBuilder>> = Spin::new(HashMap::new());
 
 /// Collection of default protocols ID for domain/type pairs.
 ///
 /// If this collection doesn't contain a pair, it is considered invalid.
-static DEFAULT_PROTOCOLS: Mutex<HashMap<(u32, SocketType), u32>> = Mutex::new(HashMap::new());
+static DEFAULT_PROTOCOLS: Spin<HashMap<(u32, SocketType), u32>> = Spin::new(HashMap::new());
 
 /// A stack of layers for a socket.
 #[derive(Debug)]

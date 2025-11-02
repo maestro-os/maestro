@@ -270,3 +270,10 @@ pub(crate) fn init() -> AllocResult<()> {
 	}*/
 	Ok(())
 }
+
+/// Returns the address of the RTC's century register.
+///
+/// If not present, the function returns `0`.
+pub fn rtc_century_register() -> u8 {
+	get_table::<Fadt>().map(|f| f.century).unwrap_or(0)
+}

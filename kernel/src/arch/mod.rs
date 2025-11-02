@@ -72,6 +72,7 @@ pub(crate) fn init1(first: bool) {
 		unsafe {
 			register_set!("cr4", cr4);
 		}
+		paging::init();
 	}
 }
 

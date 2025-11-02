@@ -34,7 +34,7 @@ use crate::{
 		stats::MEM_INFO,
 	},
 	println,
-	sync::mutex::IntMutex,
+	sync::{mutex::Mutex, spin::IntSpin},
 	time::{
 		clock::{Clock, current_time_ms},
 		sleep_for,
@@ -365,7 +365,7 @@ pub struct MappedNode {
 	/// Cached frames
 	///
 	/// The key is the file offset, in pages, to the start of the node
-	cache: IntMutex<BTreeMap<u64, RcFrame>>,
+	cache: IntSpin<BTreeMap<u64, RcFrame>>,
 }
 
 impl MappedNode {
@@ -449,7 +449,7 @@ impl Drop for MappedNode {
 }
 
 /// Global cache for all frames
-static LRU: IntMutex<list_type!(RcFrameInner, lru)> = IntMutex::new(list!(RcFrameInner, lru));
+static LRU: Mutex<list_type!(RcFrameInner, lru), false> = Mutex::new(list!(RcFrameInner, lru));
 
 fn flush_task_inner(cur_ts: Timestamp) {
 	// Iterate on all frames

@@ -30,7 +30,12 @@ mod scancode;
 use crate::scancode::ScancodeSet;
 use core::any::Any;
 use kernel::{
-	arch::x86::{apic, apic::lapic_id, idt, idt::IntFrame, io},
+	arch::x86::{
+		apic,
+		apic::lapic_id,
+		idt::{IntFrame, disable_int},
+		io,
+	},
 	device::{
 		keyboard::{Keyboard, KeyboardAction, KeyboardKey, KeyboardLED, KeyboardManager},
 		manager,
@@ -38,7 +43,7 @@ use kernel::{
 	int,
 	int::{CallbackHook, CallbackResult},
 	println,
-	sync::mutex::Mutex,
+	sync::spin::Spin,
 };
 
 kernel::module!([]);
@@ -240,7 +245,7 @@ fn handle_input(key: KeyboardKey, action: KeyboardAction) {
 }
 
 /// Global variable containing the module's instance.
-static PS2_KEYBOAD: Mutex<PS2Keyboard> = Mutex::new(PS2Keyboard {
+static PS2_KEYBOAD: Spin<PS2Keyboard> = Spin::new(PS2Keyboard {
 	keyboard_interrupt_callback_hook: None,
 
 	scancode_set: ScancodeSet::Set2,
@@ -282,7 +287,7 @@ fn init_in() -> Result<(), ()> {
 
 	let mut kbd = PS2_KEYBOAD.lock();
 
-	idt::wrap_disable_interrupts(|| {
+	disable_int(|| {
 		disable_devices();
 		clear_buffer();
 

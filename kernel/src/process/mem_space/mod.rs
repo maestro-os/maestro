@@ -24,32 +24,29 @@
 //! - Gap: A chunk of virtual memory that is available to be allocated
 
 mod gap;
-mod mapping;
+pub mod mapping;
 mod transaction;
 
 use crate::{
 	arch::{
-		core_id,
+		core_id, x86,
 		x86::paging::{PAGE_FAULT_INSTRUCTION, PAGE_FAULT_WRITE},
 	},
-	file::{File, perm::AccessProfile, vfs},
+	file::{File, vfs},
 	memory::{
 		COMPAT_PROCESS_END, PROCESS_END, VirtAddr,
 		cache::RcFrame,
+		user::UserSlice,
 		vmem::{KERNEL_VMEM, VMem, shootdown_range},
 	},
 	process::{
 		mem_space::mapping::MappedFrame,
-		scheduler::{
-			cpu::{bitmap_clear, bitmap_iter, bitmap_set, init_bitmap, per_cpu},
-			critical,
-		},
+		scheduler::{cpu, cpu::per_cpu, critical},
 	},
-	sync::mutex::IntMutex,
+	sync::rwlock::IntRwLock,
 };
 use core::{
 	alloc::AllocError, cmp::min, ffi::c_void, fmt, hint::unlikely, mem, num::NonZeroUsize,
-	sync::atomic::AtomicUsize,
 };
 use gap::MemGap;
 use mapping::MemMapping;
@@ -220,18 +217,18 @@ pub struct ExeInfo {
 /// A virtual memory space.
 pub struct MemSpace {
 	/// The memory space's structure, used as a model for `vmem`
-	state: IntMutex<MemSpaceState>,
+	state: IntRwLock<MemSpaceState>,
 	/// Architecture-specific virtual memory context handler
 	///
 	/// We use it as a cache which can be invalidated by unmapping. When a page fault occurs, this
 	/// field is corrected by the [`MemSpace`].
-	vmem: IntMutex<VMem>,
+	vmem: VMem,
 
 	/// Executable program information
 	pub exe_info: ExeInfo,
 
 	/// Bitmap of CPUs currently binding the memory space
-	bound_cpus: Vec<AtomicUsize>,
+	bound_cpus: cpu::Bitmap,
 }
 
 impl MemSpace {
@@ -243,12 +240,12 @@ impl MemSpace {
 	/// - `compat` tells whether the memory space be used in compat mode
 	pub fn new(exe: Arc<vfs::Entry>, brk_init: VirtAddr, compat: bool) -> AllocResult<Arc<Self>> {
 		let s = Self {
-			state: IntMutex::new(MemSpaceState {
+			state: IntRwLock::new(MemSpaceState {
 				brk_init,
 				brk: brk_init,
 				..Default::default()
 			}),
-			vmem: IntMutex::new(unsafe { VMem::new() }),
+			vmem: unsafe { VMem::new() },
 
 			exe_info: ExeInfo {
 				exe,
@@ -259,7 +256,7 @@ impl MemSpace {
 				envp_end: Default::default(),
 			},
 
-			bound_cpus: init_bitmap(false)?,
+			bound_cpus: cpu::Bitmap::new(false)?,
 		};
 		// Allocation begin and end addresses
 		let begin = VirtAddr(PAGE_SIZE);
@@ -280,7 +277,14 @@ impl MemSpace {
 	/// Returns the number of virtual memory pages in the memory space.
 	#[inline]
 	pub fn get_vmem_usage(&self) -> usize {
-		self.state.lock().vmem_usage
+		self.state.read().vmem_usage
+	}
+
+	/// Locks the list of mappings while executing `f`, passing it as parameter.
+	#[inline]
+	pub fn mappings<T, F: FnOnce(&BTreeMap<VirtAddr, MemMapping>) -> T>(&self, f: F) -> T {
+		let state = self.state.read();
+		f(&state.mappings)
 	}
 
 	fn map_impl(
@@ -391,7 +395,7 @@ impl MemSpace {
 			return Err(AllocError);
 		};
 		let mut transaction = MemSpaceTransaction::new(self);
-		let mut map = Self::map_impl(
+		let map = Self::map_impl(
 			&mut transaction,
 			VirtAddr::default(),
 			len,
@@ -403,6 +407,7 @@ impl MemSpace {
 		.map_err(|_| AllocError)?;
 		// Populate
 		map.pages
+			.lock()
 			.iter_mut()
 			.zip(pages.iter().cloned())
 			.for_each(|(dst, src)| *dst = Some(MappedFrame::new(src)));
@@ -411,6 +416,31 @@ impl MemSpace {
 		transaction.insert_mapping(map)?;
 		transaction.commit();
 		Ok(addr)
+	}
+
+	/// Tells whether memory pages in the given range are resident (won't cause disk I/O on
+	/// access).
+	///
+	/// Arguments:
+	/// - `addr` is the starting address of the range
+	/// - `size` is the number of pages, and bytes in `res`
+	/// - `res` is a bitmap in which the result is written
+	pub fn mincore(&self, addr: VirtAddr, size: usize, res: UserSlice<u8>) -> EResult<()> {
+		let state = self.state.read();
+		for i in 0..size {
+			let addr = addr + size * PAGE_SIZE;
+			let resident = state
+				.get_mapping_for_addr(addr)
+				.map(|mapping| {
+					let page_offset = (addr.0 - mapping.addr.0) / PAGE_SIZE;
+					let pages = mapping.pages.lock();
+					let page = pages.get(page_offset);
+					matches!(page, Some(Some(_)))
+				})
+				.unwrap_or(false);
+			res.copy_to_user(i, &[resident as u8])?;
+		}
+		Ok(())
 	}
 
 	/// Implementation for `unmap`.
@@ -507,17 +537,20 @@ impl MemSpace {
 
 	/// Binds the memory space to the current CPU.
 	pub fn bind(this: &Arc<Self>) {
+		if this.vmem.is_bound() {
+			return;
+		}
 		critical(|| {
 			// Mark the memory space as bound
 			let prev = per_cpu().mem_space.replace(Some(this.clone()));
 			// Update new bitmap
 			let core_id = core_id() as usize;
-			bitmap_set(&this.bound_cpus, core_id);
+			this.bound_cpus.set_bit(core_id);
 			// Do actual bind
-			this.vmem.lock().bind();
+			this.vmem.bind();
 			// Update old bitmap if any
 			if let Some(prev) = prev {
-				bitmap_clear(&prev.bound_cpus, core_id);
+				prev.bound_cpus.clear_bit(core_id);
 			}
 		});
 	}
@@ -528,18 +561,19 @@ impl MemSpace {
 			// Update per-CPU structure
 			let prev = per_cpu().mem_space.replace(None);
 			// Bind the kernel's vmem
-			KERNEL_VMEM.lock().bind();
+			KERNEL_VMEM.bind();
 			// Update old bitmap if any
 			if let Some(prev) = prev {
 				let core_id = core_id() as usize;
-				bitmap_clear(&prev.bound_cpus, core_id);
+				prev.bound_cpus.clear_bit(core_id);
 			}
 		});
 	}
 
 	/// Returns an iterator over the IDs of CPUs bounding the memory space.
 	pub fn bound_cpus(&self) -> impl Iterator<Item = u32> {
-		bitmap_iter(&self.bound_cpus)
+		self.bound_cpus
+			.iter()
 			.enumerate()
 			.filter(|(_, b)| *b)
 			.map(|(i, _)| i as _)
@@ -551,37 +585,35 @@ impl MemSpace {
 	///
 	/// `f` is executed in a critical section to prevent the temporary memory space from being
 	/// replaced by the scheduler.
-	pub fn switch<'m, F: FnOnce(&'m Arc<Self>) -> T, T>(this: &'m Arc<Self>, f: F) -> T {
+	pub fn switch<F: FnOnce(&Arc<Self>) -> T, T>(this: &Arc<Self>, f: F) -> T {
 		critical(|| {
-			// Bind `this`
-			this.vmem.lock().bind();
-			let old = per_cpu().mem_space.replace(Some(this.clone()));
-			// Execute function
+			let old = per_cpu().mem_space.get();
+			Self::bind(this);
 			let res = f(this);
-			// Restore previous
-			if let Some(old) = &old {
-				old.vmem.lock().bind();
+			match old {
+				Some(old) => MemSpace::bind(&old),
+				None => MemSpace::unbind(),
 			}
-			per_cpu().mem_space.set(old);
 			res
 		})
 	}
 
 	/// Clones the current memory space for process forking.
 	pub fn fork(&self) -> AllocResult<MemSpace> {
-		let bound_cpus = init_bitmap(false)?;
+		let bound_cpus = cpu::Bitmap::new(false)?;
 		// Lock
-		let state = self.state.lock();
-		let mut vmem = self.vmem.lock();
+		let state = self.state.read();
 		// Clone first to mark as shared
 		let mappings = state.mappings.try_clone()?;
 		// Unmap to invalidate the virtual memory context
 		for (_, m) in &state.mappings {
-			vmem.unmap_range(m.addr, m.size.get());
-			shootdown_range(m.addr, m.size.get(), self.bound_cpus());
+			if m.prot & PROT_WRITE != 0 {
+				self.vmem.unmap_range(m.addr, m.size.get());
+				shootdown_range(m.addr, m.size.get(), self.bound_cpus());
+			}
 		}
 		Ok(Self {
-			state: IntMutex::new(MemSpaceState {
+			state: IntRwLock::new(MemSpaceState {
 				gaps: state.gaps.try_clone()?,
 				mappings,
 
@@ -590,7 +622,7 @@ impl MemSpace {
 
 				vmem_usage: state.vmem_usage,
 			}),
-			vmem: IntMutex::new(unsafe { VMem::new() }),
+			vmem: unsafe { VMem::new() },
 
 			exe_info: self.exe_info.clone(),
 
@@ -604,17 +636,10 @@ impl MemSpace {
 	/// - `addr` is the address to the beginning of the range to be set
 	/// - `len` is the length of the range in bytes
 	/// - `prot` is a set of mapping flags
-	/// - `access_profile` is the access profile to check permissions
 	///
 	/// If a mapping to be modified is associated with a file, and the file doesn't have the
 	/// matching permissions, the function returns an error.
-	pub fn set_prot(
-		&self,
-		_addr: *mut c_void,
-		_len: usize,
-		_prot: u8,
-		_access_profile: &AccessProfile,
-	) -> EResult<()> {
+	pub fn set_prot(&self, _addr: *mut c_void, _len: usize, _prot: u8) -> EResult<()> {
 		// TODO Iterate on mappings in the range:
 		//		If the mapping is shared and associated to a file, check file permissions match
 		// `prot` (only write)
@@ -683,13 +708,12 @@ impl MemSpace {
 	/// - `pages` is the number of pages in the range
 	/// - `sync` tells whether the synchronization should be performed synchronously
 	pub fn sync(&self, addr: VirtAddr, pages: usize, sync: bool) -> EResult<()> {
-		let state = self.state.lock();
-		let vmem = self.vmem.lock();
+		let state = self.state.read();
 		// Iterate over mappings
 		let mut i = 0;
 		while i < pages {
 			let mapping = state.get_mapping_for_addr(addr).ok_or(AllocError)?;
-			mapping.sync(&vmem, sync)?;
+			mapping.sync(&self.vmem, sync)?;
 			i += mapping.size.get();
 		}
 		Ok(())
@@ -708,13 +732,13 @@ impl MemSpace {
 	///
 	/// If the process should continue, the function returns `true`, else `false`.
 	pub fn handle_page_fault(&self, addr: VirtAddr, code: u32) -> EResult<bool> {
-		let mut state = self.state.lock();
-		let Some(mapping) = state.get_mut_mapping_for_addr(addr) else {
+		let state = self.state.read();
+		let Some(mapping) = state.get_mapping_for_addr(addr) else {
 			return Ok(false);
 		};
 		// Check permissions
 		let write = code & PAGE_FAULT_WRITE != 0;
-		if unlikely(write && mapping.prot & PROT_WRITE == 0) {
+		if unlikely(write && mapping.prot & PROT_WRITE == 0 && x86::is_write_protected()) {
 			return Ok(false);
 		}
 		if unlikely(code & PAGE_FAULT_INSTRUCTION != 0 && mapping.prot & PROT_EXEC == 0) {
@@ -729,19 +753,19 @@ impl MemSpace {
 
 impl fmt::Debug for MemSpace {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		fmt::Debug::fmt(&self.state, f)
+		let state = self.state.read();
+		fmt::Debug::fmt(&*state, f)
 	}
 }
 
 impl Drop for MemSpace {
 	fn drop(&mut self) {
-		let mut state = self.state.lock();
-		let vmem = self.vmem.lock();
+		let mut state = self.state.write();
 		// Synchronize all mappings to disk
 		let mappings = mem::take(&mut state.mappings);
 		for (_, m) in mappings {
 			// Ignore I/O errors
-			let _ = m.sync(&vmem, true);
+			let _ = m.sync(&self.vmem, true);
 		}
 	}
 }

@@ -21,19 +21,19 @@
 use crate::{
 	NAME, VERSION,
 	arch::ARCH,
-	file::perm::AccessProfile,
+	file::perm::is_privileged,
 	memory::{
 		stats::MEM_INFO,
 		user::{UserPtr, UserSlice},
 	},
 	power,
-	process::PROCESSES,
-	syscall::Args,
+	process::{PROCESS_FLAG_LINUX, PROCESSES, Process},
 	time::clock::{Clock, current_time_sec},
 };
 use core::{
 	ffi::{c_char, c_int, c_uint, c_ulong, c_ushort, c_void},
 	hint::unlikely,
+	sync::atomic::Ordering::Acquire,
 };
 use utils::{errno, errno::EResult, limits::HOST_NAME_MAX, slice_copy};
 
@@ -70,7 +70,9 @@ pub struct Utsname {
 	machine: [u8; UTSNAME_LENGTH],
 }
 
-pub fn uname(Args(buf): Args<UserPtr<Utsname>>) -> EResult<usize> {
+pub fn uname(buf: UserPtr<Utsname>) -> EResult<usize> {
+	let linux = Process::current().flags.load(Acquire) & PROCESS_FLAG_LINUX == 0;
+	let sysname = if linux { b"Linux" } else { NAME.as_bytes() };
 	let mut utsname = Utsname {
 		sysname: [0; UTSNAME_LENGTH],
 		nodename: [0; UTSNAME_LENGTH],
@@ -78,7 +80,7 @@ pub fn uname(Args(buf): Args<UserPtr<Utsname>>) -> EResult<usize> {
 		version: [0; UTSNAME_LENGTH],
 		machine: [0; UTSNAME_LENGTH],
 	};
-	slice_copy(NAME.as_bytes(), &mut utsname.sysname);
+	slice_copy(sysname, &mut utsname.sysname);
 	slice_copy(&crate::HOSTNAME.lock(), &mut utsname.nodename);
 	slice_copy(VERSION.as_bytes(), &mut utsname.release);
 	slice_copy(&[], &mut utsname.version);
@@ -120,7 +122,7 @@ pub struct Sysinfo {
 	__reserved: [c_char; 256],
 }
 
-pub fn sysinfo(Args(info): Args<UserPtr<Sysinfo>>) -> EResult<usize> {
+pub fn sysinfo(info: UserPtr<Sysinfo>) -> EResult<usize> {
 	let mem_info = MEM_INFO.lock().clone();
 	info.copy_to_user(&Sysinfo {
 		uptime: current_time_sec(Clock::Boottime) as _,
@@ -141,34 +143,28 @@ pub fn sysinfo(Args(info): Args<UserPtr<Sysinfo>>) -> EResult<usize> {
 	Ok(0)
 }
 
-pub fn sethostname(
-	Args((name, len)): Args<(*mut u8, usize)>,
-	ap: AccessProfile,
-) -> EResult<usize> {
+pub fn sethostname(name: *mut u8, len: usize) -> EResult<usize> {
 	// Check the size of the hostname is in bounds
 	if unlikely(len > HOST_NAME_MAX) {
 		return Err(errno!(EINVAL));
 	}
 	// Check permission
-	if !ap.is_privileged() {
+	if unlikely(!is_privileged()) {
 		return Err(errno!(EPERM));
 	}
 	// Copy
 	let name = UserSlice::from_user(name, len)?;
-	let mut hostname = crate::HOSTNAME.lock();
-	*hostname = name.copy_from_user_vec(0)?.ok_or(errno!(EFAULT))?;
+	let new_hostname = name.copy_from_user_vec(0)?.ok_or(errno!(EFAULT))?;
+	*crate::HOSTNAME.lock() = new_hostname;
 	Ok(0)
 }
 
-pub fn reboot(
-	Args((magic, magic2, cmd, _arg)): Args<(c_int, c_int, c_int, *const c_void)>,
-	ap: AccessProfile,
-) -> EResult<usize> {
+pub fn reboot(magic: c_int, magic2: c_int, cmd: c_int, _arg: *const c_void) -> EResult<usize> {
 	// Validation
 	if magic != MAGIC || magic2 != MAGIC2 {
 		return Err(errno!(EINVAL));
 	}
-	if !ap.is_privileged() {
+	if unlikely(!is_privileged()) {
 		return Err(errno!(EPERM));
 	}
 	// Debug commands: shutdown with QEMU

@@ -24,10 +24,11 @@ use super::{RunQueue, Scheduler, defer::DeferredCallQueue};
 use crate::{
 	arch::x86::{gdt::Gdt, tss::Tss},
 	process::{Process, mem_space::MemSpace},
-	sync::{atomic::AtomicU64, mutex::IntMutex, once::OnceInit},
+	sync::{atomic::AtomicU64, once::OnceInit, spin::IntSpin},
 };
 use core::{
 	cell::UnsafeCell,
+	ops::Deref,
 	sync::atomic::{
 		AtomicBool, AtomicU32, AtomicUsize,
 		Ordering::{Acquire, Release},
@@ -35,12 +36,12 @@ use core::{
 };
 use topology::TopologyNode;
 use utils::{
+	TryClone,
 	collections::vec::Vec,
 	errno::{AllocResult, CollectResult},
 	list,
 	ptr::arc::{AtomicArc, AtomicOptionalArc},
 };
-
 // TODO allow to declare per-core variables everywhere in the codebase using a dedicated ELF
 // section
 
@@ -86,7 +87,7 @@ pub struct PerCpu {
 
 	/// Attached memory space
 	///
-	/// The pointer stored by this field is returned by [`Arc::into_raw`]
+	/// The pointer stored by this field is returned by `Arc::into_raw`
 	pub mem_space: AtomicOptionalArc<MemSpace>,
 
 	/// Queue of deferred calls to be executed on this core
@@ -114,7 +115,7 @@ impl PerCpu {
 			tss: Default::default(),
 
 			sched: Scheduler {
-				run_queue: IntMutex::new(RunQueue {
+				run_queue: IntSpin::new(RunQueue {
 					queue: list!(Process, sched_node),
 					len: 0,
 				}),
@@ -178,7 +179,7 @@ pub fn per_cpu() -> &'static PerCpu {
 /// The list of core-local structures. There is one per CPU.
 pub static CPU: OnceInit<Vec<PerCpu>> = unsafe { OnceInit::new() };
 /// Bitmap of currently idle CPUs, atomically updated
-pub static IDLE_CPUS: OnceInit<Vec<AtomicUsize>> = unsafe { OnceInit::new() };
+pub static IDLE_CPUS: OnceInit<Bitmap> = unsafe { OnceInit::new() };
 
 /// Initializes the CPU list
 ///
@@ -192,48 +193,98 @@ pub(crate) fn init_cpu_list(mut cpu: Vec<PerCpu>) -> AllocResult<()> {
 	unsafe {
 		OnceInit::init(&CPU, cpu);
 	}
-	let idle_cpus = init_bitmap(true)?;
+	let idle_cpus = Bitmap::new(true)?;
 	unsafe {
 		OnceInit::init(&IDLE_CPUS, idle_cpus);
 	}
 	Ok(())
 }
 
-/// Helper allocating an atomic bitmap large enough to have a bit per CPU on the system
-///
-/// `set`: if `true` all bits are set at the beginning. Else they are clear
-pub fn init_bitmap(set: bool) -> AllocResult<Vec<AtomicUsize>> {
-	let len = CPU.len().div_ceil(usize::BITS as usize);
-	let unit_val = if set { !0 } else { 0 };
-	(0..len)
-		.map(|_| AtomicUsize::new(unit_val))
-		.collect::<CollectResult<_>>()
-		.0
+/// An atomic bitmap over CPUs on the system
+pub struct Bitmap(Vec<AtomicUsize>);
+
+impl From<Vec<AtomicUsize>> for Bitmap {
+	fn from(vec: Vec<AtomicUsize>) -> Self {
+		Self(vec)
+	}
 }
 
-/// Sets the bit for the given `cpu` in `bitmap`
-pub fn bitmap_set(bitmap: &[AtomicUsize], cpu: usize) {
-	let unit = cpu / usize::BITS as usize;
-	let bit = cpu % usize::BITS as usize;
-	bitmap[unit].fetch_or(1 << bit, Release);
+impl Bitmap {
+	/// Allocate an atomic bitmap large enough to have a bit per CPU on the system
+	///
+	/// `set`: if `true` all bits are set at the beginning. Else they are clear
+	pub fn new(set: bool) -> AllocResult<Self> {
+		let len = CPU.len().div_ceil(usize::BITS as usize);
+		(0..len)
+			.map(|i| {
+				let val = if set {
+					if i == len - 1 {
+						let bits = CPU.len() % usize::BITS as usize;
+						(1 << bits) - 1
+					} else {
+						!0
+					}
+				} else {
+					0
+				};
+				AtomicUsize::new(val)
+			})
+			.collect::<CollectResult<_>>()
+			.0
+			.map(Self)
+	}
+
+	/// Sets the bit for the given `cpu`
+	pub fn set_bit(&self, cpu: usize) {
+		let unit = cpu / usize::BITS as usize;
+		let bit = cpu % usize::BITS as usize;
+		self.0[unit].fetch_or(1 << bit, Release);
+	}
+
+	/// Clears the bit for the given `cpu`
+	pub fn clear_bit(&self, cpu: usize) {
+		let unit = cpu / usize::BITS as usize;
+		let bit = cpu % usize::BITS as usize;
+		self.0[unit].fetch_and(!(1 << bit), Release);
+	}
+
+	/// Iterates on bit values for each CPU
+	pub fn iter(&self) -> impl Iterator<Item = bool> {
+		self.0
+			.iter()
+			.flat_map(|unit| {
+				let unit = unit.load(Acquire);
+				(0..usize::BITS).map(move |bit| unit & (1 << bit) != 0)
+			})
+			.take(CPU.len())
+	}
+
+	/// Copies the content of `other` into `self`.
+	pub fn copy_from(&self, other: &[usize]) {
+		self.0
+			.iter()
+			.zip(other.iter())
+			.for_each(|(dst, src)| dst.store(*src, Release));
+	}
 }
 
-/// Clears the bit for the given `cpu` in `bitmap`
-pub fn bitmap_clear(bitmap: &[AtomicUsize], cpu: usize) {
-	let unit = cpu / usize::BITS as usize;
-	let bit = cpu % usize::BITS as usize;
-	bitmap[unit].fetch_and(!(1 << bit), Release);
+impl Deref for Bitmap {
+	type Target = [AtomicUsize];
+
+	fn deref(&self) -> &Self::Target {
+		self.0.as_slice()
+	}
 }
 
-/// Iterates on bit values for each CPU in `bitmap`
-pub fn bitmap_iter(bitmap: &[AtomicUsize]) -> impl Iterator<Item = bool> {
-	bitmap
-		.iter()
-		.flat_map(|unit| {
-			let unit = unit.load(Acquire);
-			(0..usize::BITS).map(move |bit| unit & (1 << bit) != 0)
-		})
-		.take(CPU.len())
+impl TryClone for Bitmap {
+	fn try_clone(&self) -> Result<Self, Self::Error> {
+		self.0
+			.iter()
+			.map(|n| AtomicUsize::new(n.load(Acquire)))
+			.collect::<CollectResult<_>>()
+			.0
+			.map(Self)
+	}
 }
 
 /// Returns an iterator over the IDs of all online CPUs. This is useful for TLB shootdown on all

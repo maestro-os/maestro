@@ -28,6 +28,7 @@ pub mod cmdline;
 pub mod cwd;
 pub mod environ;
 pub mod exe;
+pub mod maps;
 pub mod mounts;
 pub mod stat;
 pub mod status;

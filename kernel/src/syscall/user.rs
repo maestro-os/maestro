@@ -19,65 +19,57 @@
 //! Users and groups system calls.
 
 use crate::{
-	file::perm::{AccessProfile, Gid, Uid},
-	memory::user::UserPtr,
+	file::perm::{AccessProfile, Gid, Uid, is_privileged},
+	memory::user::{UserPtr, UserSlice},
 	process::Process,
-	syscall::Args,
 };
-use core::ffi::c_int;
-use utils::{errno, errno::EResult, ptr::arc::Arc};
+use core::{ffi::c_int, hint::unlikely};
+use utils::{errno, errno::EResult};
 
-pub fn getuid(ap: AccessProfile) -> EResult<usize> {
-	Ok(ap.uid as _)
+pub fn getuid() -> EResult<usize> {
+	Ok(AccessProfile::current().uid as _)
 }
 
-pub fn geteuid(ap: AccessProfile) -> EResult<usize> {
-	Ok(ap.euid as _)
+pub fn geteuid() -> EResult<usize> {
+	Ok(AccessProfile::current().euid as _)
 }
 
-pub fn getresuid(
-	Args((ruid, euid, suid)): Args<(UserPtr<Uid>, UserPtr<Uid>, UserPtr<Uid>)>,
-	ap: AccessProfile,
-) -> EResult<usize> {
+pub fn getresuid(ruid: UserPtr<Uid>, euid: UserPtr<Uid>, suid: UserPtr<Uid>) -> EResult<usize> {
+	let ap = AccessProfile::current();
 	ruid.copy_to_user(&ap.uid)?;
 	euid.copy_to_user(&ap.euid)?;
 	suid.copy_to_user(&ap.suid)?;
 	Ok(0)
 }
 
-pub fn getgid(ap: AccessProfile) -> EResult<usize> {
-	Ok(ap.gid as _)
+pub fn getgid() -> EResult<usize> {
+	Ok(AccessProfile::current().gid as _)
 }
 
-pub fn getegid(ap: AccessProfile) -> EResult<usize> {
-	Ok(ap.egid as _)
+pub fn getegid() -> EResult<usize> {
+	Ok(AccessProfile::current().egid as _)
 }
 
-pub fn getresgid(
-	Args((rgid, egid, sgid)): Args<(UserPtr<Gid>, UserPtr<Gid>, UserPtr<Gid>)>,
-	ap: AccessProfile,
-) -> EResult<usize> {
+pub fn getresgid(rgid: UserPtr<Gid>, egid: UserPtr<Gid>, sgid: UserPtr<Gid>) -> EResult<usize> {
+	let ap = AccessProfile::current();
 	rgid.copy_to_user(&ap.gid)?;
 	egid.copy_to_user(&ap.egid)?;
 	sgid.copy_to_user(&ap.sgid)?;
 	Ok(0)
 }
 
-pub fn setuid(Args(uid): Args<Uid>, proc: Arc<Process>) -> EResult<usize> {
-	proc.fs().lock().access_profile.set_uid(uid)?;
+pub fn setuid(uid: Uid) -> EResult<usize> {
+	Process::current().fs().lock().ap.set_uid(uid)?;
 	Ok(0)
 }
 
-pub fn setreuid(
-	Args((ruid, euid)): Args<(c_int, c_int)>,
-	ap: AccessProfile,
-	proc: Arc<Process>,
-) -> EResult<usize> {
+pub fn setreuid(ruid: c_int, euid: c_int) -> EResult<usize> {
 	// Validation
 	if ruid < -1 || euid < -1 {
 		return Err(errno!(EINVAL));
 	}
-	if !ap.is_privileged() && ![-1, ap.uid as _, ap.euid as _].contains(&ruid)
+	let ap = AccessProfile::current();
+	if unlikely(!is_privileged()) && ![-1, ap.uid as _, ap.euid as _].contains(&ruid)
 		|| ![-1, ap.uid as _, ap.euid as _, ap.suid as _].contains(&euid)
 	{
 		return Err(errno!(EPERM));
@@ -91,62 +83,58 @@ pub fn setreuid(
 		-1 => ap.euid,
 		i => i as _,
 	};
+	let proc = Process::current();
 	let mut fs = proc.fs().lock();
-	fs.access_profile.uid = new_ruid;
-	fs.access_profile.euid = new_euid;
+	fs.ap.uid = new_ruid;
+	fs.ap.euid = new_euid;
 	if new_ruid != ap.uid || new_euid != ap.uid {
-		fs.access_profile.suid = new_euid;
+		fs.ap.suid = new_euid;
 	}
 	Ok(0)
 }
 
-pub fn setresuid(
-	Args((ruid, euid, suid)): Args<(c_int, c_int, c_int)>,
-	ap: AccessProfile,
-	proc: Arc<Process>,
-) -> EResult<usize> {
+pub fn setresuid(ruid: c_int, euid: c_int, suid: c_int) -> EResult<usize> {
 	// Validation
 	if ruid < -1 || euid < -1 || suid < -1 {
 		return Err(errno!(EINVAL));
 	}
-	if !ap.is_privileged() {
+	let ap = AccessProfile::current();
+	if !is_privileged() {
 		let allowed = [-1, ap.uid as _, ap.euid as _, ap.suid as _];
 		if !allowed.contains(&ruid) || !allowed.contains(&euid) || !allowed.contains(&suid) {
 			return Err(errno!(EPERM));
 		}
 	}
 	// Update
+	let proc = Process::current();
 	let mut fs = proc.fs().lock();
-	fs.access_profile.uid = match ruid {
+	fs.ap.uid = match ruid {
 		-1 => ap.uid,
 		i => i as _,
 	};
-	fs.access_profile.euid = match euid {
+	fs.ap.euid = match euid {
 		-1 => ap.euid,
 		i => i as _,
 	};
-	fs.access_profile.suid = match suid {
+	fs.ap.suid = match suid {
 		-1 => ap.suid,
 		i => i as _,
 	};
 	Ok(0)
 }
 
-pub fn setgid(Args(gid): Args<Gid>, proc: Arc<Process>) -> EResult<usize> {
-	proc.fs().lock().access_profile.set_gid(gid)?;
+pub fn setgid(gid: Gid) -> EResult<usize> {
+	Process::current().fs().lock().ap.set_gid(gid)?;
 	Ok(0)
 }
 
-pub fn setregid(
-	Args((rgid, egid)): Args<(c_int, c_int)>,
-	ap: AccessProfile,
-	proc: Arc<Process>,
-) -> EResult<usize> {
+pub fn setregid(rgid: c_int, egid: c_int) -> EResult<usize> {
 	// Validation
 	if rgid < -1 || egid < -1 {
 		return Err(errno!(EINVAL));
 	}
-	if !ap.is_privileged()
+	let ap = AccessProfile::current();
+	if !is_privileged()
 		&& (![-1, ap.gid as _, ap.egid as _].contains(&rgid)
 			|| ![-1, ap.gid as _, ap.egid as _, ap.sgid as _].contains(&egid))
 	{
@@ -161,43 +149,76 @@ pub fn setregid(
 		-1 => ap.egid,
 		i => i as _,
 	};
+	let proc = Process::current();
 	let mut fs = proc.fs().lock();
-	fs.access_profile.gid = new_rgid;
-	fs.access_profile.egid = new_egid;
+	fs.ap.gid = new_rgid;
+	fs.ap.egid = new_egid;
 	if new_rgid != ap.gid || new_egid != ap.gid {
-		fs.access_profile.sgid = new_egid;
+		fs.ap.sgid = new_egid;
 	}
 	Ok(0)
 }
 
-pub fn setresgid(
-	Args((rgid, egid, sgid)): Args<(c_int, c_int, c_int)>,
-	ap: AccessProfile,
-	proc: Arc<Process>,
-) -> EResult<usize> {
+pub fn setresgid(rgid: c_int, egid: c_int, sgid: c_int) -> EResult<usize> {
 	// Validation
 	if rgid < -1 || egid < -1 || sgid < -1 {
 		return Err(errno!(EINVAL));
 	}
-	if !ap.is_privileged() {
+	let ap = AccessProfile::current();
+	if !is_privileged() {
 		let allowed = [-1, ap.gid as _, ap.egid as _, ap.sgid as _];
 		if !allowed.contains(&rgid) || !allowed.contains(&egid) || !allowed.contains(&sgid) {
 			return Err(errno!(EPERM));
 		}
 	}
 	// Update
+	let proc = Process::current();
 	let mut fs = proc.fs().lock();
-	fs.access_profile.gid = match rgid {
+	fs.ap.gid = match rgid {
 		-1 => ap.gid,
 		i => i as _,
 	};
-	fs.access_profile.egid = match egid {
+	fs.ap.egid = match egid {
 		-1 => ap.egid,
 		i => i as _,
 	};
-	fs.access_profile.sgid = match sgid {
+	fs.ap.sgid = match sgid {
 		-1 => ap.sgid,
 		i => i as _,
 	};
 	Ok(0)
+}
+
+pub fn getgroups(size: c_int, list: *mut Gid) -> EResult<usize> {
+	let proc = Process::current();
+	let fs = proc.fs().lock();
+	if size > 0 {
+		if size as usize != fs.groups.len() {
+			return Err(errno!(EINVAL));
+		}
+		let list = UserSlice::from_user(list, size as _)?;
+		list.copy_to_user(0, &fs.groups)?;
+	}
+	Ok(fs.groups.len())
+}
+
+pub fn getgroups32(size: c_int, list: *mut Gid) -> EResult<usize> {
+	getgroups(size, list)
+}
+
+pub fn setgroups(size: usize, list: *mut Gid) -> EResult<usize> {
+	let proc = Process::current();
+	let mut fs = proc.fs().lock();
+	if unlikely(!is_privileged()) {
+		return Err(errno!(EPERM));
+	}
+	let list = UserSlice::from_user(list, size)?;
+	// TODO no need to zero-init
+	fs.groups.resize(size, 0)?;
+	list.copy_from_user(0, &mut fs.groups)?;
+	Ok(0)
+}
+
+pub fn setgroups32(size: usize, list: *mut Gid) -> EResult<usize> {
+	setgroups(size, list)
 }

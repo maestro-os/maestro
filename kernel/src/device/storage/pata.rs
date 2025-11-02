@@ -147,8 +147,8 @@ pub struct PATAInterface {
 	/// The number of sectors on the disk.
 	sectors_count: u64,
 
-	/// Mutex preventing data race on read/write operations.
-	lock: Mutex<()>,
+	/// Spinlock preventing data race on read/write operations.
+	lock: Mutex<(), false>,
 }
 
 impl PATAInterface {

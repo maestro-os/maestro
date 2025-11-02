@@ -66,7 +66,7 @@ use crate::{
 		cache::{FrameOwner, RcFrame, RcFrameVal},
 		user::UserSlice,
 	},
-	sync::mutex::Mutex,
+	sync::spin::Spin,
 	time::clock::{Clock, current_time_sec},
 };
 use bgd::BlockGroupDescriptor;
@@ -208,7 +208,7 @@ impl NodeOps for Ext2NodeOps {
 						Box::new(Ext2FileOps)?,
 					);
 					let stat = Ext2INode::get(&node, fs)?.stat(&fs.sp);
-					node.stat = Mutex::new(stat);
+					node.stat = Spin::new(stat);
 					Ok(Arc::new(node)?)
 				})
 			})
@@ -469,7 +469,7 @@ pub struct Ext2FileOps;
 impl FileOps for Ext2FileOps {
 	fn read(&self, file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		// TODO replace by filetype-specific FileOps
-		let node = file.node().unwrap();
+		let node = file.node();
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
 		{
 			let inode_ = Ext2INode::get(node, fs)?;
@@ -482,7 +482,7 @@ impl FileOps for Ext2FileOps {
 	}
 
 	fn write(&self, file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
-		let node = file.node().unwrap();
+		let node = file.node();
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
@@ -499,7 +499,7 @@ impl FileOps for Ext2FileOps {
 	}
 
 	fn truncate(&self, file: &File, size: u64) -> EResult<()> {
-		let node = file.node().unwrap();
+		let node = file.node();
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
@@ -882,7 +882,7 @@ impl FilesystemOps for Ext2Fs {
 				Box::new(Ext2FileOps)?,
 			);
 			let stat = Ext2INode::get(&node, self)?.stat(&self.sp);
-			node.stat = Mutex::new(stat);
+			node.stat = Spin::new(stat);
 			Ok(Arc::new(node)?)
 		})
 	}
@@ -939,7 +939,7 @@ impl FilesystemOps for Ext2Fs {
 		// Update stat on `node` and return it
 		let stat = inode.stat(&self.sp);
 		drop(inode);
-		node.stat = Mutex::new(stat);
+		node.stat = Spin::new(stat);
 		// Insert in cache
 		let node = Arc::new(node)?;
 		fs.node_insert(node.clone())?;
