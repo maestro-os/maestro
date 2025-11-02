@@ -24,7 +24,6 @@ use crate::{
 		idt::disable_int,
 		io::{inb, outb},
 	},
-	println,
 	time::unit::Timestamp,
 };
 use core::{hint, hint::unlikely};
@@ -199,7 +198,5 @@ pub fn read_time() -> Timestamp {
 	if century_reg == 0 {
 		time[6] = 20;
 	}
-	let ts = date_to_ts(&time) * 1_000_000_000;
-	println!("ts {ts}");
-	ts
+	date_to_ts(&time) * 1_000_000_000
 }
