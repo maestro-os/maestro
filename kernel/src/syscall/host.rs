@@ -71,7 +71,7 @@ pub struct Utsname {
 }
 
 pub fn uname(buf: UserPtr<Utsname>) -> EResult<usize> {
-	let linux = Process::current().flags.load(Acquire) & PROCESS_FLAG_LINUX == 0;
+	let linux = Process::current().flags.load(Acquire) & PROCESS_FLAG_LINUX != 0;
 	let sysname = if linux { b"Linux" } else { NAME.as_bytes() };
 	let mut utsname = Utsname {
 		sysname: [0; UTSNAME_LENGTH],
