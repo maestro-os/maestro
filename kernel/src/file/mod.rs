@@ -49,7 +49,7 @@ use crate::{
 		unit::Timestamp,
 	},
 };
-use core::{any::Any, fmt::Debug, ops::Deref, ptr::NonNull};
+use core::{any::Any, fmt::Debug, ops::Deref, ptr::NonNull, sync::atomic::Ordering::Acquire};
 use utils::{
 	collections::{string::String, vec::Vec},
 	errno,
@@ -462,6 +462,18 @@ impl File {
 	/// Tells whether the file is open for writing.
 	pub fn can_write(&self) -> bool {
 		matches!(self.get_flags() & 0b11, O_WRONLY | O_RDWR)
+	}
+
+	/// Reads the current file offset, atomically.
+	///
+	/// If the file has been opened with [`O_APPEND`], the function returns the offset to the end
+	/// of the file.
+	pub fn get_offset(&self) -> u64 {
+		if self.get_flags() & O_APPEND != 0 {
+			self.stat().size
+		} else {
+			self.off.load(Acquire)
+		}
 	}
 
 	/// Returns the file's status.

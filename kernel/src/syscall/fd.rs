@@ -19,10 +19,7 @@
 //! File descriptors handling system calls.
 
 use crate::{
-	file::{
-		FileType,
-		fd::{NewFDConstraint, fd_to_file},
-	},
+	file::fd::{NewFDConstraint, fd_to_file},
 	memory::user::{UserIOVec, UserPtr, UserSlice},
 	process::Process,
 };
@@ -49,9 +46,6 @@ pub fn read(fd: c_int, buf: *mut u8, count: usize) -> EResult<usize> {
 		return Ok(0);
 	}
 	let file = fd_to_file(fd)?;
-	if file.get_type()? == FileType::Link {
-		return Err(errno!(EINVAL));
-	}
 	// Read
 	let off = file.off.load(Acquire);
 	let len = file.ops.read(&file, off, buf)?;
@@ -69,9 +63,6 @@ pub fn pread64(fd: c_int, buf: *mut u8, count: usize, offset: u64) -> EResult<us
 		return Ok(0);
 	}
 	let file = fd_to_file(fd)?;
-	if file.get_type()? == FileType::Link {
-		return Err(errno!(EINVAL));
-	}
 	let len = file.ops.read(&file, offset, buf)?;
 	Ok(len as _)
 }
@@ -114,9 +105,6 @@ fn do_readv(
 	};
 	// TODO Handle flags
 	let file = fd_to_file(fd)?;
-	if file.get_type()? == FileType::Link {
-		return Err(errno!(EINVAL));
-	}
 	// Read
 	let mut off = 0;
 	for i in iov.iter(iovcnt as _) {
@@ -178,13 +166,8 @@ pub fn write(fd: c_int, buf: *mut u8, count: usize) -> EResult<usize> {
 		return Ok(0);
 	}
 	let file = fd_to_file(fd)?;
-	if file.get_type()? == FileType::Link {
-		return Err(errno!(EINVAL));
-	}
-	// Write
-	let off = file.off.load(Acquire);
+	let off = file.get_offset();
 	let len = file.ops.write(&file, off, buf)?;
-	// Update offset
 	let new_off = off.saturating_add(len as u64);
 	file.off.store(new_off, Release);
 	Ok(len)
@@ -198,9 +181,6 @@ pub fn pwrite64(fd: c_int, buf: *mut u8, count: usize, offset: u64) -> EResult<u
 		return Ok(0);
 	}
 	let file = fd_to_file(fd)?;
-	if file.get_type()? == FileType::Link {
-		return Err(errno!(EINVAL));
-	}
 	let len = file.ops.write(&file, offset, buf)?;
 	Ok(len)
 }
@@ -243,9 +223,6 @@ fn do_writev(
 	};
 	// Get file
 	let file = fd_to_file(fd)?;
-	if file.get_type()? == FileType::Link {
-		return Err(errno!(EINVAL));
-	}
 	// Write
 	let mut off = 0;
 	for i in iov.iter(iovcnt as _) {
@@ -257,7 +234,7 @@ fn do_writev(
 			let file_off = offset + off as u64;
 			file.ops.write(&file, file_off, buf)?
 		} else {
-			let off = file.off.load(Acquire);
+			let off = file.get_offset();
 			let len = file.ops.write(&file, off, buf)?;
 			// Update offset
 			let new_off = off.saturating_add(len as u64);
