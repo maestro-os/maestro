@@ -234,7 +234,7 @@ pub fn do_openat(
 	let resolved = at::get_file(
 		dirfd,
 		&pathname,
-		flags,
+		0,
 		flags & O_CREAT != 0,
 		flags & O_NOFOLLOW == 0,
 	)?;
