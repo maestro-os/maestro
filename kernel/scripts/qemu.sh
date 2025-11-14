@@ -18,28 +18,13 @@ case $ARCH in
 		exit 1
 		;;
 esac
-GRUB_MKRESCUE=grub-mkrescue
-
-# Check if a program exists
-# $1 => program name
-check_program() {
-	if ! command -v "${1}" &>/dev/null
-	then
-		>&2 echo "${1} could not be found."
-		exit 1
-	fi
-}
-
-# Check that all dependencies are installed
-check_program $QEMU
-check_program $GRUB_MKRESCUE
 
 # Build ISO
 
 mkdir -p iso/boot/grub
 cp $1 iso/boot/maestro
 cp grub.cfg iso/boot/grub
-${GRUB_MKRESCUE} -o kernel.iso iso
+grub-mkrescue -o kernel.iso iso
 
 # Run the kernel
 
