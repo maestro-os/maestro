@@ -16,53 +16,72 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! Mutually exclusive access primitive implementation.
+//! Sleeping mutual exclusion synchronization primitive.
 //!
-//! A [`Mutex`] protects its wrapped data from being accessed concurrently, avoid data races.
-//!
-//! One particularity with kernel development is that multi-threading is not the
-//! only way to get concurrency issues. Another factor to take into account is
-//! that fact that an interruption may be triggered at any moment, unless disabled.
-//!
-//! For this reason, mutexes in the kernel are equipped with an option allowing to disable
-//! interrupts while being locked.
-//!
-//! If an exception is raised while a mutex that disables interruptions is
-//! acquired, the behaviour is undefined.
+//! Contrary to a spinlock, [`Mutex`] makes the current task sleep while waiting, reducing CPU
+//! cycles waste.
 
 use crate::{
-	arch::{
-		x86,
-		x86::{cli, sti},
-	},
-	sync::spinlock::Spinlock,
+	process,
+	process::{Process, State, scheduler::schedule},
+	sync::spin::IntSpin,
 };
 use core::{
 	cell::UnsafeCell,
-	fmt::{self, Formatter},
+	fmt,
+	fmt::Formatter,
 	ops::{Deref, DerefMut},
 };
+use utils::{errno, errno::EResult, list, list_type};
 
-/// Type used to declare a guard meant to unlock the associated `Mutex` at the
-/// moment the execution gets out of the scope of its declaration.
+fn lock<const INT: bool>(queue: &IntSpin<Queue>) -> EResult<()> {
+	{
+		let mut q = queue.lock();
+		q.acquired += 1;
+		// If no one else has acquired the mutex, return
+		if q.acquired == 1 {
+			return Ok(());
+		}
+		// At least one other task has acquired the mutex: we must sleep. The process is dequeued
+		// when the mutex is released by the previous task that acquired it
+		q.wait_queue.insert_back(Process::current());
+		// Put to sleep before releasing the spinlock to make sure another process releasing
+		// the mutex does not try to wake us up before we sleep
+		if INT {
+			process::set_state(State::IntSleeping);
+		} else {
+			process::set_state(State::Sleeping);
+		}
+	}
+	schedule();
+	let proc = Process::current();
+	// Make sure the process is dequeued
+	unsafe {
+		queue.lock().wait_queue.remove(&proc);
+	}
+	// If woken up by a signal
+	if INT && proc.has_pending_signal() {
+		return Err(errno!(EINTR));
+	}
+	Ok(())
+}
+
+/// Unlocks the associated [`Mutex`] when dropped.
 pub struct MutexGuard<'m, T: ?Sized, const INT: bool> {
-	/// The locked mutex.
 	mutex: &'m Mutex<T, INT>,
-	/// The interrupt status before locking. This field is relevant only if `INT == false`.
-	int_state: bool,
 }
 
 impl<T: ?Sized, const INT: bool> Deref for MutexGuard<'_, T, INT> {
 	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
-		unsafe { &(*self.mutex.inner.get()).data }
+		unsafe { &*self.mutex.data.get() }
 	}
 }
 
 impl<T: ?Sized, const INT: bool> DerefMut for MutexGuard<'_, T, INT> {
 	fn deref_mut(&mut self) -> &mut Self::Target {
-		unsafe { &mut (*self.mutex.inner.get()).data }
+		unsafe { &mut *self.mutex.data.get() }
 	}
 }
 
@@ -79,38 +98,22 @@ impl<T: ?Sized + fmt::Debug, const INT: bool> fmt::Debug for MutexGuard<'_, T, I
 impl<T: ?Sized, const INT: bool> Drop for MutexGuard<'_, T, INT> {
 	fn drop(&mut self) {
 		unsafe {
-			self.mutex.unlock(self.int_state);
+			self.mutex.unlock();
 		}
 	}
 }
 
-/// The inner structure of [`Mutex`].
-struct MutexIn<T: ?Sized, const INT: bool> {
-	/// The spinlock for the underlying data.
-	spin: Spinlock,
-	/// The data associated to the mutex.
-	data: T,
+struct Queue {
+	acquired: usize,
+	wait_queue: list_type!(Process, wait_queue),
 }
 
-/// The object wrapped in a `Mutex` can be accessed by only one thread at a time.
+/// Sleeping mutex.
 ///
-/// The `INT` generic parameter tells whether interrupts are allowed while
-/// the mutex is locked. The default value is `true`.
+/// `INT` tells whether sleeping can be interrupted by a signal.
 pub struct Mutex<T: ?Sized, const INT: bool = true> {
-	/// An unsafe cell to the inner structure of the Mutex.
-	inner: UnsafeCell<MutexIn<T, INT>>,
-}
-
-impl<T, const INT: bool> Mutex<T, INT> {
-	/// Creates a new Mutex with the given data to be owned.
-	pub const fn new(data: T) -> Self {
-		Self {
-			inner: UnsafeCell::new(MutexIn {
-				spin: Spinlock::new(),
-				data,
-			}),
-		}
-	}
+	queue: IntSpin<Queue>,
+	data: UnsafeCell<T>,
 }
 
 impl<T: Default, const INT: bool> Default for Mutex<T, INT> {
@@ -119,60 +122,84 @@ impl<T: Default, const INT: bool> Default for Mutex<T, INT> {
 	}
 }
 
-impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
-	/// Locks the mutex.
-	///
-	/// If the mutex is already locked, the thread shall wait until it becomes available.
-	///
-	/// The function returns a [`MutexGuard`] associated with `self`. When dropped, the mutex is
-	/// unlocked.
-	pub fn lock(&self) -> MutexGuard<T, INT> {
-		let int_state = if !INT {
-			let enabled = x86::is_interrupt_enabled();
-			cli();
-			enabled
-		} else {
-			// In this case, this value does not matter
-			false
-		};
-		// Safe because using the spinlock
-		let inner = unsafe { &mut *self.inner.get() };
-		inner.spin.lock();
-		MutexGuard {
-			mutex: self,
-			int_state,
-		}
-	}
-
-	/// Unlocks the mutex. This function should not be used directly since it is called when the
-	/// mutex guard is dropped.
-	///
-	/// `int_state` is the state of interruptions before locking.
-	///
-	/// # Safety
-	///
-	/// If the mutex is not locked, the behaviour is undefined.
-	///
-	/// Unlocking the mutex while the resource is being used may result in concurrent accesses.
-	pub unsafe fn unlock(&self, int_state: bool) {
-		let inner = &mut (*self.inner.get());
-		inner.spin.unlock();
-		if !INT && int_state {
-			sti();
+impl<T, const INT: bool> Mutex<T, INT> {
+	/// Creates a new instance wrapping the given `data`.
+	pub const fn new(data: T) -> Self {
+		Self {
+			queue: IntSpin::new(Queue {
+				acquired: 0,
+				wait_queue: list!(Process, wait_queue),
+			}),
+			data: UnsafeCell::new(data),
 		}
 	}
 }
 
-impl<T, const INT: bool> Mutex<T, INT> {
-	/// Locks the mutex, consumes it and returns the inner value.
-	///
-	/// If the mutex disables interruptions, it is the caller's responsibility to handle it
-	/// afterward.
+impl<T> Mutex<T, false> {
+	/// Acquires the mutex, consumes it and returns the inner value.
 	pub fn into_inner(self) -> T {
-		// Make sure no one is using the resource
-		let inner = unsafe { &mut *self.inner.get() };
-		inner.spin.lock();
-		self.inner.into_inner().data
+		let _ = lock::<false>(&self.queue);
+		self.data.into_inner()
+	}
+}
+
+impl<T: ?Sized, const INT: bool> Mutex<T, INT> {
+	/// Releases the mutex, waking up the next process waiting on it, if any.
+	///
+	/// # Safety
+	///
+	/// This function should not be used directly since it is called when the guard is dropped.
+	///
+	/// If the mutex is not locked, the behaviour is undefined.
+	///
+	/// Releasing while the resource is being used is undefined.
+	pub unsafe fn unlock(&self) {
+		let next = {
+			let mut q = self.queue.lock();
+			q.acquired -= 1;
+			// If at least one other task is waiting, wake it up
+			q.wait_queue.remove_front()
+		};
+		if let Some(next) = next {
+			let mut mask = State::Sleeping as u8;
+			if INT {
+				mask |= State::IntSleeping as u8;
+			}
+			Process::wake_from(&next, mask);
+		}
+	}
+}
+
+impl<T: ?Sized> Mutex<T, false> {
+	/// Acquires the mutex.
+	///
+	/// If the mutex is already acquired, the thread loops until it becomes available.
+	///
+	/// The function returns a [`MutexGuard`] associated with `self`. When dropped, the mutex
+	/// is unlocked.
+	pub fn lock(&self) -> MutexGuard<T, false> {
+		let _ = lock::<false>(&self.queue);
+		MutexGuard {
+			mutex: self,
+		}
+	}
+}
+
+impl<T: ?Sized> Mutex<T, true> {
+	/// Acquires the mutex.
+	///
+	/// If the mutex is already acquired, the thread loops until it becomes available.
+	///
+	/// The function returns a [`MutexGuard`] associated with `self`. When dropped, the mutex
+	/// is unlocked.
+	///
+	/// If the current process is interrupted by a signal while waiting, the function returns with
+	/// the errno [`errno::EINTR`].
+	pub fn lock(&self) -> EResult<MutexGuard<T, true>> {
+		lock::<true>(&self.queue)?;
+		Ok(MutexGuard {
+			mutex: self,
+		})
 	}
 }
 
@@ -180,12 +207,10 @@ unsafe impl<T, const INT: bool> Sync for Mutex<T, INT> {}
 
 impl<T: ?Sized + fmt::Debug, const INT: bool> fmt::Debug for Mutex<T, INT> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		let guard = self.lock();
+		let _ = lock::<false>(&self.queue);
+		let guard = MutexGuard {
+			mutex: self,
+		};
 		fmt::Debug::fmt(&*guard, f)
 	}
 }
-
-/// Type alias on [`Mutex`] representing a mutex which masks interrupts.
-pub type IntMutex<T> = Mutex<T, false>;
-/// Type alias on [`MutexGuard`] representing a mutex guard which masks interrupts.
-pub type IntMutexGuard<'m, T> = MutexGuard<'m, T, false>;

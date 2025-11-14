@@ -31,7 +31,10 @@ use core::{
 	ops::{CoerceUnsized, Deref, DispatchFromDyn},
 	ptr,
 	ptr::{NonNull, drop_in_place, null, null_mut},
-	sync::atomic::{AtomicPtr, AtomicUsize, Ordering, Ordering::Relaxed},
+	sync::atomic::{
+		AtomicPtr, AtomicUsize,
+		Ordering::{Relaxed, Release},
+	},
 };
 
 /// Inner structure shared between arcs pointing to the same object.
@@ -149,7 +152,7 @@ impl<T> Arc<T> {
 		// Avoid double free
 		let this = ManuallyDrop::new(this);
 		let inner = this.inner();
-		if inner.ref_count.fetch_sub(1, Ordering::Release) != 1 {
+		if inner.ref_count.fetch_sub(1, Release) != 1 {
 			return None;
 		}
 		unsafe {
@@ -189,7 +192,19 @@ impl<T: ?Sized> Arc<T> {
 	/// Returns the number of strong pointers to the allocation.
 	#[inline]
 	pub fn strong_count(this: &Self) -> usize {
-		this.inner().ref_count.load(Ordering::Relaxed)
+		this.inner().ref_count.load(Relaxed)
+	}
+
+	/// Increments the reference count on `this`.
+	#[inline]
+	pub fn increment_count(this: &Self) {
+		this.inner().ref_count.fetch_add(1, Relaxed);
+	}
+
+	/// Decrements the reference count on `this`.
+	#[inline]
+	pub fn decrement_count(this: &Self) {
+		this.inner().ref_count.fetch_sub(1, Release);
 	}
 }
 
@@ -216,7 +231,7 @@ impl<T: ?Sized> Deref for Arc<T> {
 impl<T: ?Sized> Clone for Arc<T> {
 	fn clone(&self) -> Self {
 		let inner = self.inner();
-		let old_count = inner.ref_count.fetch_add(1, Ordering::Relaxed);
+		let old_count = inner.ref_count.fetch_add(1, Relaxed);
 		if old_count == usize::MAX {
 			panic!("Arc reference count overflow");
 		}
@@ -255,7 +270,7 @@ impl<T: ?Sized + fmt::Debug> fmt::Debug for Arc<T> {
 impl<T: ?Sized> Drop for Arc<T> {
 	fn drop(&mut self) {
 		let inner = self.inner();
-		if inner.ref_count.fetch_sub(1, Ordering::Release) != 1 {
+		if inner.ref_count.fetch_sub(1, Release) != 1 {
 			return;
 		}
 		unsafe {

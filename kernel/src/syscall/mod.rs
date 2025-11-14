@@ -54,46 +54,47 @@ use crate::{
 		scheduler::{alter_flow, preempt_check_resched},
 		signal::Signal,
 	},
-	sync::mutex::Mutex,
 	syscall::{
 		dirent::{getdents, getdents64},
 		execve::execve,
+		execve::execveat,
 		fcntl::{fcntl, fcntl64},
 		fd::{
-			_llseek, close, dup, dup2, lseek, preadv, preadv2, pwritev, pwritev2, read, readv,
-			write, writev,
+			_llseek, close, dup, dup2, lseek, pread64, preadv, preadv2, pwrite64, pwritev,
+			pwritev2, read, readv, write, writev,
 		},
 		fs::{
 			access, chdir, chmod, chown, chroot, creat, faccessat, faccessat2, fadvise64_64,
-			fchdir, fchmod, fchmodat, getcwd, lchown, link, linkat, mkdir, mknod, open, openat,
-			readlink, rename, renameat2, rmdir, symlink, symlinkat, truncate, umask, unlink,
-			unlinkat, utimensat,
+			fchdir, fchmod, fchmodat, fchown, fchownat, getcwd, lchown, link, linkat, mkdir,
+			mknod, open, openat, readlink, rename, renameat2, rmdir, symlink, symlinkat, truncate,
+			umask, unlink, unlinkat, utimensat,
 		},
+		fs::{futimesat, mkdirat, mknodat, readlinkat, renameat, utime, utimes},
 		getrandom::getrandom,
 		host::{reboot, sethostname, sysinfo, uname},
 		ioctl::ioctl,
-		mem::{brk, madvise, mmap, mmap2, mprotect, munmap},
+		mem::{brk, madvise, mincore, mmap, mmap2, mprotect, munmap},
 		module::{delete_module, finit_module, init_module},
 		mount::{mount, umount, umount2},
 		pipe::{pipe, pipe2},
 		process::{
 			_exit, arch_prctl, clone, compat_clone, exit_group, fork, getpgid, getpid, getppid,
-			getrusage, gettid, prlimit64, sched_yield, set_thread_area, set_tid_address, setpgid,
-			vfork,
+			getpriority, getrusage, gettid, nice, prctl, prlimit64, sched_getaffinity,
+			sched_setaffinity, sched_yield, set_thread_area, set_tid_address, setpgid,
+			setpriority, vfork,
 		},
-		process::{getpriority, nice, setpriority},
 		select::{_newselect, poll, pselect6, select},
 		signal::{
-			compat_rt_sigaction, kill, rt_sigaction, rt_sigprocmask, rt_sigreturn, signal,
-			sigreturn, tkill,
+			compat_rt_sigaction, compat_sigaltstack, kill, rt_sigaction, rt_sigprocmask,
+			rt_sigreturn, sigaltstack, signal, sigreturn, tkill,
 		},
 		socket::{
 			bind, connect, getsockname, getsockopt, sendto, setsockopt, shutdown, socket,
 			socketpair,
 		},
 		stat::{
-			fstat, fstat64, fstatfs, fstatfs64, lstat, lstat64, stat, stat64, statfs, statfs64,
-			statx,
+			fstat, fstat64, fstatat64, fstatfs, fstatfs64, lstat, lstat64, newfstatat, oldfstat,
+			oldlstat, oldstat, stat, stat64, statfs, statfs64, statx,
 		},
 		sync::{fdatasync, fsync, msync, sync, syncfs},
 		time::{
@@ -101,17 +102,16 @@ use crate::{
 			timer_create, timer_delete, timer_settime,
 		},
 		user::{
-			getegid, geteuid, getgid, getresgid, getresuid, getuid, setgid, setregid, setresgid,
-			setresuid, setreuid, setuid,
+			getegid, geteuid, getgid, getgroups, getgroups32, getresgid, getresuid, getuid,
+			setgid, setgroups, setgroups32, setregid, setresgid, setresuid, setreuid, setuid,
 		},
 		wait::{wait4, waitpid},
 	},
 };
-use core::{fmt, hint::unlikely, ops::Deref, ptr};
+use core::{fmt, hint::unlikely, ptr};
 use utils::{
 	errno,
 	errno::{ENOSYS, EResult},
-	ptr::arc::Arc,
 };
 
 /// The ID of the `sigreturn` system call, for use by the signal trampoline.
@@ -135,19 +135,21 @@ macro_rules! impl_syscall_handler {
 		// Implementation **without** trailing reference to frame
         impl<F, $($ty,)*> SyscallHandler<($($ty,)*)> for F
         where F: FnOnce($($ty,)*) -> EResult<usize>,
-			$($ty: FromSyscall,)*
+			$($ty: FromSyscallArg,)*
         {
-			#[allow(non_snake_case, unused_variables)]
+			#[allow(non_snake_case, unused)]
             fn call(self, name: &str, frame: &mut IntFrame) -> EResult<usize> {
+				let mut cursor = 0;
+                $(
+                    let $ty = $ty::from_syscall_arg(frame.get_syscall_arg(cursor), frame.is_compat());
+					cursor += 1;
+                )*
 				#[cfg(feature = "strace")]
 				let pid = {
 					let pid = Process::current().get_pid();
-					print!("[strace {pid}] {name}");
+					print!("[strace {pid}] {name}{args:?}", args = ($(&$ty,)*));
 					pid
 				};
-                $(
-                    let $ty = $ty::from_syscall(frame);
-                )*
                 let res = self($($ty,)*);
 				#[cfg(feature = "strace")]
 				println!("[strace {pid}] -> {res:?}");
@@ -159,19 +161,21 @@ macro_rules! impl_syscall_handler {
 		#[allow(unused_parens)]
         impl<F, $($ty,)*> SyscallHandler<($($ty,)* &mut IntFrame)> for F
         where F: FnOnce($($ty,)* &mut IntFrame) -> EResult<usize>,
-			$($ty: FromSyscall,)*
+			$($ty: FromSyscallArg,)*
         {
-			#[allow(non_snake_case, unused_variables)]
+			#[allow(non_snake_case, unused)]
             fn call(self, name: &str, frame: &mut IntFrame) -> EResult<usize> {
+				let mut cursor = 0;
+                $(
+                    let $ty = $ty::from_syscall_arg(frame.get_syscall_arg(cursor), frame.is_compat());
+					cursor += 1;
+                )*
 				#[cfg(feature = "strace")]
 				let pid = {
 					let pid = Process::current().get_pid();
-					print!("[strace {pid}] {name}");
+					print!("[strace {pid}] {name}{args:?}", args = ($(&$ty,)*));
 					pid
 				};
-                $(
-                    let $ty = $ty::from_syscall(frame);
-                )*
                 let res = self($($ty,)* frame);
 				#[cfg(feature = "strace")]
 				println!("[strace {pid}] -> {res:?}");
@@ -190,96 +194,6 @@ impl_syscall_handler!(T1, T2, T3, T4, T5);
 impl_syscall_handler!(T1, T2, T3, T4, T5, T6);
 impl_syscall_handler!(T1, T2, T3, T4, T5, T6, T7);
 impl_syscall_handler!(T1, T2, T3, T4, T5, T6, T7, T8);
-
-/// Extracts a value from the process that made a system call.
-pub trait FromSyscall {
-	/// Constructs the value from the given process or syscall argument value.
-	fn from_syscall(frame: &IntFrame) -> Self;
-}
-
-impl FromSyscall for Arc<Process> {
-	#[inline]
-	fn from_syscall(_frame: &IntFrame) -> Self {
-		Process::current()
-	}
-}
-
-impl FromSyscall for Arc<MemSpace> {
-	#[inline]
-	fn from_syscall(_frame: &IntFrame) -> Self {
-		Process::current().mem_space.as_ref().unwrap().clone()
-	}
-}
-
-impl FromSyscall for Arc<Mutex<FileDescriptorTable>> {
-	#[inline]
-	fn from_syscall(_frame: &IntFrame) -> Self {
-		Process::current().file_descriptors.deref().clone().unwrap()
-	}
-}
-
-impl FromSyscall for AccessProfile {
-	fn from_syscall(_frame: &IntFrame) -> Self {
-		Process::current().fs().lock().access_profile
-	}
-}
-
-impl FromSyscall for ResolutionSettings {
-	fn from_syscall(_frame: &IntFrame) -> Self {
-		ResolutionSettings::for_process(&Process::current(), true)
-	}
-}
-
-/// The umask of the process performing the system call.
-pub struct Umask(Mode);
-
-impl FromSyscall for Umask {
-	fn from_syscall(_frame: &IntFrame) -> Self {
-		Self(Process::current().fs().lock().umask())
-	}
-}
-
-/// System call arguments.
-#[derive(Debug)]
-pub struct Args<T: fmt::Debug>(pub T);
-
-impl<T: FromSyscallArg> FromSyscall for Args<T> {
-	fn from_syscall(frame: &IntFrame) -> Self {
-		let arg = T::from_syscall_arg(frame.get_syscall_arg(0), frame.is_compat());
-		#[cfg(feature = "strace")]
-		println!("({arg:?})");
-		Self(arg)
-	}
-}
-
-macro_rules! impl_from_syscall_args {
-    ($($ty:ident),*) => {
-		impl<$($ty: FromSyscallArg,)*> FromSyscall for Args<($($ty,)*)> {
-			#[inline]
-			#[allow(non_snake_case, unused_variables, unused_mut, unused_assignments)]
-			fn from_syscall(
-				frame: &IntFrame,
-			) -> Self {
-				let mut cursor = 0;
-                $(
-                    let $ty = $ty::from_syscall_arg(frame.get_syscall_arg(cursor), frame.is_compat());
-					cursor += 1;
-                )*
-				let args = ($($ty,)*);
-				#[cfg(feature = "strace")]
-				println!("{args:?}");
-				Args(args)
-			}
-		}
-	};
-}
-
-impl_from_syscall_args!(T1);
-impl_from_syscall_args!(T1, T2);
-impl_from_syscall_args!(T1, T2, T3);
-impl_from_syscall_args!(T1, T2, T3, T4);
-impl_from_syscall_args!(T1, T2, T3, T4, T5);
-impl_from_syscall_args!(T1, T2, T3, T4, T5, T6);
 
 /// A value that can be constructed from a system call argument.
 ///
@@ -360,7 +274,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		0x00f => syscall!(chmod, frame),
 		0x010 => syscall!(lchown, frame),
 		// 0x011: unimplemented (break)
-		// TODO 0x012 => syscall!(oldstat, frame),
+		0x012 => syscall!(oldstat, frame),
 		// TODO 0x013 => syscall!(lseek, frame),
 		0x014 => syscall!(getpid, frame),
 		0x015 => syscall!(mount, frame),
@@ -370,9 +284,9 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		// TODO 0x019 => syscall!(stime, frame),
 		// TODO 0x01a => syscall!(ptrace, frame),
 		// TODO 0x01b => syscall!(alarm, frame),
-		// TODO 0x01c => syscall!(oldfstat, frame),
+		0x01c => syscall!(oldfstat, frame),
 		// TODO 0x01d => syscall!(pause, frame),
-		// TODO 0x01e => syscall!(utime, frame),
+		0x01e => syscall!(utime, frame),
 		// 0x01f: unimplemented (stty),
 		// 0x020: unimplemented_syscall (gtty)
 		0x021 => syscall!(access, frame),
@@ -422,11 +336,11 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		0x04d => syscall!(getrusage, frame),
 		// TODO 0x04e => syscall!(gettimeofday, frame),
 		// TODO 0x04f => syscall!(settimeofday, frame),
-		// TODO 0x050 => syscall!(getgroups, frame),
-		// TODO 0x051 => syscall!(setgroups, frame),
+		0x050 => syscall!(getgroups, frame),
+		0x051 => syscall!(setgroups, frame),
 		0x052 => syscall!(select, frame),
 		0x053 => syscall!(symlink, frame),
-		// TODO 0x054 => syscall!(oldlstat, frame),
+		0x054 => syscall!(oldlstat, frame),
 		0x055 => syscall!(readlink, frame),
 		// TODO 0x056 => syscall!(uselib, frame),
 		// TODO 0x057 => syscall!(swapon, frame),
@@ -437,7 +351,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		0x05c => syscall!(truncate, frame),
 		// TODO 0x05d => syscall!(ftruncate, frame),
 		0x05e => syscall!(fchmod, frame),
-		// TODO 0x05f => syscall!(fchown, frame),
+		0x05f => syscall!(fchown, frame),
 		0x060 => syscall!(getpriority, frame),
 		0x061 => syscall!(setpriority, frame),
 		// 0x062: unimplemented (profil),
@@ -512,7 +426,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		// TODO 0x0a9 => syscall!(nfsservctl, frame),
 		0x0aa => syscall!(setresgid, frame),
 		0x0ab => syscall!(getresgid, frame),
-		// TODO 0x0ac => syscall!(prctl, frame),
+		0x0ac => syscall!(prctl, frame),
 		0x0ad => syscall!(sigreturn, frame),
 		0x0ae => syscall!(compat_rt_sigaction, frame),
 		0x0af => syscall!(rt_sigprocmask, frame),
@@ -520,13 +434,13 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		// TODO 0x0b1 => syscall!(rt_sigtimedwait, frame),
 		// TODO 0x0b2 => syscall!(rt_sigqueueinfo, frame),
 		// TODO 0x0b3 => syscall!(rt_sigsuspend, frame),
-		// TODO 0x0b4 => syscall!(pread64, frame),
-		// TODO 0x0b5 => syscall!(pwrite64, frame),
+		0x0b4 => syscall!(pread64, frame),
+		0x0b5 => syscall!(pwrite64, frame),
 		0x0b6 => syscall!(chown, frame),
 		0x0b7 => syscall!(getcwd, frame),
 		// TODO 0x0b8 => syscall!(capget, frame),
 		// TODO 0x0b9 => syscall!(capset, frame),
-		// TODO 0x0ba => syscall!(sigaltstack, frame),
+		0x0ba => syscall!(compat_sigaltstack, frame),
 		// TODO 0x0bb => syscall!(sendfile, frame),
 		// 0x0bc: unimplemented (getpmsg),
 		// 0x0bd: unimplemented (putpmsg),
@@ -545,8 +459,8 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		0x0ca => syscall!(getegid, frame),  // getegid32
 		0x0cb => syscall!(setreuid, frame), // setreuid32
 		0x0cc => syscall!(setregid, frame), // setregid32
-		// TODO 0x0cd => syscall!(getgroups32, frame),
-		// TODO 0x0ce => syscall!(setgroups32, frame),
+		0x0cd => syscall!(getgroups32, frame),
+		0x0ce => syscall!(setgroups32, frame),
 		// TODO 0x0cf => syscall!(fchown32, frame),
 		0x0d0 => syscall!(setresuid, frame), // setresuid32
 		0x0d1 => syscall!(getresuid, frame), // getresuid32
@@ -558,7 +472,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		// TODO 0x0d7 => syscall!(setfsuid32, frame),
 		// TODO 0x0d8 => syscall!(setfsgid32, frame),
 		// TODO 0x0d9 => syscall!(pivot_root, frame),
-		// TODO 0x0da => syscall!(mincore, frame),
+		0x0da => syscall!(mincore, frame),
 		0x0db => syscall!(madvise, frame),
 		0x0dc => syscall!(getdents64, frame),
 		0x0dd => syscall!(fcntl64, frame),
@@ -579,8 +493,8 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		0x0ee => syscall!(tkill, frame),
 		// TODO 0x0ef => syscall!(sendfile64, frame),
 		// TODO 0x0f0 => syscall!(futex, frame),
-		// TODO 0x0f1 => syscall!(sched_setaffinity, frame),
-		// TODO 0x0f2 => syscall!(sched_getaffinity, frame),
+		0x0f1 => syscall!(sched_setaffinity, frame),
+		0x0f2 => syscall!(sched_getaffinity, frame),
 		0x0f3 => syscall!(set_thread_area, frame),
 		// TODO 0x0f4 => syscall!(get_thread_area, frame),
 		// TODO 0x0f5 => syscall!(io_setup, frame),
@@ -608,7 +522,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		0x10c => syscall!(statfs64, frame),
 		0x10d => syscall!(fstatfs64, frame),
 		// TODO 0x10e => syscall!(tgkill, frame),
-		// TODO 0x10f => syscall!(utimes, frame),
+		0x10f => syscall!(utimes, frame),
 		0x110 => syscall!(fadvise64_64, frame),
 		// 0x111: unimplemented (vserver),
 		// TODO 0x112 => syscall!(mbind, frame),
@@ -632,16 +546,16 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		// TODO 0x125 => syscall!(inotify_rm_watch, frame),
 		// TODO 0x126 => syscall!(migrate_pages, frame),
 		0x127 => syscall!(openat, frame),
-		// TODO 0x128 => syscall!(mkdirat, frame),
-		// TODO 0x129 => syscall!(mknodat, frame),
-		// TODO 0x12a => syscall!(fchownat, frame),
-		// TODO 0x12b => syscall!(futimesat, frame),
-		// TODO 0x12c => syscall!(fstatat64, frame),
+		0x128 => syscall!(mkdirat, frame),
+		0x129 => syscall!(mknodat, frame),
+		0x12a => syscall!(fchownat, frame),
+		0x12b => syscall!(futimesat, frame),
+		0x12c => syscall!(fstatat64, frame),
 		0x12d => syscall!(unlinkat, frame),
-		// TODO 0x12e => syscall!(renameat, frame),
+		0x12e => syscall!(renameat, frame),
 		0x12f => syscall!(linkat, frame),
 		0x130 => syscall!(symlinkat, frame),
-		// TODO 0x131 => syscall!(readlinkat, frame),
+		0x131 => syscall!(readlinkat, frame),
 		0x132 => syscall!(fchmodat, frame),
 		0x133 => syscall!(faccessat, frame),
 		0x134 => syscall!(pselect6, frame),
@@ -694,7 +608,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		0x163 => syscall!(getrandom, frame),
 		// TODO 0x164 => syscall!(memfd_create, frame),
 		// TODO 0x165 => syscall!(bpf, frame),
-		// TODO 0x166 => syscall!(execveat, frame),
+		0x166 => syscall!(execveat, frame),
 		0x167 => syscall!(socket, frame),
 		0x168 => syscall!(socketpair, frame),
 		0x169 => syscall!(bind, frame),
@@ -805,8 +719,8 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		0x00e => syscall!(rt_sigprocmask, frame),
 		0x00f => syscall!(rt_sigreturn, frame),
 		0x010 => syscall!(ioctl, frame),
-		// TODO 0x011 => syscall!(pread64, frame),
-		// TODO 0x012 => syscall!(pwrite64, frame),
+		0x011 => syscall!(pread64, frame),
+		0x012 => syscall!(pwrite64, frame),
 		0x013 => syscall!(readv, frame),
 		0x014 => syscall!(writev, frame),
 		0x015 => syscall!(access, frame),
@@ -815,7 +729,7 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		0x018 => syscall!(sched_yield, frame),
 		// TODO 0x019 => syscall!(mremap, frame),
 		0x01a => syscall!(msync, frame),
-		// TODO 0x01b => syscall!(mincore, frame),
+		0x01b => syscall!(mincore, frame),
 		0x01c => syscall!(madvise, frame),
 		// TODO 0x01d => syscall!(shmget, frame),
 		// TODO 0x01e => syscall!(shmat, frame),
@@ -881,7 +795,7 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		0x05a => syscall!(chmod, frame),
 		0x05b => syscall!(fchmod, frame),
 		0x05c => syscall!(chown, frame),
-		// TODO 0x05d => syscall!(fchown, frame),
+		0x05d => syscall!(fchown, frame),
 		0x05e => syscall!(lchown, frame),
 		0x05f => syscall!(umask, frame),
 		// TODO 0x060 => syscall!(gettimeofday, frame),
@@ -903,8 +817,8 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		// TODO 0x070 => syscall!(setsid, frame),
 		0x071 => syscall!(setreuid, frame),
 		0x072 => syscall!(setregid, frame),
-		// TODO 0x073 => syscall!(getgroups, frame),
-		// TODO 0x074 => syscall!(setgroups, frame),
+		0x073 => syscall!(getgroups, frame),
+		0x074 => syscall!(setgroups, frame),
 		0x075 => syscall!(setresuid, frame),
 		0x076 => syscall!(getresuid, frame),
 		0x077 => syscall!(setresgid, frame),
@@ -919,8 +833,8 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		// TODO 0x080 => syscall!(rt_sigtimedwait, frame),
 		// TODO 0x081 => syscall!(rt_sigqueueinfo, frame),
 		// TODO 0x082 => syscall!(rt_sigsuspend, frame),
-		// TODO 0x083 => syscall!(sigaltstack, frame),
-		// TODO 0x084 => syscall!(utime, frame),
+		0x083 => syscall!(sigaltstack, frame),
+		0x084 => syscall!(utime, frame),
 		0x085 => syscall!(mknod, frame),
 		// TODO 0x086 => syscall!(useli, frame),
 		// TODO 0x087 => syscall!(personality, frame),
@@ -945,7 +859,7 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		// TODO 0x09a => syscall!(modify_ldt, frame),
 		// TODO 0x09b => syscall!(pivot_root, frame),
 		// TODO 0x09c => syscall!(_sysctl, frame),
-		// TODO 0x09d => syscall!(prctl, frame),
+		0x09d => syscall!(prctl, frame),
 		0x09e => syscall!(arch_prctl, frame),
 		// TODO 0x09f => syscall!(adjtimex, frame),
 		// TODO 0x0a0 => syscall!(setrlimit, frame),
@@ -991,9 +905,9 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		0x0c8 => syscall!(tkill, frame),
 		0x0c9 => syscall!(time64, frame),
 		// TODO 0x0ca => syscall!(futex, frame),
-		// TODO 0x0cb => syscall!(sched_setaffinity, frame),
-		// TODO 0x0cc => syscall!(sched_getaffinity, frame),
-		// TODO 0x0cd => syscall!(set_thread_are, frame),
+		0x0cb => syscall!(sched_setaffinity, frame),
+		0x0cc => syscall!(sched_getaffinity, frame),
+		0x0cd => syscall!(set_thread_area, frame),
 		// TODO 0x0ce => syscall!(io_setup, frame),
 		// TODO 0x0cf => syscall!(io_destroy, frame),
 		// TODO 0x0d0 => syscall!(io_getevents, frame),
@@ -1023,7 +937,7 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		// TODO 0x0e8 => syscall!(epoll_wait, frame),
 		// TODO 0x0e9 => syscall!(epoll_ctl, frame),
 		// TODO 0x0ea => syscall!(tgkill, frame),
-		// TODO 0x0eb => syscall!(utimes, frame),
+		0x0eb => syscall!(utimes, frame),
 		// TODO 0x0ec => syscall!(vserver, frame),
 		// TODO 0x0ed => syscall!(mbind, frame),
 		// TODO 0x0ee => syscall!(set_mempolicy, frame),
@@ -1046,16 +960,16 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		// TODO 0x0ff => syscall!(inotify_rm_watch, frame),
 		// TODO 0x100 => syscall!(migrate_pages, frame),
 		0x101 => syscall!(openat, frame),
-		// TODO 0x102 => syscall!(mkdirat, frame),
-		// TODO 0x103 => syscall!(mknodat, frame),
-		// TODO 0x104 => syscall!(fchownat, frame),
-		// TODO 0x105 => syscall!(futimesat, frame),
-		// TODO 0x106 => syscall!(newfstatat, frame),
+		0x102 => syscall!(mkdirat, frame),
+		0x103 => syscall!(mknodat, frame),
+		0x104 => syscall!(fchownat, frame),
+		0x105 => syscall!(futimesat, frame),
+		0x106 => syscall!(newfstatat, frame),
 		0x107 => syscall!(unlinkat, frame),
-		// TODO 0x108 => syscall!(renameat, frame),
+		0x108 => syscall!(renameat, frame),
 		0x109 => syscall!(linkat, frame),
 		0x10a => syscall!(symlinkat, frame),
-		// TODO 0x10b => syscall!(readlinkat, frame),
+		0x10b => syscall!(readlinkat, frame),
 		0x10c => syscall!(fchmodat, frame),
 		0x10d => syscall!(faccessat, frame),
 		0x10e => syscall!(pselect6, frame),
@@ -1110,7 +1024,7 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		// TODO 0x13f => syscall!(memfd_create, frame),
 		// TODO 0x140 => syscall!(kexec_file_load, frame),
 		// TODO 0x141 => syscall!(bpf, frame),
-		// TODO 0x142 => syscall!(execveat, frame),
+		0x142 => syscall!(execveat, frame),
 		// TODO 0x143 => syscall!(userfaultfd, frame),
 		// TODO 0x144 => syscall!(membarrier, frame),
 		// TODO 0x145 => syscall!(mlock2, frame),
@@ -1178,10 +1092,10 @@ pub extern "C" fn syscall_handler(frame: &mut IntFrame) {
 		let proc = Process::current();
 		#[cfg(feature = "strace")]
 		crate::println!(
-			"[strace PID: {pid}] invalid syscall (ID: 0x{id:x})",
+			"[strace {pid}] invalid syscall (ID: 0x{id:x})",
 			pid = proc.get_pid()
 		);
-		proc.kill(Signal::SIGSYS);
+		Process::kill(&proc, Signal::SIGSYS);
 	}
 	// If the process has been killed, handle it
 	alter_flow(3, frame);

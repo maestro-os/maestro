@@ -31,7 +31,6 @@ pub mod pipe;
 pub mod socket;
 pub mod util;
 pub mod vfs;
-pub mod wait_queue;
 
 use crate::{
 	device::{BLK_DEVICES, BlkDev, BlkDevFileOps, CHAR_DEVICES, DeviceID, DeviceType},
@@ -44,14 +43,13 @@ use crate::{
 	},
 	memory::user::UserSlice,
 	net::{SocketDesc, SocketDomain, SocketType},
-	sync::{atomic::AtomicU64, mutex::Mutex, once::OnceInit},
+	sync::{atomic::AtomicU64, once::OnceInit, spin::Spin},
 	time::{
 		clock::{Clock, current_time_sec},
 		unit::Timestamp,
 	},
 };
-use core::{any::Any, fmt::Debug, ops::Deref, ptr::NonNull};
-use perm::AccessProfile;
+use core::{any::Any, fmt::Debug, ops::Deref, ptr::NonNull, sync::atomic::Ordering::Acquire};
 use utils::{
 	collections::{string::String, vec::Vec},
 	errno,
@@ -340,13 +338,13 @@ impl Deref for FileOpsWrapper {
 /// An open file description.
 #[derive(Debug)]
 pub struct File {
-	/// The VFS entry of the file.
-	pub vfs_entry: Option<Arc<vfs::Entry>>,
-	/// Handle for file operations.
+	/// The VFS entry of the file
+	pub vfs_entry: Arc<vfs::Entry>,
+	/// Handle for file operations
 	pub ops: FileOpsWrapper,
-	/// Open file description flags.
-	pub flags: Mutex<i32>,
-	/// The current offset in the file.
+	/// Open file description flags
+	flags: Spin<i32>,
+	/// The current offset in the file
 	pub off: AtomicU64,
 }
 
@@ -354,13 +352,13 @@ impl File {
 	/// Opens a file from a [`vfs::Entry`].
 	///
 	/// Arguments:
-	/// - `entry` is the VFS entry of the file.
+	/// - `vfs_entry` is the VFS entry of the file.
 	/// - `flags` is the open file description's flags.
 	///
 	/// If the entry is negative, the function returns [`errno::ENOENT`].
-	pub fn open_entry(entry: Arc<vfs::Entry>, flags: i32) -> EResult<Arc<Self>> {
-		let node = entry.node.as_ref().ok_or_else(|| errno!(ENOENT))?;
-		let stat = node.stat.lock().clone();
+	pub fn open(vfs_entry: Arc<vfs::Entry>, flags: i32) -> EResult<Arc<Self>> {
+		let node = vfs_entry.node.as_ref().ok_or_else(|| errno!(ENOENT))?;
+		let stat = node.stat();
 		// Get or create ops
 		let ops = match stat.get_type() {
 			Some(FileType::Fifo) => {
@@ -389,21 +387,23 @@ impl File {
 			_ => FileOpsWrapper::Borrowed(NonNull::from(node.file_ops.as_ref())),
 		};
 		let file = Self {
-			vfs_entry: Some(entry),
+			vfs_entry,
 			ops,
-			flags: Mutex::new(flags),
+			flags: Spin::new(flags),
 			off: Default::default(),
 		};
 		file.ops.acquire(&file);
 		Ok(Arc::new(file)?)
 	}
 
-	/// Open a file with no associated VFS entry.
-	pub fn open_floating(ops: Arc<dyn FileOps>, flags: i32) -> EResult<Arc<Self>> {
+	/// Open a floating file (for use with the floatfs)
+	pub fn open_floating(vfs_entry: Arc<vfs::Entry>, flags: i32) -> EResult<Arc<Self>> {
+		let node = vfs_entry.node.as_ref().ok_or_else(|| errno!(ENOENT))?;
+		let ops = FileOpsWrapper::Borrowed(NonNull::from(node.file_ops.as_ref()));
 		let file = Self {
-			vfs_entry: None,
-			ops: FileOpsWrapper::Owned(ops),
-			flags: Mutex::new(flags),
+			vfs_entry,
+			ops,
+			flags: Spin::new(flags),
 			off: Default::default(),
 		};
 		file.ops.acquire(&file);
@@ -411,8 +411,8 @@ impl File {
 	}
 
 	/// Returns a reference to the file's node.
-	pub fn node(&self) -> Option<&Arc<Node>> {
-		self.vfs_entry.as_ref().map(|e| e.node())
+	pub fn node(&self) -> &Arc<Node> {
+		self.vfs_entry.node()
 	}
 
 	/// Returns the underlying buffer, if any.
@@ -422,7 +422,7 @@ impl File {
 
 	/// If the file is a block device, returns the associated device.
 	pub fn as_block_device(&self) -> Option<Arc<BlkDev>> {
-		let stat = self.stat().unwrap();
+		let stat = self.stat();
 		if stat.get_type()? != FileType::BlockDevice {
 			return None;
 		}
@@ -464,18 +464,26 @@ impl File {
 		matches!(self.get_flags() & 0b11, O_WRONLY | O_RDWR)
 	}
 
-	/// Returns the file's status.
-	pub fn stat(&self) -> EResult<Stat> {
-		if let Some(node) = self.node() {
-			Ok(node.stat())
+	/// Reads the current file offset, atomically.
+	///
+	/// If the file has been opened with [`O_APPEND`], the function returns the offset to the end
+	/// of the file.
+	pub fn get_offset(&self) -> u64 {
+		if self.get_flags() & O_APPEND != 0 {
+			self.stat().size
 		} else {
-			self.ops.get_stat(self)
+			self.off.load(Acquire)
 		}
+	}
+
+	/// Returns the file's status.
+	pub fn stat(&self) -> Stat {
+		self.node().stat()
 	}
 
 	/// Returns the type of the file.
 	pub fn get_type(&self) -> EResult<FileType> {
-		let stat = self.stat()?;
+		let stat = self.stat();
 		FileType::from_mode(stat.mode).ok_or_else(|| errno!(EUCLEAN))
 	}
 
@@ -485,11 +493,7 @@ impl File {
 	/// on an infinite file.
 	pub fn read_all(&self) -> EResult<Vec<u8>> {
 		const INCREMENT: usize = 512;
-		let len: usize = self
-			.stat()?
-			.size
-			.try_into()
-			.map_err(|_| errno!(EOVERFLOW))?;
+		let len: usize = self.stat().size.try_into().map_err(|_| errno!(EOVERFLOW))?;
 		let len = len
 			.checked_add(INCREMENT)
 			.ok_or_else(|| errno!(EOVERFLOW))?;
@@ -523,138 +527,7 @@ impl File {
 	/// use of it.
 	pub fn close(self) -> EResult<()> {
 		self.ops.release(&self);
-		if let Some(ent) = self.vfs_entry {
-			vfs::Entry::release(ent)?;
-		}
-		Ok(())
-	}
-}
-
-impl AccessProfile {
-	fn check_read_access_impl(uid: Uid, gid: Gid, stat: &Stat) -> bool {
-		// If root, bypass checks
-		if uid == perm::ROOT_UID || gid == perm::ROOT_GID {
-			return true;
-		}
-		// Check permissions
-		if stat.mode & perm::S_IRUSR != 0 && stat.uid == uid {
-			return true;
-		}
-		if stat.mode & perm::S_IRGRP != 0 && stat.gid == gid {
-			return true;
-		}
-		stat.mode & perm::S_IROTH != 0
-	}
-
-	/// Tells whether the agent can read a file with the given status.
-	///
-	/// `effective` tells whether to use effective IDs. If not, real IDs are used.
-	pub fn check_read_access(&self, stat: &Stat, effective: bool) -> bool {
-		let (uid, gid) = if effective {
-			(self.euid, self.egid)
-		} else {
-			(self.uid, self.gid)
-		};
-		Self::check_read_access_impl(uid, gid, stat)
-	}
-
-	/// Tells whether the agent can read a file with the given status.
-	///
-	/// This function is the preferred from `check_read_access` for general cases.
-	pub fn can_read_file(&self, stat: &Stat) -> bool {
-		self.check_read_access(stat, true)
-	}
-
-	/// Tells whether the agent can list files of a directory with the given status, **not**
-	/// including access to files' contents and metadata.
-	#[inline]
-	pub fn can_list_directory(&self, stat: &Stat) -> bool {
-		self.can_read_file(stat)
-	}
-
-	fn check_write_access_impl(uid: Uid, gid: Gid, stat: &Stat) -> bool {
-		// If root, bypass checks
-		if uid == perm::ROOT_UID || gid == perm::ROOT_GID {
-			return true;
-		}
-		// Check permissions
-		if stat.mode & perm::S_IWUSR != 0 && stat.uid == uid {
-			return true;
-		}
-		if stat.mode & perm::S_IWGRP != 0 && stat.gid == gid {
-			return true;
-		}
-		stat.mode & perm::S_IWOTH != 0
-	}
-
-	/// Tells whether the agent can write a file with the given status.
-	///
-	/// `effective` tells whether to use effective IDs. If not, real IDs are used.
-	pub fn check_write_access(&self, stat: &Stat, effective: bool) -> bool {
-		let (uid, gid) = if effective {
-			(self.euid, self.egid)
-		} else {
-			(self.uid, self.gid)
-		};
-		Self::check_write_access_impl(uid, gid, stat)
-	}
-
-	/// Tells whether the agent can write a file with the given status.
-	pub fn can_write_file(&self, stat: &Stat) -> bool {
-		self.check_write_access(stat, true)
-	}
-
-	/// Tells whether the agent can modify entries in a directory with the given status, including
-	/// creating files, deleting files, and renaming files.
-	#[inline]
-	pub fn can_write_directory(&self, stat: &Stat) -> bool {
-		self.can_write_file(stat) && self.can_execute_file(stat)
-	}
-
-	fn check_execute_access_impl(uid: Uid, gid: Gid, stat: &Stat) -> bool {
-		// If root, bypass checks (unless the file is a regular file)
-		if stat.get_type() != Some(FileType::Regular)
-			&& (uid == perm::ROOT_UID || gid == perm::ROOT_GID)
-		{
-			return true;
-		}
-		// Check permissions
-		if stat.mode & perm::S_IXUSR != 0 && stat.uid == uid {
-			return true;
-		}
-		if stat.mode & perm::S_IXGRP != 0 && stat.gid == gid {
-			return true;
-		}
-		stat.mode & perm::S_IXOTH != 0
-	}
-
-	/// Tells whether the agent can execute a file with the given status.
-	///
-	/// `effective` tells whether to use effective IDs. If not, real IDs are used.
-	pub fn check_execute_access(&self, stat: &Stat, effective: bool) -> bool {
-		let (uid, gid) = if effective {
-			(self.euid, self.egid)
-		} else {
-			(self.uid, self.gid)
-		};
-		Self::check_execute_access_impl(uid, gid, stat)
-	}
-
-	/// Tells whether the agent can execute a file with the given status.
-	pub fn can_execute_file(&self, stat: &Stat) -> bool {
-		self.check_execute_access(stat, true)
-	}
-
-	/// Tells whether the agent can access files of a directory with the given status, *if the name
-	/// of the file is known*.
-	#[inline]
-	pub fn can_search_directory(&self, stat: &Stat) -> bool {
-		self.can_execute_file(stat)
-	}
-
-	/// Tells whether the agent can set permissions for a file with the given status.
-	pub fn can_set_file_permissions(&self, stat: &Stat) -> bool {
-		self.euid == perm::ROOT_UID || self.euid == stat.uid
+		vfs::Entry::release(self.vfs_entry)
 	}
 }
 

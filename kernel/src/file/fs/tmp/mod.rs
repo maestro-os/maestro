@@ -39,7 +39,7 @@ use crate::{
 		cache::{FrameOwner, RcFrame},
 		user::UserSlice,
 	},
-	sync::mutex::Mutex,
+	sync::{mutex::Mutex, spin::Spin},
 };
 use core::{any::Any, hint::unlikely};
 use utils::{
@@ -130,13 +130,13 @@ impl DirInner {
 #[derive(Debug)]
 enum NodeContent {
 	/// Regular file content
-	Regular(Mutex<Vec<RcFrame>>),
+	Regular(Mutex<Vec<RcFrame>, false>),
 	/// Directory entries
-	Directory(Mutex<DirInner>),
-	// TODO we could avoid having a mutex here since the path is set only when the link is
+	Directory(Mutex<DirInner, false>),
+	// TODO we could avoid having a spinlock here since the path is set only when the link is
 	// created
 	/// Symbolic link path
-	Link(Mutex<Vec<u8>>),
+	Link(Spin<Vec<u8>>),
 	/// No content
 	None,
 }
@@ -337,7 +337,7 @@ impl FileOps for TmpFSFile {
 	}
 
 	fn write(&self, file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
-		let node = file.node().unwrap();
+		let node = file.node();
 		let fs = downcast_fs::<TmpFS>(&*node.fs.ops);
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
@@ -346,7 +346,7 @@ impl FileOps for TmpFSFile {
 	}
 
 	fn truncate(&self, file: &File, size: u64) -> EResult<()> {
-		let node = file.node().unwrap();
+		let node = file.node();
 		let pages = NodeContent::from_ops(&*node.node_ops);
 		let NodeContent::Regular(pages) = pages else {
 			return Err(errno!(EINVAL));
@@ -388,7 +388,7 @@ pub struct TmpFS {
 	/// Tells whether the filesystem is readonly.
 	readonly: bool,
 	/// The inner kernfs.
-	nodes: Mutex<NodeStorage>,
+	nodes: Mutex<NodeStorage, false>,
 }
 
 impl FilesystemOps for TmpFS {

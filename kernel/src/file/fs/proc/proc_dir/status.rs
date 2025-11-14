@@ -20,12 +20,16 @@
 //! status of the process.
 
 use crate::{
-	file::{File, fs::FileOps, perm::AccessProfile},
+	file::{
+		File,
+		fs::FileOps,
+		perm::{AccessProfile, ROOT_GID, ROOT_UID},
+	},
 	format_content,
 	memory::user::UserSlice,
 	process::{Process, pid::Pid},
 };
-use core::fmt;
+use core::{fmt, sync::atomic::Ordering::Acquire};
 use utils::{DisplayableStr, errno, errno::EResult};
 
 /// The `status` node of the proc.
@@ -37,19 +41,17 @@ impl FileOps for Status {
 		let proc = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
 		let disp = fmt::from_fn(|f| {
 			let name = proc
-				.mem_space
+				.mem_space_opt()
 				.as_ref()
 				.map(|m| m.exe_info.exe.name.as_bytes())
 				.unwrap_or_default();
+			let umask = proc.umask.load(Acquire);
 			let state = proc.get_state();
-			let (umask, ap) = proc
+			let ap = proc
 				.fs
 				.as_ref()
-				.map(|fs| {
-					let fs = fs.lock();
-					(fs.umask(), fs.access_profile)
-				})
-				.unwrap_or((0, AccessProfile::KERNEL));
+				.map(|fs| fs.lock().ap)
+				.unwrap_or(AccessProfile::new(ROOT_UID, ROOT_GID));
 			// TODO Fill every fields with process's data
 			writeln!(
 				f,

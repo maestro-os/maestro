@@ -19,14 +19,12 @@
 //! Filesystem synchronization system calls.
 
 use crate::{
-	file::{fd::FileDescriptorTable, vfs::mountpoint::FILESYSTEMS},
+	file::{fd::fd_to_file, vfs::mountpoint::FILESYSTEMS},
 	memory::VirtAddr,
-	process::mem_space::MemSpace,
-	sync::mutex::Mutex,
-	syscall::Args,
+	process::Process,
 };
 use core::{ffi::c_int, hint::unlikely};
-use utils::{errno, errno::EResult, limits::PAGE_SIZE, ptr::arc::Arc};
+use utils::{errno, errno::EResult, limits::PAGE_SIZE};
 
 /// Schedules a synchronization and returns directly
 const MS_ASYNC: i32 = 0b001;
@@ -44,29 +42,22 @@ pub fn sync() -> EResult<usize> {
 	Ok(0)
 }
 
-pub fn syncfs(Args(fd): Args<c_int>, fds: Arc<Mutex<FileDescriptorTable>>) -> EResult<usize> {
-	let fds = fds.lock();
+pub fn syncfs(fd: c_int) -> EResult<usize> {
 	if unlikely(fd < 0) {
 		return Err(errno!(EBADF));
 	}
-	let file = fds.get_fd(fd)?.get_file();
-	let Some(ent) = &file.vfs_entry else {
-		return Ok(0);
-	};
+	let file = fd_to_file(fd)?;
 	// TODO warn on failure?
-	let _ = ent.node().fs.sync();
+	let _ = file.vfs_entry.node().fs.sync();
 	Ok(0)
 }
 
-fn do_fsync(fd: c_int, fds: Arc<Mutex<FileDescriptorTable>>, metadata: bool) -> EResult<usize> {
-	let fds = fds.lock();
+fn do_fsync(fd: c_int, metadata: bool) -> EResult<usize> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}
-	let file = fds.get_fd(fd)?.get_file();
-	let Some(node) = file.node() else {
-		return Ok(0);
-	};
+	let file = fd_to_file(fd)?;
+	let node = file.node();
 	node.sync_data()?;
 	if metadata {
 		// TODO sync only the file, not the whole filesystem
@@ -75,18 +66,15 @@ fn do_fsync(fd: c_int, fds: Arc<Mutex<FileDescriptorTable>>, metadata: bool) -> 
 	Ok(0)
 }
 
-pub fn fsync(Args(fd): Args<c_int>, fds: Arc<Mutex<FileDescriptorTable>>) -> EResult<usize> {
-	do_fsync(fd, fds, true)
+pub fn fsync(fd: c_int) -> EResult<usize> {
+	do_fsync(fd, true)
 }
 
-pub fn fdatasync(Args(fd): Args<c_int>, fds: Arc<Mutex<FileDescriptorTable>>) -> EResult<usize> {
-	do_fsync(fd, fds, false)
+pub fn fdatasync(fd: c_int) -> EResult<usize> {
+	do_fsync(fd, false)
 }
 
-pub fn msync(
-	Args((addr, length, flags)): Args<(VirtAddr, usize, c_int)>,
-	mem_space: Arc<MemSpace>,
-) -> EResult<usize> {
+pub fn msync(addr: VirtAddr, length: usize, flags: c_int) -> EResult<usize> {
 	// Check address alignment
 	if !addr.is_aligned_to(PAGE_SIZE) {
 		return Err(errno!(EINVAL));
@@ -98,6 +86,6 @@ pub fn msync(
 	let sync = flags & MS_SYNC != 0;
 	let pages = length.div_ceil(PAGE_SIZE);
 	// TODO MS_INVALIDATE
-	mem_space.sync(addr, pages, sync)?;
+	Process::current().mem_space().sync(addr, pages, sync)?;
 	Ok(0)
 }

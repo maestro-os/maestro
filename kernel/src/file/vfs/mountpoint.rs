@@ -24,9 +24,9 @@ use crate::{
 		FileType, fs,
 		fs::{Filesystem, FilesystemType},
 		vfs,
-		vfs::{EntryChild, ResolutionSettings},
+		vfs::EntryChild,
 	},
-	sync::mutex::Mutex,
+	sync::spin::Spin,
 };
 use core::fmt;
 use utils::{
@@ -37,7 +37,7 @@ use utils::{
 		string::String,
 	},
 	errno,
-	errno::{AllocResult, ENOENT, EResult},
+	errno::{AllocResult, EResult},
 	ptr::arc::Arc,
 };
 
@@ -85,7 +85,7 @@ impl MountSource {
 	/// `string` might be either a kernfs name or an absolute path.
 	pub fn new(string: &[u8]) -> EResult<Self> {
 		let path = Path::new(string)?;
-		let result = vfs::get_file_from_path(path, &ResolutionSettings::kernel_follow());
+		let result = vfs::get_file_from_path(path, true);
 		match result {
 			Ok(ent) => {
 				let stat = ent.stat();
@@ -97,7 +97,9 @@ impl MountSource {
 					minor: stat.dev_minor,
 				}))
 			}
-			Err(err) if err.as_int() == ENOENT => Ok(Self::NoDev(String::try_from(string)?)),
+			Err(err) if err.as_int() == errno::ENOENT => {
+				Ok(Self::NoDev(String::try_from(string)?))
+			}
 			Err(err) => Err(err),
 		}
 	}
@@ -125,7 +127,7 @@ impl fmt::Display for MountSource {
 }
 
 /// The list of loaded filesystems associated with their respective sources.
-pub static FILESYSTEMS: Mutex<HashMap<DeviceID, Arc<Filesystem>>> = Mutex::new(HashMap::new());
+pub static FILESYSTEMS: Spin<HashMap<DeviceID, Arc<Filesystem>>> = Spin::new(HashMap::new());
 
 /// Returns the loaded filesystem with the given source `source`. If not loaded, the function loads
 /// it.
@@ -207,8 +209,8 @@ impl Drop for MountPoint {
 }
 
 /// The list of mountpoints with their respective ID.
-pub static MOUNT_POINTS: Mutex<HashMap<*const vfs::Entry, Arc<MountPoint>>> =
-	Mutex::new(HashMap::new());
+pub static MOUNT_POINTS: Spin<HashMap<*const vfs::Entry, Arc<MountPoint>>> =
+	Spin::new(HashMap::new());
 
 /// Creates a new mountpoint.
 ///

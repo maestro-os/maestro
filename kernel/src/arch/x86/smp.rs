@@ -245,7 +245,7 @@ pub fn init() -> AllocResult<()> {
 			trampoline_ptr.copy_from(smp_trampoline as *const _, trampoline_len);
 			// Pass pointers to the trampoline
 			let ptrs: *mut usize = trampoline_ptr.add(trampoline_len).cast();
-			let vmem_phys = VirtAddr::from(KERNEL_VMEM.lock().inner().as_ptr())
+			let vmem_phys = VirtAddr::from(KERNEL_VMEM.inner().as_ptr())
 				.kernel_to_physical()
 				.unwrap();
 			ptr::write_volatile(ptrs, vmem_phys.0);

@@ -18,7 +18,7 @@
 
 //! This module implements utility functions for files manipulations.
 
-use crate::file::{FileType, Stat, perm::AccessProfile, vfs, vfs::ResolutionSettings};
+use crate::file::{FileType, Stat, vfs};
 use utils::{
 	collections::path::{Component, Path, PathBuf},
 	errno,
@@ -35,11 +35,10 @@ pub fn create_dirs(path: &Path) -> EResult<()> {
 		let Component::Normal(name) = &comp else {
 			continue;
 		};
-		if let Ok(parent) = vfs::get_file_from_path(&p, &ResolutionSettings::kernel_follow()) {
+		if let Ok(parent) = vfs::get_file_from_path(&p, true) {
 			let res = vfs::create_file(
 				parent,
 				name,
-				&AccessProfile::KERNEL,
 				Stat {
 					mode: FileType::Directory.to_mode() | 0o755,
 					..Default::default()

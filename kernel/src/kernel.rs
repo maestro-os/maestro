@@ -84,12 +84,15 @@ pub mod tty;
 
 use crate::{
 	arch::x86::{idt::IntFrame, smp},
-	file::{fs::initramfs, vfs, vfs::ResolutionSettings},
+	file::{
+		fs::{float, initramfs},
+		vfs,
+	},
 	logger::LOGGER,
 	memory::{cache, vmem},
 	process::{
 		Process, exec,
-		exec::{ExecInfo, exec},
+		exec::exec,
 		scheduler,
 		scheduler::{
 			cpu::{CPU, per_cpu},
@@ -97,7 +100,7 @@ use crate::{
 			switch::idle_task,
 		},
 	},
-	sync::mutex::Mutex,
+	sync::spin::Spin,
 	tty::TTY,
 };
 use core::ffi::c_void;
@@ -117,7 +120,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 const INIT_PATH: &[u8] = b"/sbin/init";
 
 /// The current hostname of the system.
-pub static HOSTNAME: Mutex<Vec<u8>> = Mutex::new(Vec::new());
+pub static HOSTNAME: Spin<Vec<u8>> = Spin::new(Vec::new());
 
 /// Launches the init process.
 ///
@@ -128,19 +131,14 @@ fn init(init_path: String) -> EResult<IntFrame> {
 	let mut frame = IntFrame::default();
 	{
 		let path = Path::new(&init_path)?;
-		let rs = ResolutionSettings::kernel_follow();
-		let ent = vfs::get_file_from_path(path, &rs)?;
+		let ent = vfs::get_file_from_path(path, true)?;
 		let program_image = exec::elf::exec(
 			ent,
-			ExecInfo {
-				path_resolution: &rs,
-				argv: vec![init_path]?,
-				envp: vec![
-					b"PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin"
-						.try_into()?,
-					b"TERM=maestro".try_into()?,
-				]?,
-			},
+			vec![init_path]?,
+			vec![
+				b"PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin".try_into()?,
+				b"TERM=maestro".try_into()?,
+			]?,
 		)?;
 		let proc = Process::init()?;
 		exec(&proc, &mut frame, program_image)?;
@@ -152,7 +150,7 @@ fn init(init_path: String) -> EResult<IntFrame> {
 /// An inner function is required to ensure everything in scope is dropped before idle.
 fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	// Initialize TTY
-	TTY.display.lock().show();
+	TTY.show();
 	// Architecture-specific initialization, stage 1
 	arch::init1(true);
 
@@ -173,6 +171,8 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	// Init kernel symbols map
 	elf::kernel::init().expect("cannot initialize kernel symbols map");
 
+	// Necessary for selftesting
+	float::init().expect("floatfs initialization failed");
 	// Perform kernel self-tests
 	#[cfg(test)]
 	kernel_selftest();

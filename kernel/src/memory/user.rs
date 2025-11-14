@@ -29,7 +29,7 @@ use core::{
 	ptr::NonNull,
 };
 use utils::{
-	collections::{string::String, vec::Vec},
+	collections::{path::PathBuf, string::String, vec::Vec},
 	errno,
 	errno::EResult,
 	limits::PAGE_SIZE,
@@ -65,6 +65,12 @@ impl<T: Sized + fmt::Debug> FromSyscallArg for UserPtr<T> {
 }
 
 impl<T: Sized + fmt::Debug> UserPtr<T> {
+	/// Tells whether this is a null pointer.
+	#[inline]
+	pub fn is_null(&self) -> bool {
+		self.0.is_none()
+	}
+
 	/// Returns a mutable pointer to the data.
 	pub fn as_ptr(&self) -> *mut T {
 		self.0.map(NonNull::as_ptr).unwrap_or_default()
@@ -192,6 +198,12 @@ impl<'a, T: Sized + fmt::Debug> UserSlice<'a, T> {
 
 			phantom: PhantomData,
 		}
+	}
+
+	/// Tells whether this is a null pointer.
+	#[inline]
+	pub fn is_null(&self) -> bool {
+		self.ptr.is_none()
 	}
 
 	/// Returns a mutable pointer to the data.
@@ -336,7 +348,9 @@ impl UserString {
 		self.0.map(NonNull::as_ptr).unwrap_or_default()
 	}
 
-	/// Returns an immutable reference to the string.
+	/// Copies a string from userspace.
+	///
+	/// If the pointer is `NULL`, the function returns `None`.
 	///
 	/// If the string is not accessible, the function returns an error.
 	pub fn copy_from_user(&self) -> EResult<Option<String>> {
@@ -373,6 +387,23 @@ impl UserString {
 			}
 		}
 		Ok(Some(buf.into()))
+	}
+
+	/// Copies a [`PathBuf`] from userspace.
+	///
+	/// If the pointer is `NULL`, the function returns `None`.
+	///
+	/// If the string is not accessible, the function returns an error.
+	pub fn copy_path_opt_from_user(&self) -> EResult<Option<PathBuf>> {
+		self.copy_from_user()?.map(PathBuf::try_from).transpose()
+	}
+
+	/// Copies a [`PathBuf`] from userspace.
+	///
+	/// If the string is not accessible, the function returns an error.
+	pub fn copy_path_from_user(&self) -> EResult<PathBuf> {
+		self.copy_path_opt_from_user()?
+			.ok_or_else(|| errno!(EFAULT))
 	}
 }
 
@@ -438,7 +469,7 @@ pub struct UserArrayIterator<'a> {
 impl UserArrayIterator<'_> {
 	fn next_impl(&mut self) -> EResult<Option<String>> {
 		let Some(ptr) = self.arr.ptr else {
-			return Err(errno!(EFAULT));
+			return Ok(None);
 		};
 		let str_ptr = if self.arr.compat {
 			let str_ptr = unsafe { ptr.cast::<u32>().add(self.i) };

@@ -20,17 +20,15 @@
 //! directory.
 
 use crate::{
-	file::{DT_UNKNOWN, DirContext, DirEntry, FileType, fd::FileDescriptorTable},
+	file::{DT_UNKNOWN, DirContext, DirEntry, FileType, fd::fd_to_file},
 	memory::user::UserSlice,
-	sync::mutex::Mutex,
-	syscall::Args,
 };
 use core::{
 	ffi::{c_int, c_uint},
 	mem::{offset_of, size_of},
 	sync::atomic,
 };
-use utils::{bytes::as_bytes, errno, errno::EResult, ptr::arc::Arc};
+use utils::{bytes::as_bytes, errno, errno::EResult};
 
 /// A Linux directory entry.
 #[repr(C)]
@@ -63,16 +61,12 @@ struct LinuxDirent64 {
 	d_name: [u8; 0],
 }
 
-fn do_getdents<F: FnMut(&DirEntry) -> EResult<bool>>(
-	fd: c_int,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-	mut write: F,
-) -> EResult<()> {
+fn do_getdents<F: FnMut(&DirEntry) -> EResult<bool>>(fd: c_int, mut write: F) -> EResult<()> {
 	if fd < 0 {
 		return Err(errno!(EBADF));
 	}
-	let file = fds.lock().get_fd(fd as _)?.get_file().clone();
-	if file.stat()?.get_type() != Some(FileType::Directory) {
+	let file = fd_to_file(fd)?;
+	if file.stat().get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
 	}
 	let mut ctx = DirContext {
@@ -80,20 +74,17 @@ fn do_getdents<F: FnMut(&DirEntry) -> EResult<bool>>(
 		off: file.off.load(atomic::Ordering::Acquire),
 	};
 	// cannot fail since we know this is a directory
-	let node = file.node().unwrap();
+	let node = file.node();
 	node.node_ops.iter_entries(node, &mut ctx)?;
 	file.off.store(ctx.off, atomic::Ordering::Release);
 	Ok(())
 }
 
-pub fn getdents(
-	Args((fd, dirp, count)): Args<(c_int, *mut u8, c_uint)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-) -> EResult<usize> {
+pub fn getdents(fd: c_int, dirp: *mut u8, count: c_uint) -> EResult<usize> {
 	let count = count as usize;
 	let dirp = UserSlice::from_user(dirp, count)?;
 	let mut buf_off = 0;
-	do_getdents(fd, fds, |entry| {
+	do_getdents(fd, |entry| {
 		// Skip entries whose inode cannot fit in the structure
 		if entry.inode > u32::MAX as _ {
 			return Ok(true);
@@ -135,13 +126,10 @@ pub fn getdents(
 	Ok(buf_off)
 }
 
-pub fn getdents64(
-	Args((fd, dirp, count)): Args<(c_int, *mut u8, usize)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-) -> EResult<usize> {
+pub fn getdents64(fd: c_int, dirp: *mut u8, count: usize) -> EResult<usize> {
 	let dirp = UserSlice::from_user(dirp, count)?;
 	let mut buf_off = 0;
-	do_getdents(fd as _, fds, |entry| {
+	do_getdents(fd as _, |entry| {
 		let reclen = (size_of::<LinuxDirent64>() + entry.name.len() + 1)
 			// Padding for alignment
 			.next_multiple_of(align_of::<LinuxDirent64>());

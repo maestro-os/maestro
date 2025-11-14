@@ -29,13 +29,16 @@ pub mod switch;
 use crate::{
 	arch::{
 		core_id, end_of_interrupt,
-		x86::{cli, idt::IntFrame},
+		x86::{
+			cli,
+			idt::{IntFrame, disable_int},
+		},
 	},
 	process::{
 		Process, State,
 		scheduler::{cpu::per_cpu, switch::switch},
 	},
-	sync::mutex::IntMutex,
+	sync::spin::IntSpin,
 	time::{clock::Clock, sleep_for},
 };
 use core::{
@@ -68,7 +71,7 @@ struct RunQueue {
 /// Each CPU core has its own scheduler.
 pub struct Scheduler {
 	/// Run queue
-	run_queue: IntMutex<RunQueue>,
+	run_queue: IntSpin<RunQueue>,
 	/// The currently running process
 	cur_proc: AtomicArc<Process>,
 
@@ -120,6 +123,7 @@ impl Scheduler {
 /// This function attempts to select the scheduler that is the most suitable for the process, in an
 /// attempt to load-balance processes across CPU cores.
 pub(crate) fn enqueue(proc: &Arc<Process>) {
+	debug_assert_eq!(proc.get_state(), State::Running);
 	// If the process already is enqueued, do nothing
 	let last_cpu = {
 		let links = proc.links.lock();
@@ -143,7 +147,8 @@ pub(crate) fn enqueue(proc: &Arc<Process>) {
 		})
 		.or_else(|| {
 			// Attempt to find an idle CPU
-			cpu::bitmap_iter(&IDLE_CPUS)
+			IDLE_CPUS
+				.iter()
 				.enumerate()
 				.find(|(_, idle)| *idle)
 				.map(|(id, _)| &CPU[id])
@@ -300,38 +305,39 @@ pub(crate) fn rebalance_task() -> ! {
 /// **Note**: calling this function inside a critical section is invalid.
 pub fn schedule() {
 	// Disable interrupts so that no interrupt can occur before switching to the next process
-	cli();
-	// Reset preempt flag
-	per_cpu().preempt_counter.fetch_or(1 << 31, Relaxed);
-	// Make deferred calls
-	defer::consume();
-	let sched = &per_cpu().sched;
-	let (prev, next) = {
-		let prev = sched.cur_proc.get();
-		// Find the next process to run
-		let next = sched
-			.get_next_process()
-			.unwrap_or_else(|| sched.idle_task.clone());
-		// If the process to run is the current, do nothing
-		if ptr::eq(next.as_ref(), prev.as_ref()) {
-			return;
+	disable_int(|| {
+		// Reset preempt flag
+		per_cpu().preempt_counter.fetch_or(1 << 31, Relaxed);
+		// Make deferred calls
+		defer::consume();
+		let sched = &per_cpu().sched;
+		let (prev, next) = {
+			let prev = sched.cur_proc.get();
+			// Find the next process to run
+			let next = sched
+				.get_next_process()
+				.unwrap_or_else(|| sched.idle_task.clone());
+			// If the process to run is the current, do nothing
+			if ptr::eq(next.as_ref(), prev.as_ref()) {
+				return;
+			}
+			// Update the idle bitmap if necessary
+			if prev.is_idle_task() {
+				IDLE_CPUS.clear_bit(core_id() as _);
+			} else if next.is_idle_task() {
+				IDLE_CPUS.set_bit(core_id() as _);
+			}
+			// Swap current running process. We use pointers to avoid cloning the Arc
+			let next_ptr = Arc::as_ptr(&next);
+			let prev = sched.swap_current_process(next);
+			(Arc::as_ptr(&prev), next_ptr)
+		};
+		// Send end of interrupt, so that the next tick can be received
+		end_of_interrupt(0);
+		unsafe {
+			switch(prev, next);
 		}
-		// Update the idle bitmap if necessary
-		if prev.is_idle_task() {
-			cpu::bitmap_clear(&IDLE_CPUS, core_id() as _);
-		} else if next.is_idle_task() {
-			cpu::bitmap_set(&IDLE_CPUS, core_id() as _);
-		}
-		// Swap current running process. We use pointers to avoid cloning the Arc
-		let next_ptr = Arc::as_ptr(&next);
-		let prev = sched.swap_current_process(next);
-		(Arc::as_ptr(&prev), next_ptr)
-	};
-	// Send end of interrupt, so that the next tick can be received
-	end_of_interrupt(0);
-	unsafe {
-		switch(prev, next);
-	}
+	});
 }
 
 /// Enter a critical section, disabling preemption.
@@ -391,16 +397,11 @@ fn alter_flow_impl(frame: &mut IntFrame) -> bool {
 		return true;
 	}
 	// Get signal handler to execute, if any
-	let (sig, handler) = {
-		let mut signal_manager = proc.signal.lock();
-		let Some(sig) = signal_manager.next_signal() else {
-			return false;
-		};
-		let handler = signal_manager.handlers.lock()[sig as usize].clone();
-		(sig, handler)
+	let Some(sig) = proc.signal.lock().next_signal() else {
+		return false;
 	};
 	// Prepare for execution of signal handler
-	handler.exec(sig, &proc, frame);
+	proc.sig_handlers.lock()[sig as usize].exec(sig, frame);
 	// If the process is still running, continue execution
 	proc.get_state() != State::Running
 }

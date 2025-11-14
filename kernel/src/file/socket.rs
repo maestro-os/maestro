@@ -19,10 +19,10 @@
 //! This file implements sockets.
 
 use crate::{
-	file::{File, FileType, Stat, fs::FileOps, wait_queue::WaitQueue},
+	file::{File, fs::FileOps},
 	memory::{ring_buffer::RingBuffer, user::UserSlice},
 	net::{SocketDesc, osi},
-	sync::mutex::Mutex,
+	sync::{spin::Spin, wait_queue::WaitQueue},
 	syscall::ioctl,
 };
 use core::{
@@ -54,12 +54,12 @@ pub struct Socket {
 	open_count: AtomicUsize,
 
 	/// The address the socket is bound to.
-	sockname: Mutex<Vec<u8>>,
+	sockname: Spin<Vec<u8>>,
 
 	/// The buffer containing received data. If `None`, reception has been shutdown.
-	rx_buff: Mutex<Option<RingBuffer>>,
+	rx_buff: Spin<Option<RingBuffer>>,
 	/// The buffer containing data to be transmitted. If `None`, transmission has been shutdown.
-	tx_buff: Mutex<Option<RingBuffer>>,
+	tx_buff: Spin<Option<RingBuffer>>,
 
 	/// Receive wait queue.
 	rx_queue: WaitQueue,
@@ -77,10 +77,10 @@ impl Socket {
 
 			sockname: Default::default(),
 
-			rx_buff: Mutex::new(Some(RingBuffer::new(
+			rx_buff: Spin::new(Some(RingBuffer::new(
 				NonZeroUsize::new(BUFFER_SIZE).unwrap(),
 			)?)),
-			tx_buff: Mutex::new(Some(RingBuffer::new(
+			tx_buff: Spin::new(Some(RingBuffer::new(
 				NonZeroUsize::new(BUFFER_SIZE).unwrap(),
 			)?)),
 
@@ -125,7 +125,7 @@ impl Socket {
 	}
 
 	/// Returns the name of the socket.
-	pub fn get_sockname(&self) -> &Mutex<Vec<u8>> {
+	pub fn get_sockname(&self) -> &Spin<Vec<u8>> {
 		&self.sockname
 	}
 
@@ -160,13 +160,6 @@ impl Socket {
 }
 
 impl FileOps for Socket {
-	fn get_stat(&self, _file: &File) -> EResult<Stat> {
-		Ok(Stat {
-			mode: FileType::Socket.to_mode() | 0o666,
-			..Default::default()
-		})
-	}
-
 	fn acquire(&self, _file: &File) {
 		self.open_count.fetch_add(1, atomic::Ordering::Acquire);
 	}

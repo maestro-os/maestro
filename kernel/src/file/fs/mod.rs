@@ -20,6 +20,7 @@
 //! device.
 
 pub mod ext2;
+pub mod float;
 pub mod initramfs;
 pub mod kernfs;
 pub mod proc;
@@ -34,7 +35,7 @@ use crate::{
 	device::BlkDev,
 	file::vfs::node::Node,
 	memory::{cache::RcFrame, user::UserSlice},
-	sync::mutex::Mutex,
+	sync::{mutex::Mutex, spin::Spin},
 	syscall::ioctl,
 	time::unit::Timestamp,
 };
@@ -255,15 +256,6 @@ pub trait NodeOps: Any + Debug {
 /// *device files*, *pipes* or *sockets* have a behavior that is independent of the underlying
 /// filesystem.
 pub trait FileOps: Any + Debug {
-	/// Returns the file's status.
-	///
-	/// This function **MUST** be overridden when there is no [`Node`] associated with `file`.
-	fn get_stat(&self, file: &File) -> EResult<Stat> {
-		let node = file.vfs_entry.as_ref().unwrap().node();
-		let stat = node.stat.lock().clone();
-		Ok(stat)
-	}
-
 	/// Increments the reference counter.
 	fn acquire(&self, file: &File) {
 		let _ = file;
@@ -343,8 +335,8 @@ pub trait FileOps: Any + Debug {
 ///
 /// **Note**: `file` **must** have an associated [`Node`], otherwise the function panics.
 pub fn generic_file_read(file: &File, mut off: u64, buf: UserSlice<u8>) -> EResult<usize> {
-	let node = file.node().unwrap();
-	let size = file.stat()?.size;
+	let node = file.node();
+	let size = file.stat().size;
 	if unlikely(off > size) {
 		return Err(errno!(EINVAL));
 	}
@@ -370,8 +362,8 @@ pub fn generic_file_read(file: &File, mut off: u64, buf: UserSlice<u8>) -> EResu
 ///
 /// **Note**: `file` **must** have an associated [`Node`], otherwise the function panics.
 pub fn generic_file_write(file: &File, mut off: u64, buf: UserSlice<u8>) -> EResult<usize> {
-	let node = file.node().unwrap();
-	let size = file.stat()?.size;
+	let node = file.node();
+	let size = file.stat().size;
 	// Extend the file if necessary
 	let end = off.saturating_add(buf.len() as u64);
 	if end > size {
@@ -477,9 +469,9 @@ pub struct Filesystem {
 	pub ops: Box<dyn FilesystemOps>,
 
 	/// Cached [`Node`]s, to avoid duplications when several entries point to the same node
-	nodes: Mutex<HashSet<NodeWrapper>>,
+	nodes: Mutex<HashSet<NodeWrapper>, false>,
 	/// Active buffers on the filesystem
-	buffers: Mutex<HashMap<INode, Arc<dyn FileOps>>>,
+	buffers: Mutex<HashMap<INode, Arc<dyn FileOps>>, false>,
 }
 
 impl Filesystem {
@@ -589,7 +581,7 @@ pub trait FilesystemType {
 }
 
 /// The list of filesystem types.
-static FS_TYPES: Mutex<HashMap<String, Arc<dyn FilesystemType>>> = Mutex::new(HashMap::new());
+static FS_TYPES: Spin<HashMap<String, Arc<dyn FilesystemType>>> = Spin::new(HashMap::new());
 
 /// Registers a new filesystem type.
 pub fn register<T: 'static + FilesystemType>(fs_type: T) -> EResult<()> {
@@ -624,7 +616,7 @@ pub fn detect(dev: &Arc<BlkDev>) -> EResult<Arc<dyn FilesystemType>> {
 /// Registers the filesystems that are implemented inside the kernel itself.
 ///
 /// This function must be called only once, at initialization.
-pub fn register_defaults() -> EResult<()> {
+pub(crate) fn register_defaults() -> EResult<()> {
 	register(ext2::Ext2FsType)?;
 	register(tmp::TmpFsType)?;
 	register(proc::ProcFsType)?;

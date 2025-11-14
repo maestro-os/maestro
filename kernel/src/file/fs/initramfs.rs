@@ -21,7 +21,10 @@
 
 use crate::{
 	device, file,
-	file::{File, FileType, O_WRONLY, Stat, perm::AccessProfile, vfs, vfs::ResolutionSettings},
+	file::{
+		File, FileType, O_WRONLY, Stat, vfs,
+		vfs::{ResolutionSettings, Resolved},
+	},
 	memory::user::UserSlice,
 };
 use utils::{collections::path::Path, cpio::CPIOParser, errno, errno::EResult, ptr::arc::Arc};
@@ -42,11 +45,16 @@ fn update_parent<'p>(
 		Some(suffix) => {
 			let rs = ResolutionSettings {
 				cwd: Some(parent.1.clone()),
-				..ResolutionSettings::kernel_nofollow()
+				..ResolutionSettings::cur_task(false, false)
 			};
-			vfs::get_file_from_path(suffix, &rs)
+			vfs::resolve_path(suffix, &rs).map(|r| {
+				let Resolved::Found(r) = r else {
+					unreachable!()
+				};
+				r
+			})
 		}
-		None => vfs::get_file_from_path(new, &ResolutionSettings::kernel_nofollow()),
+		None => vfs::get_file_from_path(new, false),
 	};
 	match result {
 		Ok(ent) => {
@@ -86,7 +94,6 @@ pub fn load(data: &[u8]) -> EResult<()> {
 		let create_result = vfs::create_file(
 			cur_parent.1.clone(),
 			name,
-			&AccessProfile::KERNEL,
 			Stat {
 				mode: hdr.c_mode as _,
 				uid: hdr.c_uid,
@@ -106,7 +113,7 @@ pub fn load(data: &[u8]) -> EResult<()> {
 		};
 		if matches!(file.get_type()?, FileType::Regular | FileType::Link) {
 			let content = unsafe { UserSlice::from_slice(entry.get_content()) };
-			let file = File::open_entry(file, O_WRONLY)?;
+			let file = File::open(file, O_WRONLY)?;
 			file.ops.write(&file, 0, content)?;
 		}
 	}

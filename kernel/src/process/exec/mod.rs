@@ -29,26 +29,11 @@ pub mod vdso;
 
 use crate::{
 	arch::x86::idt::IntFrame,
-	file::vfs::ResolutionSettings,
 	memory::VirtAddr,
 	process::{Process, mem_space::MemSpace, scheduler::cpu::per_cpu},
-	sync::mutex::Mutex,
+	sync::spin::Spin,
 };
-use utils::{
-	collections::{string::String, vec::Vec},
-	errno::EResult,
-	ptr::arc::Arc,
-};
-
-/// Information to prepare a program image to be executed.
-pub struct ExecInfo<'s> {
-	/// Path resolution settings.
-	pub path_resolution: &'s ResolutionSettings,
-	/// The list of arguments.
-	pub argv: Vec<String>,
-	/// The list of environment variables.
-	pub envp: Vec<String>,
-}
+use utils::{errno::EResult, ptr::arc::Arc};
 
 /// A built program image.
 pub struct ProgramImage {
@@ -70,12 +55,12 @@ pub struct ProgramImage {
 pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResult<()> {
 	// Preform all fallible operations first before touching the process
 	let fds = proc
-		.file_descriptors
+		.fd_table
 		.as_ref()
 		.map(|fds_mutex| -> EResult<_> {
 			let fds = fds_mutex.lock();
 			let new_fds = fds.duplicate(true)?;
-			Ok(Arc::new(Mutex::new(new_fds))?)
+			Ok(Arc::new(Spin::new(new_fds))?)
 		})
 		.transpose()?;
 	let signal_handlers = Arc::new(Default::default())?;
@@ -83,15 +68,12 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 	MemSpace::bind(&image.mem_space);
 	// Safe because no other thread can execute this function at the same time for the same process
 	unsafe {
-		*proc.file_descriptors.get_mut() = fds;
+		*proc.fd_table.get_mut() = fds;
 		*proc.mem_space.get_mut() = Some(image.mem_space);
+		*proc.sig_handlers.get_mut() = signal_handlers;
 	}
 	// Reset signals
-	{
-		let mut signal_manager = proc.signal.lock();
-		signal_manager.handlers = signal_handlers;
-		signal_manager.sigpending = Default::default();
-	}
+	proc.signal.lock().sigpending = Default::default();
 	proc.vfork_wake();
 	*proc.tls.lock() = Default::default();
 	// Set TSS here for the first process to be executed
@@ -105,13 +87,13 @@ pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResul
 	#[cfg(target_arch = "x86_64")]
 	{
 		use crate::{
-			arch::{x86, x86::idt::wrap_disable_interrupts},
+			arch::{x86, x86::idt::disable_int},
 			process::scheduler::cpu::store_per_cpu,
 		};
 		use core::{arch::asm, sync::atomic::Ordering::Relaxed};
 
 		// Disable interrupts to prevent data races on `gs`
-		wrap_disable_interrupts(|| {
+		disable_int(|| {
 			// Reset segment selector
 			unsafe {
 				asm!(

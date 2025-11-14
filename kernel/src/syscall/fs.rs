@@ -24,35 +24,27 @@ use crate::{
 	file::{
 		File, FileType, O_CLOEXEC, O_CREAT, O_DIRECTORY, O_EXCL, O_NOCTTY, O_NOFOLLOW, O_RDONLY,
 		O_RDWR, O_TRUNC, O_WRONLY, Stat,
-		fd::{FD_CLOEXEC, FileDescriptorTable},
+		fd::{FD_CLOEXEC, fd_to_file},
 		fs::StatSet,
-		perm::AccessProfile,
+		perm::{
+			can_execute_file, can_list_directory, can_read_file, can_write_file, is_privileged,
+		},
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
 	},
 	memory::user::{UserPtr, UserSlice, UserString},
 	process::Process,
-	sync::mutex::Mutex,
-	syscall::{
-		Args, Umask,
-		util::{
-			at,
-			at::{AT_EACCESS, AT_EMPTY_PATH, AT_FDCWD},
-		},
+	syscall::util::{
+		at,
+		at::{AT_EACCESS, AT_EMPTY_PATH, AT_FDCWD, AT_SYMLINK_NOFOLLOW},
 	},
 	time::{
 		clock::{Clock, current_time_ns, current_time_sec},
-		unit::{TimeUnit, Timespec},
+		unit::{TimeUnit, Timespec, Timeval, UTimBuf},
 	},
 };
-use core::{ffi::c_int, hint::unlikely, ops::Deref, sync::atomic};
-use utils::{
-	collections::path::{Path, PathBuf},
-	errno,
-	errno::EResult,
-	limits::SYMLINK_MAX,
-	ptr::arc::Arc,
-};
+use core::{ffi::c_int, hint::unlikely, sync::atomic::Ordering::Release};
+use utils::{errno, errno::EResult, limits::SYMLINK_MAX};
 
 /// `access` flag: Checks for existence of the file.
 const F_OK: i32 = 0;
@@ -68,70 +60,65 @@ const RENAME_NOREPLACE: c_int = 1;
 /// `rename` flag: Exchanges old and new paths atomically.
 const RENAME_EXCHANGE: c_int = 2;
 
-pub fn creat(Args((pathname, mode)): Args<(UserString, c_int)>) -> EResult<usize> {
+pub fn creat(pathname: UserString, mode: c_int) -> EResult<usize> {
 	do_openat(AT_FDCWD, pathname, O_CREAT | O_WRONLY | O_TRUNC, mode as _)
 }
 
-pub fn mkdir(
-	Args((pathname, mode)): Args<(UserString, file::Mode)>,
-	rs: ResolutionSettings,
-	umask: Umask,
-) -> EResult<usize> {
-	let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
-	let path = PathBuf::try_from(path)?;
-	// If the path is not empty, create
-	if let Some(name) = path.file_name() {
-		// Get parent directory
-		let parent_path = path.parent().unwrap_or(Path::root());
-		let parent = vfs::get_file_from_path(parent_path, &rs)?;
-		let mode = mode & !umask.0;
-		let ts = current_time_sec(Clock::Realtime);
-		// Create the directory
-		vfs::create_file(
-			parent,
-			name,
-			&rs.access_profile,
-			Stat {
-				mode: FileType::Directory.to_mode() | mode,
-				ctime: ts,
-				mtime: ts,
-				atime: ts,
-				..Default::default()
-			},
-		)?;
-	}
+pub fn mkdir(pathname: UserString, mode: file::Mode) -> EResult<usize> {
+	mkdirat(AT_FDCWD, pathname, mode)
+}
+
+pub fn mkdirat(dirfd: c_int, path: UserString, mode: file::Mode) -> EResult<usize> {
+	let path = path.copy_path_from_user()?;
+	let Resolved::Creatable {
+		parent,
+		name,
+	} = at::get_file(dirfd, &path, 0, true, false)?
+	else {
+		return Err(errno!(EEXIST));
+	};
+	let mode = mode & !Process::current().umask();
+	let ts = current_time_sec(Clock::Realtime);
+	vfs::create_file(
+		parent,
+		name,
+		Stat {
+			mode: FileType::Directory.to_mode() | mode,
+			ctime: ts,
+			mtime: ts,
+			atime: ts,
+			..Default::default()
+		},
+	)?;
 	Ok(0)
 }
 
-pub fn mknod(
-	Args((pathname, mode, dev)): Args<(UserString, file::Mode, u64)>,
-	umask: Umask,
-	rs: ResolutionSettings,
-) -> EResult<usize> {
-	let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
-	let path = PathBuf::try_from(path)?;
-	let parent_path = path.parent().unwrap_or(Path::root());
-	// File name
-	let Some(name) = path.file_name() else {
+pub fn mknod(pathname: UserString, mode: file::Mode, dev: u64) -> EResult<usize> {
+	mknodat(AT_FDCWD, pathname, mode, dev)
+}
+
+pub fn mknodat(dirfd: c_int, path: UserString, mode: file::Mode, dev: u64) -> EResult<usize> {
+	let path = path.copy_path_from_user()?;
+	let Resolved::Creatable {
+		parent,
+		name,
+	} = at::get_file(dirfd, &path, 0, true, false)?
+	else {
 		return Err(errno!(EEXIST));
 	};
 	// Check file type and permissions
-	let mode = mode & !umask.0;
+	let mode = mode & !Process::current().umask();
 	let file_type = FileType::from_mode(mode).ok_or(errno!(EPERM))?;
-	let privileged = rs.access_profile.is_privileged();
-	match (file_type, privileged) {
+	match (file_type, is_privileged()) {
 		(FileType::Regular | FileType::Fifo | FileType::Socket, _) => {}
 		(FileType::BlockDevice | FileType::CharDevice, true) => {}
 		(_, false) => return Err(errno!(EPERM)),
 		(_, true) => return Err(errno!(EINVAL)),
 	}
-	// Create file
 	let ts = current_time_sec(Clock::Realtime);
-	let parent = vfs::get_file_from_path(parent_path, &rs)?;
 	vfs::create_file(
 		parent,
 		name,
-		&rs.access_profile,
 		Stat {
 			mode,
 			dev_major: id::major(dev),
@@ -145,99 +132,54 @@ pub fn mknod(
 	Ok(0)
 }
 
-pub fn link(
-	Args((oldpath, newpath)): Args<(UserString, UserString)>,
-	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
-	rs: ResolutionSettings,
-) -> EResult<usize> {
-	linkat(
-		Args((AT_FDCWD, oldpath, AT_FDCWD, newpath, 0)),
-		fds_mutex,
-		rs,
-	)
+pub fn link(oldpath: UserString, newpath: UserString) -> EResult<usize> {
+	linkat(AT_FDCWD, oldpath, AT_FDCWD, newpath, 0)
 }
 
 pub fn linkat(
-	Args((olddirfd, oldpath, newdirfd, newpath, flags)): Args<(
-		c_int,
-		UserString,
-		c_int,
-		UserString,
-		c_int,
-	)>,
-	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
-	rs: ResolutionSettings,
+	olddirfd: c_int,
+	oldpath: UserString,
+	newdirfd: c_int,
+	newpath: UserString,
+	flags: c_int,
 ) -> EResult<usize> {
-	let oldpath = oldpath
-		.copy_from_user()?
-		.map(PathBuf::try_from)
-		.ok_or_else(|| errno!(EFAULT))??;
-	let newpath = newpath
-		.copy_from_user()?
-		.map(PathBuf::try_from)
-		.ok_or_else(|| errno!(EFAULT))??;
-	let fds = fds_mutex.lock();
-	let rs = ResolutionSettings {
-		follow_link: false,
-		..rs
-	};
+	let oldpath = oldpath.copy_path_from_user()?;
+	let newpath = newpath.copy_path_from_user()?;
 	// Get old file
-	let Resolved::Found(old) = at::get_file(&fds, rs.clone(), olddirfd, Some(&oldpath), flags)?
-	else {
-		return Err(errno!(ENOENT));
+	let Resolved::Found(old) = at::get_file(olddirfd, &oldpath, flags, false, false)? else {
+		unreachable!();
 	};
 	if old.get_type()? == FileType::Directory {
 		return Err(errno!(EPERM));
 	}
 	// Create new file
-	let rs = ResolutionSettings {
-		create: true,
-		..rs
-	};
 	let Resolved::Creatable {
 		parent: new_parent,
 		name: new_name,
-	} = at::get_file(&fds, rs.clone(), newdirfd, Some(&newpath), 0)?
+	} = at::get_file(newdirfd, &newpath, 0, true, true)?
 	else {
 		return Err(errno!(EEXIST));
 	};
 	let name = new_name.try_into()?;
-	vfs::link(&new_parent, name, old.node().clone(), &rs.access_profile)?;
+	vfs::link(&new_parent, name, old.node().clone())?;
 	Ok(0)
 }
 
-pub fn symlink(
-	Args((target, linkpath)): Args<(UserString, UserString)>,
-	rs: ResolutionSettings,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-) -> EResult<usize> {
-	symlinkat(Args((target, AT_FDCWD, linkpath)), rs, fds)
+pub fn symlink(target: UserString, linkpath: UserString) -> EResult<usize> {
+	symlinkat(target, AT_FDCWD, linkpath)
 }
 
-pub fn symlinkat(
-	Args((target, newdirfd, linkpath)): Args<(UserString, c_int, UserString)>,
-	rs: ResolutionSettings,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-) -> EResult<usize> {
-	let target_slice = target.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-	if target_slice.len() > SYMLINK_MAX {
+pub fn symlinkat(target: UserString, newdirfd: c_int, linkpath: UserString) -> EResult<usize> {
+	let target = target.copy_path_from_user()?;
+	if target.len() > SYMLINK_MAX {
 		return Err(errno!(ENAMETOOLONG));
 	}
-	let target = PathBuf::try_from(target_slice)?;
-	let linkpath = linkpath
-		.copy_from_user()?
-		.map(PathBuf::try_from)
-		.transpose()?;
-	let rs = ResolutionSettings {
-		create: true,
-		follow_link: true,
-		..rs
-	};
+	let linkpath = linkpath.copy_path_from_user()?;
 	// Create link
 	let Resolved::Creatable {
 		parent,
 		name,
-	} = at::get_file(&fds.lock(), rs.clone(), newdirfd, linkpath.as_deref(), 0)?
+	} = at::get_file(newdirfd, &linkpath, 0, true, true)?
 	else {
 		return Err(errno!(EEXIST));
 	};
@@ -246,7 +188,6 @@ pub fn symlinkat(
 		&parent,
 		name,
 		target.as_bytes(),
-		&rs.access_profile,
 		Stat {
 			ctime: ts,
 			mtime: ts,
@@ -257,78 +198,26 @@ pub fn symlinkat(
 	Ok(0)
 }
 
-pub fn readlink(
-	Args((pathname, buf, bufsiz)): Args<(UserString, *mut u8, usize)>,
-) -> EResult<usize> {
-	let proc = Process::current();
-	// Get file
-	let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
-	let path = PathBuf::try_from(path)?;
-	let rs = ResolutionSettings::for_process(&proc, false);
-	let ent = vfs::get_file_from_path(&path, &rs)?;
-	// Validation
+pub fn readlink(pathname: UserString, buf: *mut u8, bufsiz: usize) -> EResult<usize> {
+	readlinkat(AT_FDCWD, pathname, buf, bufsiz)
+}
+
+pub fn readlinkat(dirfd: c_int, path: UserString, buf: *mut u8, bufsiz: usize) -> EResult<usize> {
+	let path = path.copy_path_from_user()?;
+	let Resolved::Found(ent) = at::get_file(dirfd, &path, 0, false, false)? else {
+		unreachable!();
+	};
 	if ent.get_type()? != FileType::Link {
 		return Err(errno!(EINVAL));
 	}
-	// Read link
 	let buf = UserSlice::from_user(buf, bufsiz)?;
 	let node = ent.node();
 	let len = node.node_ops.readlink(node, buf)?;
-	Ok(len as _)
+	Ok(len)
 }
 
-pub fn open(
-	Args((pathname, flags, mode)): Args<(UserString, c_int, file::Mode)>,
-) -> EResult<usize> {
+pub fn open(pathname: UserString, flags: c_int, mode: file::Mode) -> EResult<usize> {
 	do_openat(AT_FDCWD, pathname, flags, mode)
-}
-
-// TODO Implement all flags
-// TODO rewrite doc
-/// Returns the file at the given path.
-///
-/// Arguments:
-/// - `dirfd` a file descriptor to the directory from which the file will be searched.
-/// - `pathname` the path relative to the directory.
-/// - `flags` is a set of open file flags.
-/// - `mode` is the set of permissions to use if the file needs to be created.
-///
-/// If the file doesn't exist and the `O_CREAT` flag is set, the file is created,
-/// then the function returns it.
-///
-/// If the flag is not set, the function returns an error with the appropriate errno.
-///
-/// If the file is to be created, the function uses `mode` to set its permissions.
-fn get_file(
-	fds: &FileDescriptorTable,
-	dirfd: c_int,
-	path: Option<&Path>,
-	flags: c_int,
-	rs: ResolutionSettings,
-	mode: file::Mode,
-) -> EResult<Arc<vfs::Entry>> {
-	let resolved = at::get_file(fds, rs.clone(), dirfd, path, flags)?;
-	match resolved {
-		Resolved::Found(file) => Ok(file),
-		Resolved::Creatable {
-			parent,
-			name,
-		} => {
-			let ts = current_time_sec(Clock::Realtime);
-			vfs::create_file(
-				parent,
-				name,
-				&rs.access_profile,
-				Stat {
-					mode: FileType::Regular.to_mode() | mode,
-					ctime: ts,
-					mtime: ts,
-					atime: ts,
-					..Default::default()
-				},
-			)
-		}
-	}
 }
 
 /// Perform the `openat` system call.
@@ -338,26 +227,37 @@ pub fn do_openat(
 	flags: c_int,
 	mode: file::Mode,
 ) -> EResult<usize> {
-	let (rs, pathname, fds_mutex, mode) = {
-		let proc = Process::current();
-		let follow_link = flags & O_NOFOLLOW == 0;
-		let rs = ResolutionSettings {
-			create: flags & O_CREAT != 0,
-			..ResolutionSettings::for_process(&proc, follow_link)
-		};
-		let pathname = pathname
-			.copy_from_user()?
-			.map(PathBuf::try_from)
-			.ok_or_else(|| errno!(EFAULT))??;
-		let fds_mutex = proc.file_descriptors.deref().clone().unwrap();
-		let mode = mode & !proc.fs().lock().umask();
-		(rs, pathname, fds_mutex, mode)
-	};
-
-	let mut fds = fds_mutex.lock();
-
+	let proc = Process::current();
+	let pathname = pathname.copy_path_from_user()?;
+	let mode = mode & !proc.umask();
 	// Get file
-	let file = get_file(&fds, dirfd, Some(&pathname), flags, rs.clone(), mode)?;
+	let resolved = at::get_file(
+		dirfd,
+		&pathname,
+		0,
+		flags & O_CREAT != 0,
+		flags & O_NOFOLLOW == 0,
+	)?;
+	let file = match resolved {
+		Resolved::Found(file) => file,
+		Resolved::Creatable {
+			parent,
+			name,
+		} => {
+			let ts = current_time_sec(Clock::Realtime);
+			vfs::create_file(
+				parent,
+				name,
+				Stat {
+					mode: FileType::Regular.to_mode() | mode,
+					ctime: ts,
+					mtime: ts,
+					atime: ts,
+					..Default::default()
+				},
+			)?
+		}
+	};
 	// Check permissions
 	let (read, write) = match flags & 0b11 {
 		O_RDONLY => (true, false),
@@ -366,10 +266,10 @@ pub fn do_openat(
 		_ => return Err(errno!(EINVAL)),
 	};
 	let stat = file.stat();
-	if read && !rs.access_profile.can_read_file(&stat) {
+	if read && !can_read_file(&stat, true) {
 		return Err(errno!(EACCES));
 	}
-	if write && !rs.access_profile.can_write_file(&stat) {
+	if write && !can_write_file(&stat, true) {
 		return Err(errno!(EACCES));
 	}
 	let file_type = stat.get_type();
@@ -380,7 +280,7 @@ pub fn do_openat(
 	// Open file
 	const FLAGS_MASK: i32 =
 		!(O_CLOEXEC | O_CREAT | O_DIRECTORY | O_EXCL | O_NOCTTY | O_NOFOLLOW | O_TRUNC);
-	let file = File::open_entry(file, flags & FLAGS_MASK)?;
+	let file = File::open(file, flags & FLAGS_MASK)?;
 	// Truncate if necessary
 	if flags & O_TRUNC != 0 && file_type == Some(FileType::Regular) {
 		file.ops.truncate(&file, 0)?;
@@ -390,12 +290,15 @@ pub fn do_openat(
 	if flags & O_CLOEXEC != 0 {
 		fd_flags |= FD_CLOEXEC;
 	}
-	let (fd_id, _) = fds.create_fd(fd_flags, file)?;
+	let (fd_id, _) = proc.file_descriptors().lock().create_fd(fd_flags, file)?;
 	Ok(fd_id as _)
 }
 
 pub fn openat(
-	Args((dirfd, pathname, flags, mode)): Args<(c_int, UserString, c_int, file::Mode)>,
+	dirfd: c_int,
+	pathname: UserString,
+	flags: c_int,
+	mode: file::Mode,
 ) -> EResult<usize> {
 	do_openat(dirfd, pathname, flags, mode)
 }
@@ -413,104 +316,58 @@ pub fn do_access(
 	dirfd: Option<i32>,
 	pathname: UserString,
 	mode: i32,
-	flags: Option<i32>,
-	rs: ResolutionSettings,
-	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
+	flags: i32,
 ) -> EResult<usize> {
-	let flags = flags.unwrap_or(0);
-	// Use effective IDs instead of real IDs
-	let eaccess = flags & AT_EACCESS != 0;
-	let ap = rs.access_profile;
-	let file = {
-		let fds = fds_mutex.lock();
-		let pathname = pathname
-			.copy_from_user()?
-			.map(PathBuf::try_from)
-			.transpose()?;
-		let Resolved::Found(file) = at::get_file(
-			&fds,
-			rs,
-			dirfd.unwrap_or(AT_FDCWD),
-			pathname.as_deref(),
-			flags,
-		)?
-		else {
-			return Err(errno!(ENOENT));
-		};
-		file
+	let pathname = pathname.copy_path_from_user()?;
+	let Resolved::Found(file) =
+		at::get_file(dirfd.unwrap_or(AT_FDCWD), &pathname, flags, false, true)?
+	else {
+		unreachable!();
 	};
-	// Do access checks
 	let stat = file.stat();
-	if (mode & R_OK != 0) && !ap.check_read_access(&stat, eaccess) {
+	let eaccess = flags & AT_EACCESS != 0;
+	if (mode & R_OK != 0) && !can_read_file(&stat, eaccess) {
 		return Err(errno!(EACCES));
 	}
-	if (mode & W_OK != 0) && !ap.check_write_access(&stat, eaccess) {
+	if (mode & W_OK != 0) && !can_write_file(&stat, eaccess) {
 		return Err(errno!(EACCES));
 	}
-	if (mode & X_OK != 0) && !ap.check_execute_access(&stat, eaccess) {
+	if (mode & X_OK != 0) && !can_execute_file(&stat, eaccess) {
 		return Err(errno!(EACCES));
 	}
 	Ok(0)
 }
 
-pub fn access(
-	Args((pathname, mode)): Args<(UserString, c_int)>,
-	rs: ResolutionSettings,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-) -> EResult<usize> {
-	do_access(None, pathname, mode, None, rs, fds)
+pub fn access(pathname: UserString, mode: c_int) -> EResult<usize> {
+	do_access(None, pathname, mode, 0)
 }
 
-pub fn faccessat(
-	Args((dir_fd, pathname, mode)): Args<(c_int, UserString, c_int)>,
-	rs: ResolutionSettings,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-) -> EResult<usize> {
-	do_access(Some(dir_fd), pathname, mode, None, rs, fds)
+pub fn faccessat(dir_fd: c_int, pathname: UserString, mode: c_int) -> EResult<usize> {
+	do_access(Some(dir_fd), pathname, mode, 0)
 }
 
 pub fn faccessat2(
-	Args((dir_fd, pathname, mode, flags)): Args<(c_int, UserString, c_int, c_int)>,
-	rs: ResolutionSettings,
-	fds: Arc<Mutex<FileDescriptorTable>>,
+	dir_fd: c_int,
+	pathname: UserString,
+	mode: c_int,
+	flags: c_int,
 ) -> EResult<usize> {
-	do_access(Some(dir_fd), pathname, mode, Some(flags), rs, fds)
+	do_access(Some(dir_fd), pathname, mode, flags)
 }
 
-pub fn fadvise64_64(
-	Args((_fd, _offset, _len, _advice)): Args<(c_int, u64, u64, c_int)>,
-) -> EResult<usize> {
+pub fn fadvise64_64(_fd: c_int, _offset: u64, _len: u64, _advice: c_int) -> EResult<usize> {
 	// TODO
 	Ok(0)
 }
 
-pub fn chmod(
-	Args((pathname, mode)): Args<(UserString, file::Mode)>,
-	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
-	rs: ResolutionSettings,
-) -> EResult<usize> {
-	fchmodat(Args((AT_FDCWD, pathname, mode, 0)), fds_mutex, rs)
+pub fn chmod(pathname: UserString, mode: file::Mode) -> EResult<usize> {
+	fchmodat(AT_FDCWD, pathname, mode, 0)
 }
 
-pub fn fchmod(
-	Args((fd, mode)): Args<(c_int, file::Mode)>,
-	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
-	ap: AccessProfile,
-) -> EResult<usize> {
-	let file = fds_mutex
-		.lock()
-		.get_fd(fd)?
-		.get_file()
-		.vfs_entry
-		.clone()
-		.ok_or_else(|| errno!(EROFS))?;
-	// Check permissions
-	let stat = file.stat();
-	if !ap.can_set_file_permissions(&stat) {
-		return Err(errno!(EPERM));
-	}
+pub fn fchmod(fd: c_int, mode: file::Mode) -> EResult<usize> {
+	let file = fd_to_file(fd)?;
 	vfs::set_stat(
-		file.node(),
+		file.vfs_entry.node(),
 		&StatSet {
 			mode: Some(mode),
 			..Default::default()
@@ -520,25 +377,16 @@ pub fn fchmod(
 }
 
 pub fn fchmodat(
-	Args((dirfd, pathname, mode, flags)): Args<(c_int, UserString, file::Mode, c_int)>,
-	fds_mutex: Arc<Mutex<FileDescriptorTable>>,
-	rs: ResolutionSettings,
+	dirfd: c_int,
+	pathname: UserString,
+	mode: file::Mode,
+	flags: c_int,
 ) -> EResult<usize> {
-	let pathname = pathname
-		.copy_from_user()?
-		.map(PathBuf::try_from)
-		.transpose()?;
+	let pathname = pathname.copy_path_from_user()?;
 	// Get file
-	let fds = fds_mutex.lock();
-	let Resolved::Found(file) = at::get_file(&fds, rs.clone(), dirfd, pathname.as_deref(), flags)?
-	else {
-		return Err(errno!(ENOENT));
+	let Resolved::Found(file) = at::get_file(dirfd, &pathname, flags, false, true)? else {
+		unreachable!();
 	};
-	// Check permission
-	let stat = file.stat();
-	if !rs.access_profile.can_set_file_permissions(&stat) {
-		return Err(errno!(EPERM));
-	}
 	vfs::set_stat(
 		file.node(),
 		&StatSet {
@@ -549,29 +397,33 @@ pub fn fchmodat(
 	Ok(0)
 }
 
-/// Performs the `chown` syscall.
-pub fn do_chown(
-	pathname: UserString,
-	owner: c_int,
+fn do_fchownat(
+	dirfd: c_int,
+	pathname: Option<UserString>,
+	user: c_int,
 	group: c_int,
-	rs: ResolutionSettings,
+	flags: c_int,
 ) -> EResult<usize> {
 	// Validation
-	if !(-1..=u16::MAX as c_int).contains(&owner) || !(-1..=u16::MAX as c_int).contains(&group) {
+	if !(-1..=u16::MAX as c_int).contains(&user) || !(-1..=u16::MAX as c_int).contains(&group) {
 		return Err(errno!(EINVAL));
 	}
-	let path = pathname.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-	let path = PathBuf::try_from(path)?;
+	let path = pathname
+		.map(|pathname| pathname.copy_path_from_user())
+		.transpose()?
+		.unwrap_or_default();
 	// Get file
-	let ent = vfs::get_file_from_path(&path, &rs)?;
+	let Resolved::Found(ent) = at::get_file(dirfd, &path, flags, false, true)? else {
+		unreachable!();
+	};
 	// TODO allow changing group to any group whose owner is member
-	if !rs.access_profile.is_privileged() {
+	if unlikely(!is_privileged()) {
 		return Err(errno!(EPERM));
 	}
 	vfs::set_stat(
 		ent.node(),
 		&StatSet {
-			uid: (owner > -1).then_some(owner as _),
+			uid: (user > -1).then_some(user as _),
 			gid: (group > -1).then_some(group as _),
 			..Default::default()
 		},
@@ -579,31 +431,31 @@ pub fn do_chown(
 	Ok(0)
 }
 
-pub fn chown(
-	Args((pathname, owner, group)): Args<(UserString, c_int, c_int)>,
-	rs: ResolutionSettings,
-) -> EResult<usize> {
-	do_chown(pathname, owner, group, rs)
+pub fn chown(pathname: UserString, owner: c_int, group: c_int) -> EResult<usize> {
+	do_fchownat(AT_FDCWD, Some(pathname), owner, group, 0)
 }
 
-pub fn lchown(
-	Args((pathname, owner, group)): Args<(UserString, c_int, c_int)>,
-	rs: ResolutionSettings,
-) -> EResult<usize> {
-	do_chown(
-		pathname,
-		owner,
-		group,
-		ResolutionSettings {
-			follow_link: false,
-			..rs
-		},
-	)
+pub fn lchown(pathname: UserString, owner: c_int, group: c_int) -> EResult<usize> {
+	do_fchownat(AT_FDCWD, Some(pathname), owner, group, AT_SYMLINK_NOFOLLOW)
 }
 
-pub fn getcwd(Args((buf, size)): Args<(*mut u8, usize)>, proc: Arc<Process>) -> EResult<usize> {
+pub fn fchown(fd: c_int, owner: c_int, group: c_int) -> EResult<usize> {
+	do_fchownat(fd, None, owner, group, AT_EMPTY_PATH)
+}
+
+pub fn fchownat(
+	dirfd: c_int,
+	path: UserString,
+	owner: c_int,
+	group: c_int,
+	flags: c_int,
+) -> EResult<usize> {
+	do_fchownat(dirfd, Some(path), owner, group, flags)
+}
+
+pub fn getcwd(buf: *mut u8, size: usize) -> EResult<usize> {
 	let buf = UserSlice::from_user(buf, size)?;
-	let cwd = vfs::Entry::get_path(&proc.fs().lock().cwd)?;
+	let cwd = vfs::Entry::get_path(&Process::current().fs().lock().cwd)?;
 	if unlikely(size < cwd.len() + 1) {
 		return Err(errno!(ERANGE));
 	}
@@ -612,130 +464,113 @@ pub fn getcwd(Args((buf, size)): Args<(*mut u8, usize)>, proc: Arc<Process>) -> 
 	Ok(buf.as_ptr() as _)
 }
 
-pub fn chdir(
-	Args(path): Args<UserString>,
-	proc: Arc<Process>,
-	rs: ResolutionSettings,
-) -> EResult<usize> {
-	let path = path.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-	let path = PathBuf::try_from(path)?;
+pub fn chdir(path: UserString) -> EResult<usize> {
+	let path = path.copy_path_from_user()?;
 	// Get directory
-	let dir = vfs::get_file_from_path(&path, &rs)?;
+	let dir = vfs::get_file_from_path(&path, true)?;
 	// Validation
 	let stat = dir.stat();
 	if stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
 	}
-	if !rs.access_profile.can_list_directory(&stat) {
+	if !can_list_directory(&stat) {
 		return Err(errno!(EACCES));
 	}
 	// Set new cwd
-	proc.fs().lock().cwd = dir;
+	Process::current().fs().lock().cwd = dir;
 	Ok(0)
 }
 
-pub fn chroot(
-	Args(path): Args<UserString>,
-	proc: Arc<Process>,
-	rs: ResolutionSettings,
-) -> EResult<usize> {
-	// Check permission
-	if !rs.access_profile.is_privileged() {
-		return Err(errno!(EPERM));
-	}
-	let path = path.copy_from_user()?.ok_or(errno!(EFAULT))?;
-	let path = PathBuf::try_from(path)?;
+pub fn chroot(path: UserString) -> EResult<usize> {
 	let rs = ResolutionSettings {
 		root: vfs::ROOT.clone(),
-		..rs
+		..ResolutionSettings::cur_task(false, true)
 	};
+	// Check permission
+	if !is_privileged() {
+		return Err(errno!(EPERM));
+	}
+	let path = path.copy_path_from_user()?;
 	// Get file
-	let ent = vfs::get_file_from_path(&path, &rs)?;
+	let Resolved::Found(ent) = vfs::resolve_path(&path, &rs)? else {
+		unreachable!();
+	};
 	if ent.get_type()? != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
-	proc.fs().lock().chroot = ent;
+	Process::current().fs().lock().chroot = ent;
 	Ok(0)
 }
 
-pub fn fchdir(
-	Args(fd): Args<c_int>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-	ap: AccessProfile,
-	proc: Arc<Process>,
-) -> EResult<usize> {
-	let file = fds
-		.lock()
-		.get_fd(fd)?
-		.get_file()
-		.vfs_entry
-		.clone()
-		.ok_or_else(|| errno!(ENOTDIR))?;
+pub fn fchdir(fd: c_int) -> EResult<usize> {
+	let file = fd_to_file(fd)?.vfs_entry.clone();
 	let stat = file.stat();
 	// Check the file is an accessible directory
 	if stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
 	}
-	if !ap.can_list_directory(&stat) {
+	if !can_list_directory(&stat) {
 		return Err(errno!(EACCES));
 	}
-	proc.fs().lock().cwd = file;
+	Process::current().fs().lock().cwd = file;
 	Ok(0)
 }
 
-pub fn umask(Args(mask): Args<file::Mode>, proc: Arc<Process>) -> EResult<usize> {
-	let prev = proc
-		.fs()
-		.lock()
-		.umask
-		.swap(mask & 0o777, atomic::Ordering::Relaxed);
+pub fn umask(mask: file::Mode) -> EResult<usize> {
+	let prev = Process::current().umask.swap(mask & 0o777, Release);
 	Ok(prev as _)
 }
 
-pub fn utimensat(
-	Args((dirfd, pathname, times, flags)): Args<(
-		c_int,
-		UserString,
-		UserPtr<[Timespec; 2]>,
-		c_int,
-	)>,
-	rs: ResolutionSettings,
-	fds: Arc<Mutex<FileDescriptorTable>>,
+fn do_utimensat<T: TimeUnit>(
+	dirfd: c_int,
+	pathname: UserString,
+	times: [T; 2],
+	flags: c_int,
 ) -> EResult<usize> {
-	let pathname = pathname
-		.copy_from_user()?
-		.map(PathBuf::try_from)
-		.transpose()?;
-	let (atime, mtime) = times
-		.copy_from_user()?
-		.map(|[atime, mtime]| (atime.to_nano(), mtime.to_nano()))
-		.unwrap_or_else(|| {
-			let ts = current_time_ns(Clock::Monotonic);
-			(ts, ts)
-		});
-	// Get file
-	let Resolved::Found(file) = at::get_file(&fds.lock(), rs, dirfd, pathname.as_deref(), flags)?
-	else {
-		return Err(errno!(ENOENT));
+	let pathname = pathname.copy_path_from_user()?;
+	let Resolved::Found(file) = at::get_file(dirfd, &pathname, flags, false, true)? else {
+		unreachable!();
 	};
-	// Update timestamps
 	vfs::set_stat(
 		file.node(),
 		&StatSet {
-			atime: Some(atime / 1_000_000_000),
-			mtime: Some(mtime / 1_000_000_000),
+			atime: Some(times[0].to_nano() / 1_000_000_000),
+			mtime: Some(times[1].to_nano() / 1_000_000_000),
 			..Default::default()
 		},
 	)?;
 	Ok(0)
 }
 
-pub fn rename(
-	Args((oldpath, newpath)): Args<(UserString, UserString)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-	rs: ResolutionSettings,
+pub fn utime(path: UserString, times: UserPtr<UTimBuf>) -> EResult<usize> {
+	let times = times.copy_from_user()?.ok_or(errno!(EFAULT))?;
+	let mut t: [Timespec; 2] = Default::default();
+	t[0].tv_sec = times.actime as _;
+	t[1].tv_sec = times.modtime as _;
+	do_utimensat(AT_FDCWD, path, t, 0)
+}
+
+pub fn utimes(path: UserString, times: UserPtr<[Timeval; 2]>) -> EResult<usize> {
+	let times = times.copy_from_user()?.ok_or(errno!(EFAULT))?;
+	do_utimensat(AT_FDCWD, path, times, 0)
+}
+
+pub fn futimesat(dirfd: c_int, path: UserString, times: UserPtr<[Timeval; 2]>) -> EResult<usize> {
+	let times = times.copy_from_user()?.ok_or(errno!(EFAULT))?;
+	do_utimensat(dirfd, path, times, 0)
+}
+
+pub fn utimensat(
+	dirfd: c_int,
+	pathname: UserString,
+	times: UserPtr<[Timespec; 2]>,
+	flags: c_int,
 ) -> EResult<usize> {
-	do_renameat2(AT_FDCWD, oldpath, AT_FDCWD, newpath, 0, fds, rs)
+	let times = times.copy_from_user()?.unwrap_or_else(|| {
+		let ts = Timespec::from_nano(current_time_ns(Clock::Monotonic));
+		[ts, ts]
+	});
+	do_utimensat(dirfd, pathname, times, flags)
 }
 
 // TODO implement flags
@@ -745,132 +580,93 @@ pub(super) fn do_renameat2(
 	newdirfd: c_int,
 	newpath: UserString,
 	_flags: c_int,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-	rs: ResolutionSettings,
 ) -> EResult<usize> {
-	let rs = ResolutionSettings {
-		follow_link: false,
-		..rs
-	};
 	// Get old file
-	let oldpath = oldpath
-		.copy_from_user()?
-		.map(PathBuf::try_from)
-		.ok_or_else(|| errno!(EFAULT))??;
-	let Resolved::Found(old) = at::get_file(&fds.lock(), rs.clone(), olddirfd, Some(&oldpath), 0)?
-	else {
-		return Err(errno!(ENOENT));
+	let oldpath = oldpath.copy_path_from_user()?;
+	let Resolved::Found(old) = at::get_file(olddirfd, &oldpath, 0, false, false)? else {
+		unreachable!();
 	};
 	// Get new file
-	let newpath = newpath
-		.copy_from_user()?
-		.map(PathBuf::try_from)
-		.ok_or_else(|| errno!(EFAULT))??;
-	let rs = ResolutionSettings {
-		create: true,
-		..rs
-	};
-	let res = at::get_file(&fds.lock(), rs.clone(), newdirfd, Some(&newpath), 0)?;
+	let newpath = newpath.copy_path_from_user()?;
+	let res = at::get_file(newdirfd, &newpath, 0, true, true)?;
 	match res {
 		Resolved::Found(new) => {
 			// cannot move the root of the vfs
 			let new_parent = new.parent.clone().ok_or_else(|| errno!(EBUSY))?;
-			vfs::rename(old, new_parent, &new.name, &rs.access_profile)?;
+			vfs::rename(old, new_parent, &new.name)?;
 		}
 		Resolved::Creatable {
 			parent: new_parent,
 			name: new_name,
-		} => vfs::rename(old, new_parent, new_name, &rs.access_profile)?,
+		} => vfs::rename(old, new_parent, new_name)?,
 	}
 	Ok(0)
 }
 
-pub fn renameat2(
-	Args((olddirfd, oldpath, newdirfd, newpath, flags)): Args<(
-		c_int,
-		UserString,
-		c_int,
-		UserString,
-		c_int,
-	)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-	rs: ResolutionSettings,
-) -> EResult<usize> {
-	do_renameat2(olddirfd, oldpath, newdirfd, newpath, flags, fds, rs)
+pub fn rename(oldpath: UserString, newpath: UserString) -> EResult<usize> {
+	do_renameat2(AT_FDCWD, oldpath, AT_FDCWD, newpath, 0)
 }
 
-pub fn truncate(Args((path, length)): Args<(UserString, usize)>) -> EResult<usize> {
-	let proc = Process::current();
-	let rs = ResolutionSettings::for_process(&proc, true);
-	let path = path.copy_from_user()?.ok_or(errno!(EFAULT))?;
-	let path = PathBuf::try_from(path)?;
-	let ent = vfs::get_file_from_path(&path, &rs)?;
+pub fn renameat(
+	olddirfd: c_int,
+	oldpath: UserString,
+	newdirfd: c_int,
+	newpath: UserString,
+) -> EResult<usize> {
+	do_renameat2(olddirfd, oldpath, newdirfd, newpath, 0)
+}
+
+pub fn renameat2(
+	olddirfd: c_int,
+	oldpath: UserString,
+	newdirfd: c_int,
+	newpath: UserString,
+	flags: c_int,
+) -> EResult<usize> {
+	do_renameat2(olddirfd, oldpath, newdirfd, newpath, flags)
+}
+
+pub fn truncate(path: UserString, length: usize) -> EResult<usize> {
+	let path = path.copy_path_from_user()?;
+	let ent = vfs::get_file_from_path(&path, true)?;
 	// Permission check
-	if !rs.access_profile.can_write_file(&ent.stat()) {
+	if !can_write_file(&ent.stat(), true) {
 		return Err(errno!(EACCES));
 	}
 	// Truncate
-	let file = File::open_entry(ent, O_WRONLY)?;
+	let file = File::open(ent, O_WRONLY)?;
 	file.ops.truncate(&file, length as _)?;
 	Ok(0)
 }
 
-pub fn unlink(
-	Args(pathname): Args<UserString>,
-	rs: ResolutionSettings,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-) -> EResult<usize> {
-	do_unlinkat(AT_FDCWD, pathname, 0, rs, fds)
+pub fn unlink(pathname: UserString) -> EResult<usize> {
+	do_unlinkat(AT_FDCWD, pathname, 0)
 }
 
 /// Perform the `unlinkat` system call.
-pub fn do_unlinkat(
-	dirfd: c_int,
-	pathname: UserString,
-	flags: c_int,
-	rs: ResolutionSettings,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-) -> EResult<usize> {
-	let pathname = pathname
-		.copy_from_user()?
-		.map(PathBuf::try_from)
-		.ok_or_else(|| errno!(EFAULT))??;
-	let rs = ResolutionSettings {
-		follow_link: false,
-		..rs
-	};
+pub fn do_unlinkat(dirfd: c_int, pathname: UserString, flags: c_int) -> EResult<usize> {
+	let pathname = pathname.copy_path_from_user()?;
 	// AT_EMPTY_PATH is required in case the path has only one component
-	let resolved = at::get_file(
-		&fds.lock(),
-		rs.clone(),
-		dirfd,
-		Some(&pathname),
-		flags | AT_EMPTY_PATH,
-	)?;
+	let resolved = at::get_file(dirfd, &pathname, flags | AT_EMPTY_PATH, false, false)?;
 	let Resolved::Found(ent) = resolved else {
 		return Err(errno!(ENOENT));
 	};
-	vfs::unlink(ent, &rs.access_profile)?;
+	vfs::unlink(ent)?;
 	Ok(0)
 }
 
-pub fn unlinkat(
-	Args((dirfd, pathname, flags)): Args<(c_int, UserString, c_int)>,
-	rs: ResolutionSettings,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-) -> EResult<usize> {
-	do_unlinkat(dirfd, pathname, flags, rs, fds)
+pub fn unlinkat(dirfd: c_int, pathname: UserString, flags: c_int) -> EResult<usize> {
+	do_unlinkat(dirfd, pathname, flags)
 }
 
-pub fn rmdir(Args(pathname): Args<UserString>, rs: ResolutionSettings) -> EResult<usize> {
-	let path = pathname.copy_from_user()?.ok_or(errno!(EFAULT))?;
-	let path = PathBuf::try_from(path)?;
-	let entry = vfs::get_file_from_path(&path, &rs)?;
+pub fn rmdir(pathname: UserString) -> EResult<usize> {
+	let path = pathname.copy_path_from_user()?;
+	let entry = vfs::get_file_from_path(&path, true)?;
 	// Validation
 	let stat = entry.get_type()?;
 	if stat != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
-	vfs::unlink(entry, &rs.access_profile)?;
+	vfs::unlink(entry)?;
 	Ok(0)
 }

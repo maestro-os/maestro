@@ -18,7 +18,7 @@
 
 //! Statistics about memory usage.
 
-use crate::sync::mutex::Mutex;
+use crate::sync::spin::Spin;
 use core::{
 	fmt,
 	fmt::{Display, Formatter},
@@ -54,7 +54,7 @@ Inactive: {} kB",
 }
 
 /// Memory usage statistics.
-pub static MEM_INFO: Mutex<MemInfo> = Mutex::new(MemInfo {
+pub static MEM_INFO: Spin<MemInfo> = Spin::new(MemInfo {
 	mem_total: 0,
 	mem_free: 0,
 	mem_available: 0,

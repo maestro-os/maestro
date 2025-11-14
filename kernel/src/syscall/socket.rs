@@ -19,15 +19,13 @@
 //! Socket interface system calls.
 
 use crate::{
-	file,
-	file::{File, fd::FileDescriptorTable, perm::AccessProfile, socket::Socket},
+	file::{File, FileType, O_RDWR, fd::fd_to_file, fs::float, socket::Socket},
 	memory::user::{UserPtr, UserSlice},
 	net::{SocketDesc, SocketDomain, SocketType},
-	sync::mutex::Mutex,
-	syscall::Args,
+	process::Process,
 };
 use core::{cmp::min, ffi::c_int, hint::unlikely};
-use utils::{errno, errno::EResult, ptr::arc::Arc};
+use utils::{errno, errno::EResult};
 
 /// Shutdown receive side of the connection.
 const SHUT_RD: c_int = 0;
@@ -36,15 +34,11 @@ const SHUT_WR: c_int = 1;
 /// Both sides are shutdown.
 const SHUT_RDWR: c_int = 2;
 
-pub fn socket(
-	Args((domain, r#type, protocol)): Args<(c_int, c_int, c_int)>,
-	ap: AccessProfile,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-) -> EResult<usize> {
+pub fn socket(domain: c_int, r#type: c_int, protocol: c_int) -> EResult<usize> {
 	let sock_domain = SocketDomain::try_from(domain as u32)?;
 	let sock_type = SocketType::try_from(r#type as u32)?;
 	// Check permissions
-	if !ap.can_use_sock_domain(&sock_domain) || !ap.can_use_sock_type(&sock_type) {
+	if unlikely(!sock_domain.can_use() || !sock_type.can_use()) {
 		return Err(errno!(EACCES));
 	}
 	let desc = SocketDesc {
@@ -53,21 +47,25 @@ pub fn socket(
 		protocol,
 	};
 	// Create socket
-	let sock = Arc::new(Socket::new(desc)?)?;
-	let file = File::open_floating(sock, file::O_RDWR)?;
-	let (sock_fd_id, _) = fds.lock().create_fd(0, file)?;
+	let sock = float::get_entry(Socket::new(desc)?, FileType::Socket)?;
+	let file = File::open_floating(sock, O_RDWR)?;
+	let (sock_fd_id, _) = Process::current()
+		.file_descriptors()
+		.lock()
+		.create_fd(0, file)?;
 	Ok(sock_fd_id as _)
 }
 
 pub fn socketpair(
-	Args((domain, r#type, protocol, sv)): Args<(c_int, c_int, c_int, UserPtr<[c_int; 2]>)>,
-	ap: AccessProfile,
-	fds: Arc<Mutex<FileDescriptorTable>>,
+	domain: c_int,
+	r#type: c_int,
+	protocol: c_int,
+	sv: UserPtr<[c_int; 2]>,
 ) -> EResult<usize> {
 	let sock_domain = SocketDomain::try_from(domain as u32)?;
 	let sock_type = SocketType::try_from(r#type as u32)?;
 	// Check permissions
-	if !ap.can_use_sock_domain(&sock_domain) || !ap.can_use_sock_type(&sock_type) {
+	if unlikely(!sock_domain.can_use() || !sock_type.can_use()) {
 		return Err(errno!(EACCES));
 	}
 	let desc = SocketDesc {
@@ -76,21 +74,21 @@ pub fn socketpair(
 		protocol,
 	};
 	// Create socket
-	let sock = Arc::new(Socket::new(desc)?)?;
-	let file0 = File::open_floating(sock.clone(), file::O_RDWR)?;
-	let file1 = File::open_floating(sock, file::O_RDWR)?;
+	let sock = float::get_entry(Socket::new(desc)?, FileType::Socket)?;
+	let file0 = File::open_floating(sock.clone(), O_RDWR)?;
+	let file1 = File::open_floating(sock, O_RDWR)?;
 	// Create file descriptors
-	let (fd0_id, fd1_id) = fds.lock().create_fd_pair(file0, file1)?;
+	let (fd0_id, fd1_id) = Process::current()
+		.file_descriptors()
+		.lock()
+		.create_fd_pair(file0, file1)?;
 	sv.copy_to_user(&[fd0_id as _, fd1_id as _])?;
 	Ok(0)
 }
 
-pub fn getsockname(
-	Args((sockfd, addr, addrlen)): Args<(c_int, *mut u8, UserPtr<isize>)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-) -> EResult<usize> {
+pub fn getsockname(sockfd: c_int, addr: *mut u8, addrlen: UserPtr<isize>) -> EResult<usize> {
 	// Get socket
-	let file = fds.lock().get_fd(sockfd)?.get_file().clone();
+	let file = fd_to_file(sockfd)?;
 	let sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
 	// Read and check buffer length
 	let addrlen_val = addrlen.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
@@ -106,11 +104,14 @@ pub fn getsockname(
 }
 
 pub fn getsockopt(
-	Args((sockfd, level, optname, optval, optlen)): Args<(c_int, c_int, c_int, *mut u8, usize)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
+	sockfd: c_int,
+	level: c_int,
+	optname: c_int,
+	optval: *mut u8,
+	optlen: usize,
 ) -> EResult<usize> {
 	// Get socket
-	let file = fds.lock().get_fd(sockfd)?.get_file().clone();
+	let file = fd_to_file(sockfd)?;
 	let sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
 	let val = sock.get_opt(level, optname)?;
 	// Write
@@ -121,28 +122,28 @@ pub fn getsockopt(
 }
 
 pub fn setsockopt(
-	Args((sockfd, level, optname, optval, optlen)): Args<(c_int, c_int, c_int, *mut u8, usize)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
+	sockfd: c_int,
+	level: c_int,
+	optname: c_int,
+	optval: *mut u8,
+	optlen: usize,
 ) -> EResult<usize> {
 	let optval = UserSlice::from_user(optval, optlen)?;
 	// Get socket
-	let file = fds.lock().get_fd(sockfd)?.get_file().clone();
+	let file = fd_to_file(sockfd)?;
 	let sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
 	// Set opt
 	let optval = optval.copy_from_user_vec(0)?.ok_or(errno!(EFAULT))?;
 	sock.set_opt(level, optname, &optval).map(|opt| opt as _)
 }
 
-pub fn connect(
-	Args((sockfd, addr, addrlen)): Args<(c_int, *mut u8, isize)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-) -> EResult<usize> {
+pub fn connect(sockfd: c_int, addr: *mut u8, addrlen: isize) -> EResult<usize> {
 	// Validation
 	if unlikely(addrlen < 0) {
 		return Err(errno!(EINVAL));
 	}
 	// Get socket
-	let file = fds.lock().get_fd(sockfd)?.get_file().clone();
+	let file = fd_to_file(sockfd)?;
 	let _sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
 	let addr = UserSlice::from_user(addr, addrlen as _)?;
 	let _addr = addr.copy_from_user_vec(0)?.ok_or_else(|| errno!(EFAULT))?;
@@ -150,16 +151,13 @@ pub fn connect(
 	todo!()
 }
 
-pub fn bind(
-	Args((sockfd, addr, addrlen)): Args<(c_int, *mut u8, isize)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-) -> EResult<usize> {
+pub fn bind(sockfd: c_int, addr: *mut u8, addrlen: isize) -> EResult<usize> {
 	// Validation
 	if addrlen < 0 {
 		return Err(errno!(EINVAL));
 	}
 	// Get socket
-	let file = fds.lock().get_fd(sockfd)?.get_file().clone();
+	let file = fd_to_file(sockfd)?;
 	let sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
 	let addr = UserSlice::from_user(addr, addrlen as _)?;
 	let addr = addr.copy_from_user_vec(0)?.ok_or_else(|| errno!(EFAULT))?;
@@ -168,17 +166,13 @@ pub fn bind(
 }
 
 // TODO implement flags
-#[allow(clippy::type_complexity)]
 pub fn sendto(
-	Args((sockfd, buf, len, _flags, dest_addr, addrlen)): Args<(
-		c_int,
-		*mut u8,
-		usize,
-		c_int,
-		*mut u8,
-		isize,
-	)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
+	sockfd: c_int,
+	buf: *mut u8,
+	len: usize,
+	_flags: c_int,
+	dest_addr: *mut u8,
+	addrlen: isize,
 ) -> EResult<usize> {
 	let buf = UserSlice::from_user(buf, len)?;
 	let dest_addr = UserSlice::from_user(dest_addr, addrlen as _)?;
@@ -187,7 +181,7 @@ pub fn sendto(
 		return Err(errno!(EINVAL));
 	}
 	// Get socket
-	let file = fds.lock().get_fd(sockfd)?.get_file().clone();
+	let file = fd_to_file(sockfd)?;
 	let _sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
 	// Get slices
 	let _buf_slice = buf.copy_from_user_vec(0)?.ok_or(errno!(EFAULT))?;
@@ -195,12 +189,9 @@ pub fn sendto(
 	todo!()
 }
 
-pub fn shutdown(
-	Args((sockfd, how)): Args<(c_int, c_int)>,
-	fds: Arc<Mutex<FileDescriptorTable>>,
-) -> EResult<usize> {
+pub fn shutdown(sockfd: c_int, how: c_int) -> EResult<usize> {
 	// Get socket
-	let file = fds.lock().get_fd(sockfd)?.get_file().clone();
+	let file = fd_to_file(sockfd)?;
 	let sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
 	// Do shutdown
 	match how {

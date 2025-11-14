@@ -36,9 +36,8 @@ use crate::{
 	file::{
 		File, O_RDWR,
 		fd::{FileDescriptorTable, NewFDConstraint},
-		perm::AccessProfile,
+		perm::{AccessProfile, ProcessFs, ROOT_GID, ROOT_UID},
 		vfs,
-		vfs::ResolutionSettings,
 	},
 	int,
 	int::CallbackResult,
@@ -47,14 +46,14 @@ use crate::{
 		pid::{IDLE_PID, INIT_PID, PidHandle},
 		rusage::Rusage,
 		scheduler::{
-			critical, dequeue, enqueue, switch,
+			cpu, critical, dequeue, enqueue, switch,
 			switch::{KThreadEntry, idle_task, save_segments},
 		},
-		signal::{SIGNALS_COUNT, SigSet},
+		signal::{AltStack, SIGNALS_COUNT, SigSet, SignalAction},
 	},
 	register_get,
-	sync::{atomic::AtomicU64, mutex::Mutex, rwlock::IntRwLock},
-	syscall::FromSyscallArg,
+	sync::{atomic::AtomicU64, rwlock::IntRwLock, spin::Spin},
+	syscall::{FromSyscallArg, wait::WEXITED},
 	time::timer::TimerManager,
 };
 use core::{
@@ -65,6 +64,7 @@ use core::{
 	hint,
 	hint::unlikely,
 	mem,
+	ops::Deref,
 	ptr::NonNull,
 	sync::atomic::{
 		AtomicBool, AtomicI8, AtomicPtr, AtomicU8, AtomicU16, AtomicU32,
@@ -76,6 +76,7 @@ use pid::Pid;
 use scheduler::cpu::{PerCpu, per_cpu};
 use signal::{Signal, SignalHandler};
 use utils::{
+	TryClone,
 	collections::{
 		btreemap::BTreeMap,
 		list::ListNode,
@@ -124,28 +125,34 @@ pub const TLS_ENTRIES_COUNT: usize = 3;
 /// added.
 const REDZONE_SIZE: usize = 128;
 
+/// Process flag: if set, the kernel pretends to be Linux for this process
+pub const PROCESS_FLAG_LINUX: u8 = 0b1;
+
 /// An enumeration containing possible states for a process.
 #[repr(u8)]
 #[derive(Clone, Copy, Eq, Debug, PartialEq)]
 pub enum State {
-	/// The process is running or waiting to run.
-	Running = 0,
-	/// The process is waiting for an event.
-	Sleeping = 1,
-	/// The process has been stopped by a signal or by tracing.
-	Stopped = 2,
-	/// The process has been killed.
-	Zombie = 3,
+	/// The process is currently running, or waiting to run
+	Running = 1,
+	/// The process is waiting for an event, but can get resumed by a signal
+	IntSleeping = 2,
+	/// The process is waiting for an event, and **cannot** get resumed by a signal
+	Sleeping = 4,
+	/// The process has been stopped by a signal or by tracing
+	Stopped = 8,
+	/// The process has been killed
+	Zombie = 16,
 }
 
 impl State {
 	/// Returns the state with the given ID.
 	fn from_id(id: u8) -> Self {
 		match id {
-			0 => Self::Running,
-			1 => Self::Sleeping,
-			2 => Self::Stopped,
-			3 => Self::Zombie,
+			1 => Self::Running,
+			2 => Self::IntSleeping,
+			4 => Self::Sleeping,
+			8 => Self::Stopped,
+			16 => Self::Zombie,
 			_ => unreachable!(),
 		}
 	}
@@ -154,7 +161,8 @@ impl State {
 	pub fn as_char(&self) -> char {
 		match self {
 			Self::Running => 'R',
-			Self::Sleeping => 'S',
+			Self::IntSleeping => 'S',
+			Self::Sleeping => 'D',
 			Self::Stopped => 'T',
 			Self::Zombie => 'Z',
 		}
@@ -164,7 +172,8 @@ impl State {
 	pub fn as_str(&self) -> &'static str {
 		match self {
 			Self::Running => "running",
-			Self::Sleeping => "sleeping",
+			Self::IntSleeping => "sleeping",
+			Self::Sleeping => "disk sleep",
 			Self::Stopped => "stopped",
 			Self::Zombie => "zombie",
 		}
@@ -232,50 +241,18 @@ pub struct ProcessLinks {
 	pub process_group: Vec<Pid>,
 }
 
-/// A process's filesystem access information.
-pub struct ProcessFs {
-	/// The process's access profile, containing user and group IDs.
-	pub access_profile: AccessProfile,
-	/// The process's current umask.
-	pub umask: AtomicU32,
-	/// Current working directory
-	///
-	/// The field contains both the path and the directory.
-	pub cwd: Arc<vfs::Entry>,
-	/// Current root path used by the process
-	pub chroot: Arc<vfs::Entry>,
-}
-
-impl ProcessFs {
-	/// Returns the current umask.
-	pub fn umask(&self) -> file::Mode {
-		self.umask.load(Acquire)
-	}
-}
-
-impl Clone for ProcessFs {
-	fn clone(&self) -> Self {
-		Self {
-			access_profile: self.access_profile,
-			umask: AtomicU32::new(self.umask.load(Acquire)),
-			cwd: self.cwd.clone(),
-			chroot: self.chroot.clone(),
-		}
-	}
-}
-
 /// A process's signal management information.
 pub struct ProcessSignal {
-	/// The list of signal handlers.
-	pub handlers: Arc<Mutex<[SignalHandler; SIGNALS_COUNT]>>,
-	/// A bitfield storing the set of blocked signals.
+	/// The alternative signal stack
+	pub altstack: AltStack,
+	/// A bitfield storing the set of blocked signals
 	pub sigmask: SigSet,
-	/// A bitfield storing the set of pending signals.
+	/// A bitfield storing the set of pending signals
 	sigpending: SigSet,
 
-	/// The exit status of the process after exiting.
+	/// The exit status of the process after exiting
 	pub exit_status: ExitStatus,
-	/// The terminating signal.
+	/// The terminating signal
 	pub termsig: u8,
 }
 
@@ -283,7 +260,7 @@ impl ProcessSignal {
 	/// Creates a new instance.
 	pub fn new() -> AllocResult<Self> {
 		Ok(ProcessSignal {
-			handlers: Arc::new(Default::default())?,
+			altstack: AltStack::default(),
 			sigmask: Default::default(),
 			sigpending: Default::default(),
 
@@ -335,21 +312,27 @@ pub struct Process {
 	state: AtomicU8,
 	/// If `true`, the parent can resume after a `vfork`.
 	pub vfork_done: AtomicBool,
-	/// The links to other processes.
-	pub links: Mutex<ProcessLinks>,
+	/// Links to other processes.
+	pub links: Spin<ProcessLinks>,
 
 	/// The node in the scheduler's run queue.
 	sched_node: ListNode,
+	/// The process's affinity mask
+	pub affinity: cpu::Bitmap,
 	/// Process's niceness (`-20..=19`). Defines its scheduling priority (lower = higher priority)
 	pub nice: AtomicI8,
+	/// A queue the process is inserted in when waiting on a resource
+	pub(crate) wait_queue: ListNode,
 
 	/// A pointer to the kernelspace stack.
 	kernel_stack: KernelStack,
 	/// Kernel stack pointer of saved context.
 	kernel_sp: AtomicPtr<u8>,
 	/// The process's FPU state.
-	fpu: Mutex<FxState>,
+	fpu: Spin<FxState>,
 
+	/// Process flags
+	pub flags: AtomicU8,
 	/// FS segment selector
 	fs_selector: AtomicU16,
 	/// GS segment selector
@@ -359,23 +342,30 @@ pub struct Process {
 	/// GS segment hidden base
 	gs_base: AtomicU64,
 	/// TLS entries.
-	pub tls: Mutex<[gdt::Entry; TLS_ENTRIES_COUNT]>, // TODO rwlock
+	pub tls: Spin<[gdt::Entry; TLS_ENTRIES_COUNT]>, // TODO rwlock
 
 	/// The virtual memory of the process.
-	pub mem_space: UnsafeMut<Option<Arc<MemSpace>>>,
+	mem_space: UnsafeMut<Option<Arc<MemSpace>>>,
 	/// Filesystem access information.
-	pub fs: Option<Mutex<ProcessFs>>, // TODO rwlock
+	///
+	/// This is an `Option` in order to solve a chicken-or-egg issue (initializing files
+	/// management or per-CPU structures first).
+	pub fs: Option<Spin<ProcessFs>>,
+	/// The process's current umask.
+	pub umask: AtomicU32,
 	/// The list of open file descriptors with their respective ID.
-	pub file_descriptors: UnsafeMut<Option<Arc<Mutex<FileDescriptorTable>>>>,
+	fd_table: UnsafeMut<Option<Arc<Spin<FileDescriptorTable>>>>,
 	/// Process's timers, shared between all threads of the same process.
-	pub timer_manager: Arc<Mutex<TimerManager>>,
+	pub timer_manager: Arc<Spin<TimerManager>>,
+	/// The list of signal handlers
+	pub sig_handlers: UnsafeMut<Arc<Spin<[SignalHandler; SIGNALS_COUNT]>>>,
 	/// The process's signal management structure.
-	pub signal: Mutex<ProcessSignal>, // TODO rwlock
+	pub signal: Spin<ProcessSignal>, // TODO rwlock
 	/// Events to be notified to the parent process upon `wait`.
 	pub parent_event: AtomicU8,
 
 	/// The process's resources usage.
-	pub rusage: Mutex<Rusage>,
+	pub rusage: Spin<Rusage>,
 }
 
 /// The list of all processes on the system.
@@ -399,11 +389,11 @@ pub(crate) fn init() -> EResult<()> {
 			// Divide-by-zero
 			// x87 Floating-Point Exception
 			// SIMD Floating-Point Exception
-			0x00 | 0x10 | 0x13 => proc.kill(Signal::SIGFPE),
+			0x00 | 0x10 | 0x13 => Process::kill(&proc, Signal::SIGFPE),
 			// Breakpoint
-			0x03 => proc.kill(Signal::SIGTRAP),
+			0x03 => Process::kill(&proc, Signal::SIGTRAP),
 			// Invalid Opcode
-			0x06 => proc.kill(Signal::SIGILL),
+			0x06 => Process::kill(&proc, Signal::SIGILL),
 			// General Protection Fault
 			0x0d => {
 				// Get the instruction opcode
@@ -411,13 +401,13 @@ pub(crate) fn init() -> EResult<()> {
 				let opcode = ptr.copy_from_user();
 				// If the instruction is `hlt`, exit
 				if opcode == Ok(Some(HLT_INSTRUCTION)) {
-					Process::exit(&proc, frame.get_syscall_id() as _);
+					exit(frame.get_syscall_id() as _);
 				} else {
-					proc.kill(Signal::SIGSEGV);
+					Process::kill(&proc, Signal::SIGSEGV);
 				}
 			}
 			// Alignment Check
-			0x11 => proc.kill(Signal::SIGBUS),
+			0x11 => Process::kill(&proc, Signal::SIGBUS),
 			_ => {}
 		}
 		CallbackResult::Continue
@@ -451,10 +441,10 @@ pub(crate) fn init() -> EResult<()> {
 							return CallbackResult::Panic;
 						}
 					} else {
-						Process::current().kill(Signal::SIGSEGV);
+						Process::kill(&Process::current(), Signal::SIGSEGV);
 					}
 				}
-				Err(_) => Process::current().kill(Signal::SIGBUS),
+				Err(_) => Process::kill(&Process::current(), Signal::SIGBUS),
 			}
 			CallbackResult::Continue
 		},
@@ -522,12 +512,15 @@ impl Process {
 			links: Default::default(),
 
 			sched_node: ListNode::default(),
+			affinity: cpu::Bitmap::new(true)?,
 			nice: AtomicI8::new(nice),
+			wait_queue: ListNode::default(),
 
 			kernel_stack,
 			kernel_sp: AtomicPtr::new(kernel_sp),
-			fpu: Mutex::new(FxState([0; 512])),
+			fpu: Spin::new(FxState([0; 512])),
 
+			flags: AtomicU8::new(0),
 			fs_selector: Default::default(),
 			gs_selector: Default::default(),
 			fs_base: Default::default(),
@@ -537,9 +530,11 @@ impl Process {
 			// Not needed for kernel threads
 			mem_space: Default::default(),
 			fs: None,
-			file_descriptors: Default::default(),
-			timer_manager: Arc::new(Mutex::new(TimerManager::new(0)?))?,
-			signal: Mutex::new(ProcessSignal::new()?),
+			umask: Default::default(),
+			fd_table: Default::default(),
+			timer_manager: Arc::new(Spin::new(TimerManager::new()?))?,
+			sig_handlers: UnsafeMut::new(Arc::new(Default::default())?),
+			signal: Spin::new(ProcessSignal::new()?),
 			parent_event: Default::default(),
 
 			rusage: Default::default(),
@@ -564,43 +559,42 @@ impl Process {
 	///
 	/// The process is set to state [`State::Running`] by default and has user root.
 	pub fn init() -> EResult<Arc<Self>> {
-		let rs = ResolutionSettings::kernel_follow();
 		// Create the default file descriptors table
-		let file_descriptors = {
-			let mut fds_table = FileDescriptorTable::default();
-			let tty_path = PathBuf::try_from(TTY_DEVICE_PATH.as_bytes())?;
-			let tty_ent = vfs::get_file_from_path(&tty_path, &rs)?;
-			let tty_file = File::open_entry(tty_ent, O_RDWR)?;
-			let (stdin_fd_id, _) = fds_table.create_fd(0, tty_file)?;
-			assert_eq!(stdin_fd_id, STDIN_FILENO);
-			fds_table.duplicate_fd(
-				STDIN_FILENO as _,
-				NewFDConstraint::Fixed(STDOUT_FILENO as _),
-				false,
-			)?;
-			fds_table.duplicate_fd(
-				STDIN_FILENO as _,
-				NewFDConstraint::Fixed(STDERR_FILENO as _),
-				false,
-			)?;
-			fds_table
-		};
-		let root_dir = vfs::get_file_from_path(Path::root(), &rs)?;
+		let mut fd_table = FileDescriptorTable::default();
+		let tty_path = PathBuf::try_from(TTY_DEVICE_PATH.as_bytes())?;
+		let tty_ent = vfs::get_file_from_path(&tty_path, true)?;
+		let tty_file = File::open(tty_ent, O_RDWR)?;
+		let (stdin_fd_id, _) = fd_table.create_fd(0, tty_file)?;
+		assert_eq!(stdin_fd_id, STDIN_FILENO);
+		fd_table.duplicate_fd(
+			STDIN_FILENO as _,
+			NewFDConstraint::Fixed(STDOUT_FILENO as _),
+			false,
+		)?;
+		fd_table.duplicate_fd(
+			STDIN_FILENO as _,
+			NewFDConstraint::Fixed(STDERR_FILENO as _),
+			false,
+		)?;
+		let root_dir = vfs::get_file_from_path(Path::root(), false)?;
 		let proc = Arc::new(Self {
 			pid: PidHandle::mark_used(INIT_PID)?,
 			tid: INIT_PID,
 
 			state: AtomicU8::new(State::Running as _),
 			vfork_done: AtomicBool::new(false),
-			links: Mutex::new(ProcessLinks::default()),
+			links: Spin::new(ProcessLinks::default()),
 
 			sched_node: ListNode::default(),
+			affinity: cpu::Bitmap::new(true)?,
 			nice: AtomicI8::new(0),
+			wait_queue: ListNode::default(),
 
 			kernel_stack: KernelStack::new()?,
 			kernel_sp: AtomicPtr::default(),
-			fpu: Mutex::new(FxState([0; 512])),
+			fpu: Spin::new(FxState([0; 512])),
 
+			flags: AtomicU8::new(0),
 			fs_selector: Default::default(),
 			gs_selector: Default::default(),
 			fs_base: Default::default(),
@@ -608,16 +602,18 @@ impl Process {
 			tls: Default::default(),
 
 			mem_space: UnsafeMut::new(None),
-			fs: Some(Mutex::new(ProcessFs {
-				access_profile: rs.access_profile,
-				umask: AtomicU32::new(DEFAULT_UMASK),
+			fs: Some(Spin::new(ProcessFs {
+				ap: AccessProfile::new(ROOT_UID, ROOT_GID),
+				groups: Vec::new(),
 				cwd: root_dir.clone(),
 				chroot: root_dir,
 			})),
-			file_descriptors: UnsafeMut::new(Some(Arc::new(Mutex::new(file_descriptors))?)),
-			timer_manager: Arc::new(Mutex::new(TimerManager::new(INIT_PID)?))?,
-			signal: Mutex::new(ProcessSignal {
-				handlers: Arc::new(Default::default())?,
+			umask: AtomicU32::new(DEFAULT_UMASK),
+			fd_table: UnsafeMut::new(Some(Arc::new(Spin::new(fd_table))?)),
+			timer_manager: Arc::new(Spin::new(TimerManager::new()?))?,
+			sig_handlers: UnsafeMut::new(Arc::new(Default::default())?),
+			signal: Spin::new(ProcessSignal {
+				altstack: Default::default(),
 				sigmask: Default::default(),
 				sigpending: Default::default(),
 
@@ -739,88 +735,32 @@ impl Process {
 		});
 	}
 
-	/// Sets the process's state to `new_state`.
+	/// Wakes up the process if in [`State::Sleeping`] state.
 	///
-	/// If the transition from the previous state to `new_state` is invalid, the function does
-	/// nothing.
-	pub fn set_state(this: &Arc<Self>, new_state: State) {
+	/// `from_mask` is the mask of states the process can wake up from. If the current state is not
+	/// in the mask, the function does nothing.
+	pub fn wake_from(this: &Arc<Self>, from_mask: u8) {
 		this.lock_state(|old_state| {
-			let valid = matches!(
-				(old_state, new_state),
-				(State::Running | State::Sleeping, _) | (State::Stopped, State::Running)
-			);
-			if !valid {
+			if from_mask & old_state as u8 == 0 {
 				return;
 			}
-			if new_state == old_state {
-				return;
-			}
-			// Update state
-			this.state.store(STATE_LOCK | new_state as u8, Relaxed);
+			this.state.store(STATE_LOCK | State::Running as u8, Release);
 			#[cfg(feature = "strace")]
 			println!(
-				"[strace {pid}] changed state: {old_state:?} -> {new_state:?}",
-				pid = this.get_pid()
-			);
-			// Enqueue or dequeue the process
-			if new_state == State::Running {
-				enqueue(this);
-			} else if old_state == State::Running {
-				dequeue(this);
-			}
-			if new_state == State::Zombie {
-				if this.is_init() {
-					panic!("Terminated init process!");
-				}
-				// Remove the memory space and file descriptors table to reclaim memory
-				unsafe {
-					//this.mem_space = None; // TODO Handle the case where the memory space is
-					// bound
-					*this.file_descriptors.get_mut() = None;
-				}
-				// Attach every child to the init process
-				let init_proc = Process::get_by_pid(INIT_PID).unwrap();
-				let children = mem::take(&mut this.links.lock().children);
-				for child_pid in children {
-					// Check just in case
-					if child_pid == *this.pid {
-						continue;
-					}
-					// TODO do the same for process group members
-					if let Some(child) = Process::get_by_pid(child_pid) {
-						child.links.lock().parent = Some(init_proc.clone());
-						oom::wrap(|| init_proc.add_child(child_pid));
-					}
-				}
-				// Set vfork as done just in case
-				this.vfork_wake();
-			}
-			// Send SIGCHLD
-			if matches!(new_state, State::Running | State::Stopped | State::Zombie) {
-				let links = this.links.lock();
-				if let Some(parent) = &links.parent {
-					parent.kill(Signal::SIGCHLD);
-				}
-			}
-		});
-	}
-
-	/// Wakes up the process if in [`Sleeping`] state.
-	///
-	/// Contrary to [`Self::set_state`], this function does not send a `SIGCHLD` signal
-	pub fn wake(this: &Arc<Self>) {
-		this.lock_state(|old_state| {
-			if unlikely(old_state != State::Sleeping) {
-				return;
-			}
-			this.state.store(STATE_LOCK | State::Running as u8, Relaxed);
-			#[cfg(feature = "strace")]
-			println!(
-				"[strace {pid}] changed state: Sleeping -> Running",
+				"[strace {pid}] changed state: {old_state:?} -> Running",
 				pid = this.get_pid()
 			);
 			enqueue(this);
 		});
+	}
+
+	/// Notifies the parent process about `event` (see `waitpid` flags) by sending a `SIGCHLD`.
+	pub fn notify_parent(&self, event: u8) {
+		let parent = self.links.lock().parent.clone();
+		if let Some(parent) = parent {
+			self.parent_event.fetch_or(event, Release);
+			Process::kill(&parent, Signal::SIGCHLD);
+		}
 	}
 
 	/// Signals the parent that the `vfork` operation has completed.
@@ -828,7 +768,7 @@ impl Process {
 		self.vfork_done.store(true, Release);
 		let links = self.links.lock();
 		if let Some(parent) = &links.parent {
-			Process::set_state(parent, State::Running);
+			Process::wake_from(parent, State::Sleeping as u8);
 		}
 	}
 
@@ -878,28 +818,25 @@ impl Process {
 			}
 		};
 		// Clone file descriptors
-		let file_descriptors = if fork_options.share_fd {
-			parent.file_descriptors.get().clone()
+		let fd_table = if fork_options.share_fd {
+			parent.fd_table.get().clone()
 		} else {
 			parent
-				.file_descriptors
+				.fd_table
 				.as_ref()
 				.map(|fds| -> EResult<_> {
 					let fds = fds.lock();
 					let new_fds = fds.duplicate(false)?;
-					Ok(Arc::new(Mutex::new(new_fds))?)
+					Ok(Arc::new(Spin::new(new_fds))?)
 				})
 				.transpose()?
 		};
 		// Clone signal handlers
-		let signal_handlers = {
-			let signal_manager = parent.signal.lock();
-			if fork_options.share_sighand {
-				signal_manager.handlers.clone()
-			} else {
-				let handlers = signal_manager.handlers.lock().clone();
-				Arc::new(Mutex::new(handlers))?
-			}
+		let sig_handlers = if fork_options.share_sighand {
+			parent.sig_handlers.get().clone()
+		} else {
+			let handlers = parent.sig_handlers.lock().clone();
+			Arc::new(Spin::new(handlers))?
 		};
 		let group_leader = parent
 			.links
@@ -921,32 +858,37 @@ impl Process {
 
 			state: AtomicU8::new(State::Running as _),
 			vfork_done: AtomicBool::new(false),
-			links: Mutex::new(ProcessLinks {
+			links: Spin::new(ProcessLinks {
 				parent: Some(parent.clone()),
 				group_leader: Some(group_leader.clone()),
 				..Default::default()
 			}),
 
 			sched_node: ListNode::default(),
+			affinity: parent.affinity.try_clone()?,
 			nice: AtomicI8::new(0),
+			wait_queue: ListNode::default(),
 
 			kernel_stack,
 			kernel_sp: AtomicPtr::new(kernel_sp),
-			fpu: Mutex::new(parent.fpu.lock().clone()),
+			fpu: Spin::new(parent.fpu.lock().clone()),
 
+			flags: AtomicU8::new(parent.flags.load(Relaxed)),
 			fs_selector: Default::default(),
 			gs_selector: Default::default(),
 			fs_base: Default::default(),
 			gs_base: Default::default(),
-			tls: Mutex::new(*parent.tls.lock()),
+			tls: Spin::new(*parent.tls.lock()),
 
 			mem_space: UnsafeMut::new(Some(mem_space)),
-			fs: Some(Mutex::new(parent.fs().lock().clone())),
-			file_descriptors: UnsafeMut::new(file_descriptors),
+			fs: Some(Spin::new(parent.fs().lock().try_clone()?)),
+			umask: AtomicU32::new(parent.umask.load(Relaxed)),
+			fd_table: UnsafeMut::new(fd_table),
 			// TODO if creating a thread: timer_manager: parent.timer_manager.clone(),
-			timer_manager: Arc::new(Mutex::new(TimerManager::new(pid_int)?))?,
-			signal: Mutex::new(ProcessSignal {
-				handlers: signal_handlers,
+			timer_manager: Arc::new(Spin::new(TimerManager::new()?))?,
+			sig_handlers: UnsafeMut::new(sig_handlers),
+			signal: Spin::new(ProcessSignal {
+				altstack: Default::default(),
 				sigmask: parent.signal.lock().sigmask,
 				sigpending: Default::default(),
 
@@ -972,14 +914,46 @@ impl Process {
 		Ok(proc)
 	}
 
+	/// Returns the process's memory space.
+	///
+	/// If the process is a kernel thread, the function panics.
+	#[inline]
+	pub fn mem_space(&self) -> &Arc<MemSpace> {
+		self.mem_space
+			.get()
+			.as_ref()
+			.expect("kernel threads don't have a memory space")
+	}
+
+	/// Returns the process's memory space if any.
+	#[inline]
+	pub fn mem_space_opt(&self) -> &Option<Arc<MemSpace>> {
+		self.mem_space.deref()
+	}
+
 	/// Returns the process's [`ProcessFs`].
 	///
 	/// If the process is a kernel thread, the function panics.
 	#[inline]
-	pub fn fs(&self) -> &Mutex<ProcessFs> {
+	pub fn fs(&self) -> &Spin<ProcessFs> {
 		self.fs
 			.as_ref()
 			.expect("kernel threads don't have ProcessFS structures")
+	}
+
+	/// Returns the umask
+	#[inline]
+	pub fn umask(&self) -> u32 {
+		self.umask.load(Acquire)
+	}
+
+	/// Returns a reference to the file descriptors table
+	#[inline]
+	pub fn file_descriptors(&self) -> Arc<Spin<FileDescriptorTable>> {
+		self.fd_table
+			.get()
+			.clone()
+			.expect("kernel threads don't have a file descriptor table")
 	}
 
 	/// Tells whether there is a pending signal on the process.
@@ -992,34 +966,40 @@ impl Process {
 	///
 	/// If the process doesn't have a signal handler, the default action for the signal is
 	/// executed.
-	pub fn kill(&self, sig: Signal) {
-		let mut signal_manager = self.signal.lock();
+	pub fn kill(this: &Arc<Self>, sig: Signal) {
+		let mut s = this.signal.lock();
 		// Ignore blocked signals
-		if sig.can_catch() && signal_manager.sigmask.is_set(sig as _) {
+		if sig.can_catch() && s.sigmask.is_set(sig as _) {
 			return;
 		}
 		// Statistics
-		self.rusage.lock().ru_nsignals += 1;
-		/*#[cfg(feature = "strace")]
+		this.rusage.lock().ru_nsignals += 1;
+		#[cfg(feature = "strace")]
 		println!(
 			"[strace {pid}] received signal `{sig}`",
-			pid = self.get_pid(),
+			pid = this.get_pid(),
 			sig = sig as c_int
-		);*/
-		signal_manager.sigpending.set(sig as _);
+		);
+		s.sigpending.set(sig as _);
+		// Change state so that the process can handle the signal
+		let mut mask = State::IntSleeping as u8;
+		if sig.get_default_action() == SignalAction::Continue {
+			mask |= State::Stopped as u8;
+		}
+		Self::wake_from(this, mask);
 	}
 
 	/// Kills every process in the process group.
-	pub fn kill_group(&self, sig: Signal) {
-		self.links
+	pub fn kill_group(this: &Arc<Self>, sig: Signal) {
+		this.links
 			.lock()
 			.process_group
 			.iter()
 			.filter_map(|pid| Process::get_by_pid(*pid))
 			.for_each(|proc| {
-				proc.kill(sig);
+				Process::kill(&proc, sig);
 			});
-		self.kill(sig);
+		Process::kill(this, sig);
 	}
 
 	/// Compares process priorities
@@ -1029,27 +1009,16 @@ impl Process {
 		nice0.cmp(&nice1).reverse() // niceness and priority are opposites
 	}
 
-	/// Exits the process with the given `status`.
-	///
-	/// This function changes the process's status to `Zombie`.
-	pub fn exit(this: &Arc<Self>, status: u32) {
-		#[cfg(feature = "strace")]
-		println!(
-			"[strace {pid}] exited with status `{status}`",
-			pid = *this.pid
-		);
-		this.signal.lock().exit_status = status as ExitStatus;
-		Process::set_state(this, State::Zombie);
-	}
-
 	/// Removes all references to the process in order to free the structure.
+	///
+	/// The function assumes the process is a Zombie.
 	///
 	/// The process is unlinked from:
 	/// - Its parent
 	/// - Its group
-	/// - Its scheduler
 	/// - The processes list
-	pub fn remove(this: Arc<Self>) {
+	pub(crate) fn remove(this: Arc<Self>) {
+		debug_assert_eq!(this.get_state(), State::Zombie);
 		let (parent, group_leader) = {
 			let mut links = this.links.lock();
 			(links.parent.take(), links.group_leader.take())
@@ -1066,7 +1035,6 @@ impl Process {
 				links.process_group.remove(i);
 			}
 		}
-		dequeue(&this);
 		PROCESSES.write().remove(&*this.pid);
 	}
 }
@@ -1077,26 +1045,77 @@ impl fmt::Debug for Process {
 	}
 }
 
-impl AccessProfile {
-	/// Tells whether the agent can kill the process.
-	pub fn can_kill(&self, proc: &Process) -> bool {
-		// if privileged
-		if self.is_privileged() {
-			return true;
+/// Sets the current process's state to `new_state`.
+///
+/// If the transition from the previous state to `new_state` is invalid, the function does
+/// nothing.
+pub fn set_state(new_state: State) {
+	let proc = Process::current();
+	proc.lock_state(|old_state| {
+		if new_state == old_state {
+			return;
 		}
-		// if sender's `uid` or `euid` equals receiver's `uid` or `suid`
-		let fs = proc.fs().lock();
-		self.uid == fs.access_profile.uid
-			|| self.uid == fs.access_profile.suid
-			|| self.euid == fs.access_profile.uid
-			|| self.euid == fs.access_profile.suid
-	}
+		let valid = matches!(
+			(old_state, new_state),
+			(State::Running, _) | (State::Sleeping | State::Stopped, State::Running)
+		);
+		if !valid {
+			return;
+		}
+		// Update state
+		proc.state.store(STATE_LOCK | new_state as u8, Release);
+		#[cfg(feature = "strace")]
+		println!(
+			"[strace {pid}] changed state: {old_state:?} -> {new_state:?}",
+			pid = proc.get_pid()
+		);
+		// Enqueue or dequeue the process
+		if new_state == State::Running {
+			enqueue(&proc);
+		} else {
+			dequeue(&proc);
+		}
+		if new_state == State::Zombie {
+			if unlikely(proc.is_init()) {
+				panic!("Terminated init process!");
+			}
+			// Remove the memory space and file descriptors table to reclaim memory
+			unsafe {
+				//proc.mem_space = None; // TODO the memory space is bound
+				*proc.fd_table.get_mut() = None;
+			}
+			// Attach every child to the init process
+			let init_proc = Process::get_by_pid(INIT_PID).unwrap();
+			let children = mem::take(&mut proc.links.lock().children);
+			for child_pid in children {
+				// Check just in case
+				if child_pid == *proc.pid {
+					continue;
+				}
+				// TODO do the same for process group members
+				if let Some(child) = Process::get_by_pid(child_pid) {
+					child.links.lock().parent = Some(init_proc.clone());
+					oom::wrap(|| init_proc.add_child(child_pid));
+				}
+			}
+			// Set vfork as done just in case
+			proc.vfork_wake();
+		}
+	});
 }
 
-impl Drop for Process {
-	fn drop(&mut self) {
-		if self.is_init() {
-			panic!("Terminated init process!");
-		}
-	}
+/// Exits the current process with the given `status`.
+///
+/// This function changes the process's status to `Zombie`.
+pub fn exit(status: u32) {
+	let proc = Process::current();
+	debug_assert_eq!(proc.get_state(), State::Running);
+	#[cfg(feature = "strace")]
+	println!(
+		"[strace {pid}] exited with status `{status}`",
+		pid = *proc.pid
+	);
+	proc.signal.lock().exit_status = status as ExitStatus;
+	set_state(State::Zombie);
+	proc.notify_parent(WEXITED as u8);
 }
