@@ -322,8 +322,6 @@ pub fn shrink_entries() -> bool {
 
 /// The root entry of the VFS
 pub static ROOT: OnceInit<Arc<Entry>> = unsafe { OnceInit::new() };
-/// Global rename lock, to avoid concurrency issues while checking for cycles
-pub static RENAME_LOCK: Mutex<()> = Mutex::new(());
 
 /// Settings for a path resolution operation.
 #[derive(Clone, Debug)]
@@ -805,11 +803,9 @@ pub fn rename(
 	new_name: &[u8],
 	flags: c_int,
 ) -> EResult<()> {
-	if unlikely(flags & (RENAME_NOREPLACE | RENAME_EXCHANGE) == RENAME_NOREPLACE | RENAME_EXCHANGE)
-	{
+	if unlikely(flags & (RENAME_NOREPLACE | RENAME_EXCHANGE) == RENAME_NOREPLACE | RENAME_EXCHANGE) {
 		return Err(errno!(EINVAL));
 	}
-	let exchange = flags & RENAME_EXCHANGE != 0;
 	// If `old` has no parent, it's the root, so it's a mountpoint
 	let old_parent = old.parent.as_ref().ok_or_else(|| errno!(EBUSY))?;
 	// Cannot rename a mountpoint
@@ -857,77 +853,14 @@ pub fn rename(
 		{
 			return Err(errno!(EACCES));
 		}
-		if old_stat.get_type() == Some(FileType::Directory) {
-			if unlikely(new_stat.get_type() != Some(FileType::Directory)) {
-				return Err(errno!(EISDIR));
-			}
-			// Look for overflow (entry + `..`)
-			if unlikely(new_parent_stat.nlink >= u16::MAX - 1) {
-				return Err(errno!(EMFILE));
-			}
-		} else {
-			// Lock for overflow
-			if unlikely(new_parent_stat.nlink == u16::MAX) {
-				return Err(errno!(EMFILE));
-			}
+		if unlikely(new_stat.get_type() == Some(FileType::Directory) && old_stat.get_type() != Some(FileType::Directory)) {
+			return Err(errno!(EISDIR));
 		}
-	} else if exchange {
+	} else if flags & RENAME_EXCHANGE != 0 {
 		// The destination must exist
 		return Err(errno!(ENOENT));
 	}
-	let _guard = RENAME_LOCK.lock();
-	// Cannot make a directory a child of itself
-	if unlikely(new_entry.is_child_of(&old)) {
-		return Err(errno!(EINVAL));
-	}
-	old_parent
-		.node()
+	old.node()
 		.node_ops
-		.rename(old_parent, &old, &new_parent, &new_entry, flags)?;
-	// In the following code, we create new entries, dropping the previous ones. We do this instead
-	// of atomically swapping nodes because open file descriptions point toward VFS entries and not
-	// toward inodes
-	let new_entry = Arc::new(Entry::new(
-		new_entry.name.try_clone()?,
-		Some(new_parent.clone()),
-		Some(old.node().clone()),
-	))?;
-	// If the source and destination directory is the same, we must lock it only once
-	let same_dir = ptr::eq(Arc::as_ptr(old_parent), Arc::as_ptr(&new_parent));
-	if !exchange {
-		let prev = if same_dir {
-			let mut parent_children = old_parent.children.lock();
-			let prev = parent_children.insert(EntryChild(new_entry))?;
-			parent_children.remove(old.name.as_bytes());
-			prev
-		} else {
-			let (mut old_parent_children, mut new_parent_children) =
-				Mutex::lock_two(&old_parent.children, &new_parent.children);
-			let prev = new_parent_children.insert(EntryChild(new_entry))?;
-			old_parent_children.remove(old.name.as_bytes());
-			prev
-		};
-		// Release the destination node if this was the last reference to it
-		if let Some(ent) = prev {
-			Entry::release(ent.0)?;
-		}
-	} else {
-		let old_entry = Arc::new(Entry::new(
-			old.name.try_clone()?,
-			Some(old_parent.clone()),
-			Some(new_entry.node().clone()),
-		))?;
-		// No need to release the underlying nodes because we know they are still referenced
-		if same_dir {
-			let mut parent_children = old_parent.children.lock();
-			parent_children.insert(EntryChild(old_entry))?;
-			parent_children.insert(EntryChild(new_entry))?;
-		} else {
-			let (mut old_parent_children, mut new_parent_children) =
-				Mutex::lock_two(&old_parent.children, &new_parent.children);
-			old_parent_children.insert(EntryChild(old_entry))?;
-			new_parent_children.insert(EntryChild(new_entry))?;
-		}
-	}
-	Ok(())
+		.rename(old_parent, &old, &new_parent, &new_entry, flags)
 }
