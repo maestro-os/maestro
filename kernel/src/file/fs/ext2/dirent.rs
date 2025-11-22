@@ -111,7 +111,11 @@ impl Dirent {
 		// Init
 		ent.inode = entry_inode;
 		ent.rec_len = rec_len;
-		ent.set_type(superblock, file_type);
+		if superblock.s_feature_incompat & super::REQUIRED_FEATURE_DIRECTORY_TYPE != 0 {
+			ent.set_type(superblock, file_type);
+		} else {
+			ent.file_type = 0;
+		}
 		ent.name[..name_len].copy_from_slice(name);
 		ent.name_len = name_len as u8;
 		Ok(())
@@ -160,6 +164,28 @@ impl Dirent {
 	pub fn get_name(&self, superblock: &Superblock) -> &[u8] {
 		let name_length = self.name_len(superblock);
 		&self.name[..name_length]
+	}
+
+	/// Sets the entry's name.
+	///
+	/// `superblock` is the filesystem's superblock.
+	///
+	/// If `name` is too large to fit in the entry, the function return `false`.
+	pub fn set_name(&mut self, superblock: &Superblock, name: &[u8]) -> bool {
+		if unlikely(name.len() > u8::MAX as usize) {
+			return false;
+		}
+		if (self.rec_len as usize) < NAME_OFF + name.len() {
+			return false;
+		}
+		// Update name length
+		self.name_len = name.len() as u8;
+		if superblock.s_feature_incompat & super::REQUIRED_FEATURE_DIRECTORY_TYPE == 0 {
+			self.name_len = 0;
+		}
+		// Update name
+		self.name[..name.len()].copy_from_slice(name);
+		true
 	}
 
 	/// Returns the file type associated with the entry.

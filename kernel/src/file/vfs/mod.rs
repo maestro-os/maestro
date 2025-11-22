@@ -45,11 +45,7 @@ use crate::{
 	process::Process,
 	sync::{mutex::Mutex, once::OnceInit, spin::Spin},
 };
-use core::{
-	borrow::Borrow,
-	hash::{Hash, Hasher},
-	hint::unlikely,
-};
+use core::{borrow::Borrow, ffi::c_int, hash::{Hash, Hasher}, hint::unlikely, ptr};
 use node::Node;
 use utils::{
 	collections::{
@@ -65,6 +61,11 @@ use utils::{
 	list, list_type,
 	ptr::arc::Arc,
 };
+
+/// [`rename`] flag: Don't replace new file if it exists, return an error instead
+pub const RENAME_NOREPLACE: c_int = 1;
+/// [`rename`] flag: Exchanges old and new file atomically
+pub const RENAME_EXCHANGE: c_int = 2;
 
 /// A child of a VFS entry.
 ///
@@ -179,6 +180,18 @@ impl Entry {
 		buf.rotate_left(off);
 		buf.truncate(buf.len() - off);
 		Ok(PathBuf::new_unchecked(String::from(buf)))
+	}
+
+	/// Recursively checks whether `self` is contained in `e`, stopping at the filesystem's root.
+	pub fn is_child_of(&self, e: &Self) -> bool {
+		let mut cur = self;
+		while let Some(parent) = &cur.parent {
+			if ptr::eq(Arc::as_ptr(parent), e) {
+				return true;
+			}
+			cur = &parent;
+		}
+		false
 	}
 
 	/// Makes `self` a child of its parent, if any. The entry is also inserted in the LRU.
@@ -735,11 +748,20 @@ pub fn symlink(parent: &Arc<Entry>, name: &[u8], target: &[u8], mut stat: Stat) 
 /// - `old` is the file to move
 /// - `new_parent` is the new parent directory for the file
 /// - `new_name` is new name of the file
+/// - `flags` rename-specific flags
 ///
 /// TODO: detail errors
 ///
 /// Other errors can be returned depending on the underlying filesystem.
-pub fn rename(old: Arc<Entry>, new_parent: Arc<Entry>, new_name: &[u8]) -> EResult<()> {
+pub fn rename(
+	old: Arc<Entry>,
+	new_parent: Arc<Entry>,
+	new_name: &[u8],
+	flags: c_int,
+) -> EResult<()> {
+	if unlikely(flags & (RENAME_NOREPLACE | RENAME_EXCHANGE) == RENAME_NOREPLACE | RENAME_EXCHANGE) {
+		return Err(errno!(EINVAL));
+	}
 	// If `old` has no parent, it's the root, so it's a mountpoint
 	let old_parent = old.parent.as_ref().ok_or_else(|| errno!(EBUSY))?;
 	// Parents validation
@@ -764,24 +786,34 @@ pub fn rename(old: Arc<Entry>, new_parent: Arc<Entry>, new_name: &[u8]) -> EResu
 	if !can_write_directory(&new_parent_stat) {
 		return Err(errno!(EACCES));
 	}
-	let new = resolve_entry(&new_parent, new_name)?;
-	// Validation
-	if !new.is_negative() {
-		if mountpoint::from_entry(&new).is_some() {
+	let new_entry = resolve_entry(&new_parent, new_name)?;
+	if let Some(new_node) = &new_entry.node {
+		// Validation
+		if flags & RENAME_NOREPLACE != 0 {
+			return Err(errno!(EEXIST));
+		}
+		if mountpoint::from_entry(&new_entry).is_some() {
 			return Err(errno!(EBUSY));
 		}
-		let new_stat = new.stat();
+		// If the source and destination are the same, do nothing
+		if new_node.inode == old.node().inode {
+			return Ok(());
+		}
+		let new_stat = new_entry.stat();
 		if new_stat.mode & S_ISVTX != 0
 			&& ap.euid != new_stat.uid
 			&& ap.euid != new_parent_stat.uid
 		{
 			return Err(errno!(EACCES));
 		}
+		if unlikely(new_stat.get_type() == Some(FileType::Directory) && old_stat.get_type() != Some(FileType::Directory)) {
+			return Err(errno!(EISDIR));
+		}
+	} else if flags & RENAME_EXCHANGE != 0 {
+		// The destination must exist
+		return Err(errno!(ENOENT));
 	}
-	// Perform rename
-	old.node().node_ops.rename(&old, &new_parent, new_name)?;
-	// Invalidate cache
-	old_parent.children.lock().remove(&*old.name);
-	new_parent.children.lock().remove(new_name);
-	Ok(())
+	old.node()
+		.node_ops
+		.rename(old_parent, &old, &new_parent, &new_entry, flags)
 }

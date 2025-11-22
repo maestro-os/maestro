@@ -606,7 +606,7 @@ impl Ext2INode {
 		fs: &Ext2Fs,
 		entry_inode: u32,
 		name: &[u8],
-		file_type: FileType,
+		file_type: Option<FileType>,
 	) -> EResult<()> {
 		debug_assert_eq!(self.get_type(), FileType::Directory);
 		// If the name is too long, error
@@ -634,7 +634,7 @@ impl Ext2INode {
 				&fs.sp,
 				entry_inode as _,
 				rec_len,
-				Some(file_type),
+				file_type,
 				name,
 			)?;
 			// Create free entries to cover remaining free space
@@ -652,12 +652,49 @@ impl Ext2INode {
 			let buf = unsafe { blk.slice_mut() };
 			buf.fill(0);
 			// Create used entry
-			Dirent::write_new(buf, &fs.sp, entry_inode, rec_len, Some(file_type), name)?;
+			Dirent::write_new(buf, &fs.sp, entry_inode, rec_len, file_type, name)?;
 			// Create free entries to cover remaining free space
 			fill_free_entries(&mut buf[rec_len as usize..], &fs.sp)?;
 			self.set_size(&fs.sp, (blocks as u64 + 1) * blk_size as u64, false);
 			blk.mark_dirty();
 		}
+		Ok(())
+	}
+
+	/// Changes the name of a directory entry.
+	///
+	/// Arguments:
+	/// - `old_name` is the name of the entry to update
+	/// - `new_name` is the new name for the entry
+	///
+	/// If the entry is not large enough to fit the new name, a new entry shall be created and the previous entry is deleted
+	pub fn rename_dirent(
+		&mut self,
+		fs: &Ext2Fs,
+		old_name: &[u8],
+		new_name: &[u8],
+	) -> EResult<()> {
+		debug_assert_eq!(self.get_type(), FileType::Directory);
+		// Get entry offset
+		let (_, off) = self.get_dirent(old_name, fs)?.ok_or_else(|| errno!(ENOENT))?;
+		// Read block
+		let blk_size = fs.sp.get_block_size();
+		let file_blk_off = off / blk_size as u64;
+		let Some(disk_blk_off) = self.translate_blk_off(file_blk_off as _, fs)? else {
+			return Ok(());
+		};
+		let blk = read_block(fs, disk_blk_off.get() as _)?;
+		// Read entry
+		let slice = unsafe { blk.slice_mut() };
+		let inner_off = (off % blk_size as u64) as usize;
+		let ent = Dirent::from_slice(&mut slice[inner_off..], &fs.sp)?;
+		// Attempt to reuse the same entry
+		if ent.set_name(&fs.sp, new_name) {
+			return Ok(());
+		}
+		// The entry cannot fit the new name. Create a new entry and free the previous one
+		self.add_dirent(fs, ent.inode, ent.get_name(&fs.sp), ent.get_type(&fs.sp))?;
+		ent.inode = 0;
 		Ok(())
 	}
 
