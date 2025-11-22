@@ -33,7 +33,7 @@ use crate::{
 		},
 		perm::{ROOT_GID, ROOT_UID},
 		vfs,
-		vfs::{CachePolicy, node::Node},
+		vfs::{CachePolicy, RENAME_NOREPLACE, node::Node},
 	},
 	memory::{
 		cache::RcPage,
@@ -254,16 +254,84 @@ impl NodeOps for DirectoryContent {
 		Ok(())
 	}
 
+	// TODO implement RENAME_EXCHANGE
 	fn rename(
 		&self,
-		_old_parent: &vfs::Entry,
-		_old_entry: &vfs::Entry,
-		_new_parent: &vfs::Entry,
-		_new_entry: &vfs::Entry,
-		_flags: c_int,
+		old_parent: &vfs::Entry,
+		old_entry: &vfs::Entry,
+		new_parent: &vfs::Entry,
+		new_entry: &vfs::Entry,
+		flags: c_int,
 	) -> EResult<()> {
+		let old_parent_node = old_parent.node();
+		let new_parent_node = new_parent.node();
+		let fs = downcast_fs::<TmpFS>(&*old_parent_node.fs.ops);
+		if unlikely(fs.readonly) {
+			return Err(errno!(EROFS));
+		}
+		let new_parent_ops = NodeContent::from_ops(&*new_parent_node.node_ops);
+		let NodeContent::Directory(new_parent_inner) = new_parent_ops else {
+			return Err(errno!(ENOTDIR));
+		};
+		// If source and destination parent are the same
+		if old_parent_node.inode == new_parent_node.inode {
+			// No need to check for cycles, hence no need to lock the rename mutex
+			// TODO rename entry and return
+		}
+		// Prevent concurrent renames to safeguard cycle checking
+		let _rename_guard = fs.rename_lock.lock();
+		// Cannot make a directory a child of itself
+		if unlikely(new_entry.is_child_of(old_entry)) {
+			return Err(errno!(EINVAL));
+		}
+		let mut new_parent_inner = new_parent_inner.lock();
+		let new_ent = new_parent_inner.find_entry_mut(new_name);
+		if new_ent.is_some() && flags & RENAME_NOREPLACE != 0 {
+			return Err(errno!(EEXIST));
+		}
+		// If the source and destination are the same node, do nothing
+		let node = entry.node();
+		if let Some(new_ent) = new_ent && new_ent.node.inode == node.inode {
+			return Ok(());
+		}
+		let node_ops = NodeContent::from_ops(&*node.node_ops);
+		if let NodeContent::Directory(inner) = node_ops {
+			// Update the `..` entry
+			inner.lock().set_inode(b"..", new_parent_node.clone());
+			// Update links count
+			let mut new_parent_stat = new_parent_node.stat.lock();
+			if unlikely(new_parent_stat.nlink == u16::MAX) {
+				return Err(errno!(EMFILE));
+			}
+			new_parent_stat.nlink += 1;
+		}
+		// Insert or replace entry
+		let tmpfs_ent = TmpfsDirEntry {
+			name: Cow::Owned(new_name.try_to_owned()?),
+			node: node.clone(),
+		};
+		if let Some(new_ent) = new_ent {
+			*new_ent = tmpfs_ent;
+			// TODO update links count on previous entry
+		} else {
+			new_parent_inner.insert(tmpfs_ent)?;
+		}
+		drop(new_parent_inner);
+		let old_parent_ops = NodeContent::from_ops(&*old_parent_node.node_ops);
+		let NodeContent::Directory(old_parent_inner) = old_parent_ops else {
+			unreachable!();
+		};
+		// Remove old entry
+		let old_parent = entry.parent.as_ref().unwrap();
+		old_parent_inner.lock().remove(&entry.name);
+		// Update links count
+		if let NodeContent::Directory(_) = node_ops {
+			let mut old_parent_stat = old_parent_node.stat.lock();
+			old_parent_stat.nlink = old_parent_stat.nlink.saturating_sub(1);
+		}
 		Ok(())
 	}
+
 }
 
 #[derive(Debug)]
