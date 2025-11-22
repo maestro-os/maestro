@@ -55,11 +55,6 @@ const W_OK: i32 = 2;
 /// `access` flag: Checks the file can be executed.
 const X_OK: i32 = 1;
 
-/// `rename` flag: Don't replace new path if it exists. Return an error instead.
-const RENAME_NOREPLACE: c_int = 1;
-/// `rename` flag: Exchanges old and new paths atomically.
-const RENAME_EXCHANGE: c_int = 2;
-
 pub fn creat(pathname: UserString, mode: c_int) -> EResult<usize> {
 	do_openat(AT_FDCWD, pathname, O_CREAT | O_WRONLY | O_TRUNC, mode as _)
 }
@@ -573,13 +568,12 @@ pub fn utimensat(
 	do_utimensat(dirfd, pathname, times, flags)
 }
 
-// TODO implement flags
 pub(super) fn do_renameat2(
 	olddirfd: c_int,
 	oldpath: UserString,
 	newdirfd: c_int,
 	newpath: UserString,
-	_flags: c_int,
+	flags: c_int,
 ) -> EResult<usize> {
 	// Get old file
 	let oldpath = oldpath.copy_path_from_user()?;
@@ -593,12 +587,12 @@ pub(super) fn do_renameat2(
 		Resolved::Found(new) => {
 			// cannot move the root of the vfs
 			let new_parent = new.parent.clone().ok_or_else(|| errno!(EBUSY))?;
-			vfs::rename(old, new_parent, &new.name)?;
+			vfs::rename(old, new_parent, &new.name, flags)?;
 		}
 		Resolved::Creatable {
 			parent: new_parent,
 			name: new_name,
-		} => vfs::rename(old, new_parent, new_name)?,
+		} => vfs::rename(old, new_parent, new_name, flags)?,
 	}
 	Ok(0)
 }
