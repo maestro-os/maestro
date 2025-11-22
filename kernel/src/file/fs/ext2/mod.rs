@@ -60,7 +60,7 @@ use crate::{
 			generic_file_read, generic_file_write,
 		},
 		vfs,
-		vfs::node::Node,
+		vfs::{RENAME_NOREPLACE, node::Node},
 	},
 	memory::{
 		cache::{FrameOwner, RcFrame, RcFrameVal},
@@ -72,6 +72,7 @@ use crate::{
 use bgd::BlockGroupDescriptor;
 use core::{
 	cmp::max,
+	ffi::c_int,
 	hint::unlikely,
 	sync::atomic::{
 		AtomicU8, AtomicU16, AtomicU32, AtomicUsize,
@@ -90,6 +91,9 @@ use utils::{
 	math,
 	ptr::arc::Arc,
 };
+use crate::file::fs::ext2::inode::INodeWrap;
+use crate::file::vfs::RENAME_EXCHANGE;
+use crate::sync::mutex::Mutex;
 
 /// The filesystem's magic number.
 const EXT2_MAGIC: u16 = 0xef53;
@@ -266,12 +270,12 @@ impl NodeOps for Ext2NodeOps {
 				return Err(errno!(EMFILE));
 			}
 			// Create the `..` entry
-			target_inode.add_dirent(fs, parent.inode as _, b"..", FileType::Directory)?;
+			target_inode.add_dirent(fs, parent.inode as _, b"..", Some(FileType::Directory))?;
 			parent_inode.i_links_count += 1;
 			parent.stat.lock().nlink = parent_inode.i_links_count;
 		}
 		// Create entry
-		parent_inode.add_dirent(fs, target.inode as _, &ent.name, target_inode.get_type())?;
+		parent_inode.add_dirent(fs, target.inode as _, &ent.name, Some(target_inode.get_type()))?;
 		target_inode.i_links_count += 1;
 		target.stat.lock().nlink = target_inode.i_links_count;
 		parent_inode.mark_dirty();
@@ -378,50 +382,74 @@ impl NodeOps for Ext2NodeOps {
 		Ok(())
 	}
 
-	fn rename(&self, entry: &vfs::Entry, new_parent: &vfs::Entry, new_name: &[u8]) -> EResult<()> {
-		let entry_node = entry.node();
-		let fs = downcast_fs::<Ext2Fs>(&*entry_node.fs.ops);
+	// TODO implement RENAME_EXCHANGE
+	fn rename(
+		&self,
+		old_parent: &vfs::Entry,
+		old_entry: &vfs::Entry,
+		new_parent: &vfs::Entry,
+		new_entry: &vfs::Entry,
+		flags: c_int,
+	) -> EResult<()> {
+		let old_node = old_entry.node();
+		let fs = downcast_fs::<Ext2Fs>(&*old_node.fs.ops);
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
-		// Create new entry
-		let dir = {
-			let new_parent_node = new_parent.node();
+		let old_parent_node = old_parent.node();
+		let new_parent_node = new_parent.node();
+		// If source and destination parent are the same
+		if old_parent_node.inode == new_parent_node.inode {
+			// No need to check for cycles, hence no need to lock the rename mutex
+			let mut parent_inode = Ext2INode::get(new_parent_node, fs)?;
+			return parent_inode.rename_dirent(fs, &old_entry.name, &new_entry.name);
+		}
+		// Prevent concurrent renames to safeguard cycle checking
+		let _rename_guard = fs.rename_lock.lock();
+		// Cannot make a directory a child of itself
+		if unlikely(new_entry.is_child_of(old_entry)) {
+			return Err(errno!(EINVAL));
+		}
+		// Insert or replace new entry
+		{
 			let mut new_parent_inode = Ext2INode::get(new_parent_node, fs)?;
-			// Check the entry does not exist
-			if new_parent_inode.get_dirent(new_name, fs)?.is_some() {
-				return Err(errno!(EEXIST));
+			if let Some((prev_inode, off)) = new_parent_inode.get_dirent(&new_entry.name, fs)? {
+				// TODO if prev_inode is a non-empty directory, fail
+				new_parent_inode.set_dirent_inode(off, old_node.inode, fs)?; // TODO update file type
+				if flags & RENAME_EXCHANGE != 0 {
+					// TODO set prev_inode to old_parent
+				} else {
+					// TODO decrement reference counter to prev_inode
+				}
+			} else {
+				new_parent_inode.add_dirent(fs, old_node.inode as _, &new_entry.name, old_node.stat().get_type())?;
 			}
-			let mut inode = Ext2INode::get(entry.node(), fs)?;
-			let dir = inode.get_type() == FileType::Directory;
-			// Update the `..` entry
-			if dir {
+			let mut old_inode = Ext2INode::get(old_node, fs)?;
+			let old_is_dir = old_inode.get_type() == FileType::Directory;
+			if old_is_dir {
 				if unlikely(new_parent_inode.i_links_count == u16::MAX) {
 					return Err(errno!(EMFILE));
 				}
-				let (_, off) = inode
+				let (_, off) = old_inode
 					.get_dirent(b"..", fs)?
 					.ok_or_else(|| errno!(EUCLEAN))?;
-				inode.set_dirent_inode(off, new_parent_node.inode, fs)?;
+				old_inode.set_dirent_inode(off, new_parent.node().inode, fs)?;
+				old_inode.mark_dirty();
 				// Update links count
 				new_parent_inode.i_links_count += 1;
 				new_parent.node().stat.lock().nlink = new_parent_inode.i_links_count;
 			}
-			new_parent_inode.add_dirent(fs, entry_node.inode as _, new_name, inode.get_type())?;
 			new_parent_inode.mark_dirty();
-			inode.mark_dirty();
-			dir
-		};
+		}
 		// Remove old entry
-		let old_parent = entry.parent.as_ref().unwrap();
-		let old_parent_node = old_parent.node();
 		let mut old_parent_inode = Ext2INode::get(old_parent_node, fs)?;
 		let (_, off) = old_parent_inode
-			.get_dirent(&entry.name, fs)?
+			.get_dirent(&old_entry.name, fs)?
 			.ok_or_else(|| errno!(ENOENT))?;
 		old_parent_inode.set_dirent_inode(off, 0, fs)?;
 		// Update links count
-		if dir {
+		if old_is_dir {
+			// `..` does not point to `old_parent_inode` anymore
 			old_parent_inode.i_links_count = old_parent_inode.i_links_count.saturating_sub(1);
 			old_parent_node.stat.lock().nlink = old_parent_inode.i_links_count;
 		}
@@ -692,6 +720,9 @@ struct Ext2Fs {
 	sp: RcFrameVal<Superblock>,
 	/// Tells whether the filesystem is mounted as read-only
 	readonly: bool,
+
+	/// Lock when renaming a file, to avoid concurrency issues when looking for cycles.
+	rename_lock: Mutex<()>,
 }
 
 impl Ext2Fs {
