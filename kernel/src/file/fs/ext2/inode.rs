@@ -29,6 +29,7 @@ use core::{
 	mem,
 	num::NonZeroU32,
 	ops::{Deref, DerefMut},
+	ptr,
 	sync::atomic::{AtomicU32, Ordering::Relaxed},
 };
 use macros::AnyRepr;
@@ -728,16 +729,14 @@ impl Ext2INode {
 	/// - `old_name` is the name of the entry to update
 	/// - `new_name` is the new name for the entry
 	///
-	/// If the entry is not large enough to fit the new name, a new entry shall be created and the previous entry is deleted
-	pub fn rename_dirent(
-		&mut self,
-		fs: &Ext2Fs,
-		old_name: &[u8],
-		new_name: &[u8],
-	) -> EResult<()> {
+	/// If the entry is not large enough to fit the new name, a new entry shall be created and the
+	/// previous entry is deleted
+	pub fn rename_dirent(&mut self, fs: &Ext2Fs, old_name: &[u8], new_name: &[u8]) -> EResult<()> {
 		debug_assert_eq!(self.get_type(), FileType::Directory);
 		// Get entry offset
-		let (_, off) = self.get_dirent(old_name, fs)?.ok_or_else(|| errno!(ENOENT))?;
+		let (_, off) = self
+			.get_dirent(old_name, fs)?
+			.ok_or_else(|| errno!(ENOENT))?;
 		// Read block
 		let blk_size = fs.sp.get_block_size();
 		let file_blk_off = off / blk_size as u64;
