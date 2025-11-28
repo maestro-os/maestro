@@ -291,7 +291,9 @@ impl NodeOps for DirectoryContent {
 		}
 		// If the source and destination are the same node, do nothing
 		let node = entry.node();
-		if let Some(new_ent) = new_ent && new_ent.node.inode == node.inode {
+		if let Some(new_ent) = new_ent
+			&& new_ent.node.inode == node.inode
+		{
 			return Ok(());
 		}
 		let node_ops = NodeContent::from_ops(&*node.node_ops);
