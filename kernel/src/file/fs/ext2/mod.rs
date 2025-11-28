@@ -60,13 +60,13 @@ use crate::{
 			generic_file_read, generic_file_write,
 		},
 		vfs,
-		vfs::{RENAME_NOREPLACE, node::Node},
+		vfs::{RENAME_EXCHANGE, node::Node},
 	},
 	memory::{
 		cache::{FrameOwner, RcFrame, RcFrameVal},
 		user::UserSlice,
 	},
-	sync::spin::Spin,
+	sync::{mutex::Mutex, spin::Spin},
 	time::clock::{Clock, current_time_sec},
 };
 use bgd::BlockGroupDescriptor;
@@ -91,9 +91,6 @@ use utils::{
 	math,
 	ptr::arc::Arc,
 };
-use crate::file::fs::ext2::inode::INodeWrap;
-use crate::file::vfs::RENAME_EXCHANGE;
-use crate::sync::mutex::Mutex;
 
 /// The filesystem's magic number.
 const EXT2_MAGIC: u16 = 0xef53;
@@ -199,7 +196,7 @@ struct Ext2NodeOps;
 impl NodeOps for Ext2NodeOps {
 	fn lookup_entry<'n>(&self, dir: &Node, ent: &mut vfs::Entry) -> EResult<()> {
 		let fs = downcast_fs::<Ext2Fs>(&*dir.fs.ops);
-		let inode_ = Ext2INode::get(dir, fs)?;
+		let inode_ = Ext2INode::lock(dir, fs)?;
 		ent.node = inode_
 			.get_dirent(&ent.name, fs)?
 			.map(|(inode, ..)| -> EResult<_> {
@@ -211,7 +208,7 @@ impl NodeOps for Ext2NodeOps {
 						Box::new(Ext2NodeOps)?,
 						Box::new(Ext2FileOps)?,
 					);
-					let stat = Ext2INode::get(&node, fs)?.stat(&fs.sp);
+					let stat = Ext2INode::lock(&node, fs)?.stat(&fs.sp);
 					node.stat = Spin::new(stat);
 					Ok(Arc::new(node)?)
 				})
@@ -222,7 +219,7 @@ impl NodeOps for Ext2NodeOps {
 
 	fn iter_entries(&self, dir: &Node, ctx: &mut DirContext) -> EResult<()> {
 		let fs = downcast_fs::<Ext2Fs>(&*dir.fs.ops);
-		let inode = Ext2INode::get(dir, fs)?;
+		let inode = Ext2INode::lock(dir, fs)?;
 		if inode.get_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
 		}
@@ -256,12 +253,12 @@ impl NodeOps for Ext2NodeOps {
 		}
 		let target = ent.node();
 		// Parent inode
-		let mut parent_inode = Ext2INode::get(&parent, fs)?;
+		let mut parent_inode = Ext2INode::lock(&parent, fs)?;
 		// Check the entry does not exist
 		if parent_inode.get_dirent(&ent.name, fs)?.is_some() {
 			return Err(errno!(EEXIST));
 		}
-		let mut target_inode = Ext2INode::get(target, fs)?;
+		let mut target_inode = Ext2INode::lock(target, fs)?;
 		if unlikely(target_inode.i_links_count == u16::MAX) {
 			return Err(errno!(EMFILE));
 		}
@@ -275,7 +272,12 @@ impl NodeOps for Ext2NodeOps {
 			parent.stat.lock().nlink = parent_inode.i_links_count;
 		}
 		// Create entry
-		parent_inode.add_dirent(fs, target.inode as _, &ent.name, Some(target_inode.get_type()))?;
+		parent_inode.add_dirent(
+			fs,
+			target.inode as _,
+			&ent.name,
+			Some(target_inode.get_type()),
+		)?;
 		target_inode.i_links_count += 1;
 		target.stat.lock().nlink = target_inode.i_links_count;
 		parent_inode.mark_dirty();
@@ -292,7 +294,7 @@ impl NodeOps for Ext2NodeOps {
 			return Err(errno!(EINVAL));
 		}
 		// The parent inode
-		let mut parent_ = Ext2INode::get(parent, fs)?;
+		let mut parent_ = Ext2INode::lock(parent, fs)?;
 		// Check the parent file is a directory
 		if parent_.get_type() != FileType::Directory {
 			return Err(errno!(ENOTDIR));
@@ -301,7 +303,7 @@ impl NodeOps for Ext2NodeOps {
 		let (_, remove_off) = parent_
 			.get_dirent(&ent.name, fs)?
 			.ok_or_else(|| errno!(ENOENT))?;
-		let mut target = Ext2INode::get(ent.node(), fs)?;
+		let mut target = Ext2INode::lock(ent.node(), fs)?;
 		// Remove the directory entry
 		parent_.set_dirent_inode(remove_off, 0, fs)?;
 		target.i_links_count = target.i_links_count.saturating_sub(1);
@@ -325,7 +327,7 @@ impl NodeOps for Ext2NodeOps {
 
 	fn readlink(&self, node: &Node, buf: UserSlice<u8>) -> EResult<usize> {
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		let inode_ = Ext2INode::get(node, fs)?;
+		let inode_ = Ext2INode::lock(node, fs)?;
 		if inode_.get_type() != FileType::Link {
 			return Err(errno!(EINVAL));
 		}
@@ -353,7 +355,7 @@ impl NodeOps for Ext2NodeOps {
 			return Err(errno!(ENAMETOOLONG));
 		}
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		let mut inode_ = Ext2INode::get(node, fs)?;
+		let mut inode_ = Ext2INode::lock(node, fs)?;
 		if inode_.get_type() != FileType::Link {
 			return Err(errno!(EINVAL));
 		}
@@ -382,7 +384,6 @@ impl NodeOps for Ext2NodeOps {
 		Ok(())
 	}
 
-	// TODO implement RENAME_EXCHANGE
 	fn rename(
 		&self,
 		old_parent: &vfs::Entry,
@@ -401,7 +402,7 @@ impl NodeOps for Ext2NodeOps {
 		// If source and destination parent are the same
 		if old_parent_node.inode == new_parent_node.inode {
 			// No need to check for cycles, hence no need to lock the rename mutex
-			let mut parent_inode = Ext2INode::get(new_parent_node, fs)?;
+			let mut parent_inode = Ext2INode::lock(new_parent_node, fs)?;
 			return parent_inode.rename_dirent(fs, &old_entry.name, &new_entry.name);
 		}
 		// Prevent concurrent renames to safeguard cycle checking
@@ -410,57 +411,92 @@ impl NodeOps for Ext2NodeOps {
 		if unlikely(new_entry.is_child_of(old_entry)) {
 			return Err(errno!(EINVAL));
 		}
+		let (mut old_parent_inode, mut new_parent_inode) =
+			Ext2INode::lock_two(old_parent_node, new_parent_node, fs)?;
+		let mut old_inode = Ext2INode::lock(old_node, fs)?;
+		let old_is_dir = old_inode.get_type() == FileType::Directory;
 		// Insert or replace new entry
-		{
-			let mut new_parent_inode = Ext2INode::get(new_parent_node, fs)?;
-			if let Some((prev_inode, off)) = new_parent_inode.get_dirent(&new_entry.name, fs)? {
-				// TODO if prev_inode is a non-empty directory, fail
-				new_parent_inode.set_dirent_inode(off, old_node.inode, fs)?; // TODO update file type
-				if flags & RENAME_EXCHANGE != 0 {
-					// TODO set prev_inode to old_parent
-				} else {
-					// TODO decrement reference counter to prev_inode
+		if let Some((_, off)) = new_parent_inode.get_dirent(&new_entry.name, fs)? {
+			// Destination validation
+			let new_node = new_entry.node();
+			let mut new_inode = Ext2INode::lock(new_node, fs)?;
+			let new_is_dir = new_inode.get_type() != FileType::Directory;
+			if old_is_dir {
+				if unlikely(new_is_dir) {
+					return Err(errno!(ENOTDIR));
+				}
+				if unlikely(!new_inode.is_directory_empty(fs)?) {
+					return Err(errno!(ENOTEMPTY));
+				}
+			}
+			// Update entry
+			new_parent_inode.set_dirent_inode(off, old_node.inode, fs)?; // TODO update file type
+			if flags & RENAME_EXCHANGE != 0 {
+				// Set entry in the old directory. We are guaranteed that the entry already exists
+				let (_, off) = old_parent_inode
+					.get_dirent(&old_entry.name, fs)?
+					.ok_or_else(|| errno!(EUCLEAN))?;
+				old_parent_inode.set_dirent_inode(off, new_node.inode, fs)?; // TODO update file type
+				if new_is_dir {
+					let (_, off) = new_inode
+						.get_dirent(b"..", fs)?
+						.ok_or_else(|| errno!(EUCLEAN))?;
+					new_inode.set_dirent_inode(off, old_parent_node.inode, fs)?;
+					new_inode.mark_dirty();
 				}
 			} else {
-				new_parent_inode.add_dirent(fs, old_node.inode as _, &new_entry.name, old_node.stat().get_type())?;
-			}
-			let mut old_inode = Ext2INode::get(old_node, fs)?;
-			let old_is_dir = old_inode.get_type() == FileType::Directory;
-			if old_is_dir {
-				if unlikely(new_parent_inode.i_links_count == u16::MAX) {
-					return Err(errno!(EMFILE));
+				// Decrement reference counter to the previous inode
+				new_inode.i_links_count = new_inode.i_links_count.saturating_sub(1);
+				new_node.stat.lock().nlink = new_inode.i_links_count;
+				if new_is_dir {
+					let (_, off) = new_inode
+						.get_dirent(b"..", fs)?
+						.ok_or_else(|| errno!(EUCLEAN))?;
+					new_inode.set_dirent_inode(off, 0, fs)?;
+					// Update links count
+					old_parent_inode.i_links_count =
+						old_parent_inode.i_links_count.saturating_sub(1);
 				}
+				new_inode.mark_dirty();
+				// Remove old entry
+				let (_, off) = old_parent_inode
+					.get_dirent(&old_entry.name, fs)?
+					.ok_or_else(|| errno!(EUCLEAN))?;
+				old_parent_inode.set_dirent_inode(off, 0, fs)?;
+			}
+		} else {
+			if old_is_dir && unlikely(new_parent_inode.i_links_count == u16::MAX) {
+				return Err(errno!(EMFILE));
+			}
+			new_parent_inode.add_dirent(
+				fs,
+				old_node.inode as _,
+				&new_entry.name,
+				old_node.stat().get_type(),
+			)?;
+			if old_is_dir {
+				// Update `..` entry
 				let (_, off) = old_inode
 					.get_dirent(b"..", fs)?
 					.ok_or_else(|| errno!(EUCLEAN))?;
-				old_inode.set_dirent_inode(off, new_parent.node().inode, fs)?;
+				old_inode.set_dirent_inode(off, new_parent_node.inode, fs)?;
 				old_inode.mark_dirty();
-				// Update links count
+				// Update links counts
 				new_parent_inode.i_links_count += 1;
-				new_parent.node().stat.lock().nlink = new_parent_inode.i_links_count;
 			}
-			new_parent_inode.mark_dirty();
-		}
-		// Remove old entry
-		let mut old_parent_inode = Ext2INode::get(old_parent_node, fs)?;
-		let (_, off) = old_parent_inode
-			.get_dirent(&old_entry.name, fs)?
-			.ok_or_else(|| errno!(ENOENT))?;
-		old_parent_inode.set_dirent_inode(off, 0, fs)?;
-		// Update links count
-		if old_is_dir {
-			// `..` does not point to `old_parent_inode` anymore
-			old_parent_inode.i_links_count = old_parent_inode.i_links_count.saturating_sub(1);
-			old_parent_node.stat.lock().nlink = old_parent_inode.i_links_count;
 		}
 		old_parent_inode.mark_dirty();
+		new_parent_inode.mark_dirty();
+		// Update links counts
+		new_parent.node().stat.lock().nlink = new_parent_inode.i_links_count;
+		old_parent_node.stat.lock().nlink = old_parent_inode.i_links_count;
 		Ok(())
 	}
 
 	fn read_page(&self, node: &Arc<Node>, off: u64) -> EResult<RcFrame> {
 		node.mapped.get_or_insert_frame(off, 0, || {
 			let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-			let inode = Ext2INode::get(node, fs)?;
+			let inode = Ext2INode::lock(node, fs)?;
 			let off: u32 = off.try_into().map_err(|_| errno!(EOVERFLOW))?;
 			let blk_off = inode
 				.translate_blk_off(off, fs)?
@@ -478,7 +514,7 @@ impl NodeOps for Ext2NodeOps {
 
 	fn set_stat(&self, node: &Node, stat: &Stat) -> EResult<()> {
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		let mut inode_ = Ext2INode::get(node, fs)?;
+		let mut inode_ = Ext2INode::lock(node, fs)?;
 		inode_.set_permissions(stat.mode);
 		inode_.i_uid = stat.uid;
 		inode_.i_gid = stat.gid;
@@ -500,7 +536,7 @@ impl FileOps for Ext2FileOps {
 		let node = file.node();
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
 		{
-			let inode_ = Ext2INode::get(node, fs)?;
+			let inode_ = Ext2INode::lock(node, fs)?;
 			if inode_.get_type() != FileType::Regular {
 				return Err(errno!(EINVAL));
 			}
@@ -517,7 +553,7 @@ impl FileOps for Ext2FileOps {
 		}
 		// TODO replace by filetype-specific FileOps
 		{
-			let inode_ = Ext2INode::get(node, fs)?;
+			let inode_ = Ext2INode::lock(node, fs)?;
 			if inode_.get_type() != FileType::Regular {
 				return Err(errno!(EINVAL));
 			}
@@ -532,7 +568,7 @@ impl FileOps for Ext2FileOps {
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
-		let mut inode_ = Ext2INode::get(node, fs)?;
+		let mut inode_ = Ext2INode::lock(node, fs)?;
 		// TODO replace by filetype-specific FileOps
 		if inode_.get_type() != FileType::Regular {
 			return Err(errno!(EINVAL));
@@ -912,7 +948,7 @@ impl FilesystemOps for Ext2Fs {
 				Box::new(Ext2NodeOps)?,
 				Box::new(Ext2FileOps)?,
 			);
-			let stat = Ext2INode::get(&node, self)?.stat(&self.sp);
+			let stat = Ext2INode::lock(&node, self)?.stat(&self.sp);
 			node.stat = Spin::new(stat);
 			Ok(Arc::new(node)?)
 		})
@@ -933,7 +969,7 @@ impl FilesystemOps for Ext2Fs {
 			Box::new(Ext2NodeOps)?,
 			Box::new(Ext2FileOps)?,
 		);
-		let mut inode = Ext2INode::get(&node, self)?;
+		let mut inode = Ext2INode::lock(&node, self)?;
 		*inode = Ext2INode {
 			i_mode: stat.mode as _,
 			i_uid: stat.uid,
@@ -958,7 +994,7 @@ impl FilesystemOps for Ext2Fs {
 		match file_type {
 			FileType::Directory => {
 				// Create the `.` entry
-				inode.add_dirent(self, inode_index, b".", FileType::Directory)?;
+				inode.add_dirent(self, inode_index, b".", Some(FileType::Directory))?;
 				inode.i_links_count += 1;
 			}
 			FileType::BlockDevice | FileType::CharDevice => {
@@ -981,7 +1017,7 @@ impl FilesystemOps for Ext2Fs {
 		if unlikely(self.readonly) {
 			return Err(errno!(EROFS));
 		}
-		let mut inode = Ext2INode::get(node, self)?;
+		let mut inode = Ext2INode::lock(node, self)?;
 		// Remove the inode
 		inode.i_links_count = 0;
 		let ts = current_time_sec(Clock::Monotonic);
@@ -1068,6 +1104,8 @@ impl FilesystemType for Ext2FsType {
 				dev,
 				sp,
 				readonly,
+
+				rename_lock: Mutex::new(()),
 			})?,
 		)?)
 	}
