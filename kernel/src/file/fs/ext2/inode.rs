@@ -31,6 +31,7 @@ use core::{
 	mem,
 	num::NonZeroU32,
 	ops::{Deref, DerefMut},
+	ptr,
 	sync::atomic::{AtomicU32, Ordering::Relaxed},
 };
 use macros::AnyRepr;
@@ -264,8 +265,7 @@ pub struct Ext2INode {
 }
 
 impl Ext2INode {
-	/// Returns the `i`th inode on the filesystem.
-	pub fn get<'n>(node: &'n Node, fs: &Ext2Fs) -> EResult<INodeWrap<'n>> {
+	fn lock_impl(node: &Node, fs: &Ext2Fs) -> EResult<RcFrameVal<Self>> {
 		let i: u32 = node.inode.try_into().map_err(|_| errno!(EOVERFLOW))?;
 		// Check the index is correct
 		let Some(i) = i.checked_sub(1) else {
@@ -285,10 +285,55 @@ impl Ext2INode {
 		let off = i as u64 % (blk_size / inode_size);
 		// Adapt to the size of an inode
 		let off = off * (inode_size / 128);
+		Ok(RcFrameVal::new(blk, off as _))
+	}
+
+	/// Returns filesystem's inode associated with `node`.
+	///
+	/// This function locks the [`Node`]'s mutex.
+	pub fn lock<'n>(node: &'n Node, fs: &Ext2Fs) -> EResult<INodeWrap<'n>> {
 		Ok(INodeWrap {
 			_guard: node.lock.lock(),
-			inode: RcFrameVal::new(blk, off as _),
+			inode: Self::lock_impl(node, fs)?,
 		})
+	}
+
+	/// Returns filesystem's inodes associated with `node0` and `node1`.
+	///
+	/// This function locks the [`Node`]'s mutex.
+	pub fn lock_two<'a, 'b>(
+		node0: &'a Node,
+		node1: &'b Node,
+		fs: &Ext2Fs,
+	) -> EResult<(INodeWrap<'a>, INodeWrap<'b>)> {
+		// Make sure nodes are always locked in the same order
+		if ptr::from_ref(node0) < ptr::from_ref(node1) {
+			let n0 = node0.lock.lock();
+			let n1 = node1.lock.lock();
+			Ok((
+				INodeWrap {
+					_guard: n0,
+					inode: Self::lock_impl(node0, fs)?,
+				},
+				INodeWrap {
+					_guard: n1,
+					inode: Self::lock_impl(node1, fs)?,
+				},
+			))
+		} else {
+			let n1 = node1.lock.lock();
+			let n0 = node0.lock.lock();
+			Ok((
+				INodeWrap {
+					_guard: n0,
+					inode: Self::lock_impl(node0, fs)?,
+				},
+				INodeWrap {
+					_guard: n1,
+					inode: Self::lock_impl(node1, fs)?,
+				},
+			))
+		}
 	}
 
 	/// Returns the file's status.
@@ -667,16 +712,14 @@ impl Ext2INode {
 	/// - `old_name` is the name of the entry to update
 	/// - `new_name` is the new name for the entry
 	///
-	/// If the entry is not large enough to fit the new name, a new entry shall be created and the previous entry is deleted
-	pub fn rename_dirent(
-		&mut self,
-		fs: &Ext2Fs,
-		old_name: &[u8],
-		new_name: &[u8],
-	) -> EResult<()> {
+	/// If the entry is not large enough to fit the new name, a new entry shall be created and the
+	/// previous entry is deleted
+	pub fn rename_dirent(&mut self, fs: &Ext2Fs, old_name: &[u8], new_name: &[u8]) -> EResult<()> {
 		debug_assert_eq!(self.get_type(), FileType::Directory);
 		// Get entry offset
-		let (_, off) = self.get_dirent(old_name, fs)?.ok_or_else(|| errno!(ENOENT))?;
+		let (_, off) = self
+			.get_dirent(old_name, fs)?
+			.ok_or_else(|| errno!(ENOENT))?;
 		// Read block
 		let blk_size = fs.sp.get_block_size();
 		let file_blk_off = off / blk_size as u64;
