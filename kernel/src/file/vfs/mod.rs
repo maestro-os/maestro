@@ -45,7 +45,13 @@ use crate::{
 	process::Process,
 	sync::{mutex::Mutex, once::OnceInit, spin::Spin},
 };
-use core::{borrow::Borrow, ffi::c_int, hash::{Hash, Hasher}, hint::unlikely, ptr};
+use core::{
+	borrow::Borrow,
+	ffi::c_int,
+	hash::{Hash, Hasher},
+	hint::unlikely,
+	ptr,
+};
 use node::Node;
 use utils::{
 	collections::{
@@ -759,7 +765,8 @@ pub fn rename(
 	new_name: &[u8],
 	flags: c_int,
 ) -> EResult<()> {
-	if unlikely(flags & (RENAME_NOREPLACE | RENAME_EXCHANGE) == RENAME_NOREPLACE | RENAME_EXCHANGE) {
+	if unlikely(flags & (RENAME_NOREPLACE | RENAME_EXCHANGE) == RENAME_NOREPLACE | RENAME_EXCHANGE)
+	{
 		return Err(errno!(EINVAL));
 	}
 	// If `old` has no parent, it's the root, so it's a mountpoint
@@ -806,7 +813,9 @@ pub fn rename(
 		{
 			return Err(errno!(EACCES));
 		}
-		if unlikely(new_stat.get_type() == Some(FileType::Directory) && old_stat.get_type() != Some(FileType::Directory)) {
+		if old_stat.get_type() == Some(FileType::Directory)
+			&& unlikely(new_stat.get_type() != Some(FileType::Directory))
+		{
 			return Err(errno!(EISDIR));
 		}
 	} else if flags & RENAME_EXCHANGE != 0 {
@@ -815,5 +824,8 @@ pub fn rename(
 	}
 	old.node()
 		.node_ops
-		.rename(old_parent, &old, &new_parent, &new_entry, flags)
+		.rename(old_parent, &old, &new_parent, &new_entry, flags)?;
+	// Remove the destination node if this was the last reference to it
+	Entry::release(new_entry)?;
+	Ok(())
 }
