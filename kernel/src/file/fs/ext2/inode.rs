@@ -24,14 +24,13 @@ use super::{
 use crate::{
 	file::{FileType, INode, Mode, Stat, fs::ext2::dirent::DirentIterator, vfs::node::Node},
 	memory::cache::{RcFrame, RcFrameVal},
-	sync::mutex::MutexGuard,
+	sync::mutex::{Mutex, MutexGuard},
 };
 use core::{
 	hint::unlikely,
 	mem,
 	num::NonZeroU32,
 	ops::{Deref, DerefMut},
-	ptr,
 	sync::atomic::{AtomicU32, Ordering::Relaxed},
 };
 use macros::AnyRepr;
@@ -306,34 +305,17 @@ impl Ext2INode {
 		node1: &'b Node,
 		fs: &Ext2Fs,
 	) -> EResult<(INodeWrap<'a>, INodeWrap<'b>)> {
-		// Make sure nodes are always locked in the same order
-		if ptr::from_ref(node0) < ptr::from_ref(node1) {
-			let n0 = node0.lock.lock();
-			let n1 = node1.lock.lock();
-			Ok((
-				INodeWrap {
-					_guard: n0,
-					inode: Self::lock_impl(node0, fs)?,
-				},
-				INodeWrap {
-					_guard: n1,
-					inode: Self::lock_impl(node1, fs)?,
-				},
-			))
-		} else {
-			let n1 = node1.lock.lock();
-			let n0 = node0.lock.lock();
-			Ok((
-				INodeWrap {
-					_guard: n0,
-					inode: Self::lock_impl(node0, fs)?,
-				},
-				INodeWrap {
-					_guard: n1,
-					inode: Self::lock_impl(node1, fs)?,
-				},
-			))
-		}
+		let (n0, n1) = Mutex::lock_two(&node0.lock, &node1.lock);
+		Ok((
+			INodeWrap {
+				_guard: n0,
+				inode: Self::lock_impl(node0, fs)?,
+			},
+			INodeWrap {
+				_guard: n1,
+				inode: Self::lock_impl(node1, fs)?,
+			},
+		))
 	}
 
 	/// Returns the file's status.
