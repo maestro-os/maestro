@@ -33,7 +33,7 @@ use crate::{
 		},
 		perm::{ROOT_GID, ROOT_UID},
 		vfs,
-		vfs::{CachePolicy, RENAME_NOREPLACE, node::Node},
+		vfs::{CachePolicy, RENAME_EXCHANGE, RENAME_NOREPLACE, node::Node},
 	},
 	memory::{
 		cache::RcPage,
@@ -42,7 +42,7 @@ use crate::{
 	sync::{atomic::AtomicU64, mutex::Mutex},
 	time::clock::{Clock, current_time_sec},
 };
-use core::{any::Any, ffi::c_int, hint::unlikely, sync::atomic::Ordering::Release};
+use core::{any::Any, ffi::c_int, hint::unlikely, mem, sync::atomic::Ordering::Release};
 use utils::{
 	boxed::Box,
 	collections::{path::PathBuf, string::String, vec::Vec},
@@ -254,7 +254,6 @@ impl NodeOps for DirectoryContent {
 		Ok(())
 	}
 
-	// TODO implement RENAME_EXCHANGE
 	fn rename(
 		&self,
 		old_parent: &vfs::Entry,
@@ -263,12 +262,17 @@ impl NodeOps for DirectoryContent {
 		new_entry: &vfs::Entry,
 		flags: c_int,
 	) -> EResult<()> {
+		let old_node = old_entry.node();
 		let old_parent_node = old_parent.node();
 		let new_parent_node = new_parent.node();
 		let fs = downcast_fs::<TmpFS>(&*old_parent_node.fs.ops);
 		if unlikely(fs.readonly) {
 			return Err(errno!(EROFS));
 		}
+		let old_parent_ops = NodeContent::from_ops(&*old_parent_node.node_ops);
+		let NodeContent::Directory(old_parent_inner) = old_parent_ops else {
+			unreachable!();
+		};
 		let new_parent_ops = NodeContent::from_ops(&*new_parent_node.node_ops);
 		let NodeContent::Directory(new_parent_inner) = new_parent_ops else {
 			return Err(errno!(ENOTDIR));
@@ -284,20 +288,32 @@ impl NodeOps for DirectoryContent {
 		if unlikely(new_entry.is_child_of(old_entry)) {
 			return Err(errno!(EINVAL));
 		}
-		let mut new_parent_inner = new_parent_inner.lock();
-		let new_ent = new_parent_inner.find_entry_mut(new_name);
-		if new_ent.is_some() && flags & RENAME_NOREPLACE != 0 {
-			return Err(errno!(EEXIST));
+		let (mut old_parent_inner, mut new_parent_inner) =
+			Mutex::lock_two(old_parent_inner, new_parent_inner);
+		let old_node_ops = NodeContent::from_ops(&*old_node.node_ops);
+		if let Some(new_ent) = new_parent_inner.find_entry_mut(&new_entry.name) {
+			// Update entry
+			let prev = mem::replace(&mut new_ent.node, old_node.clone());
+			if flags & RENAME_EXCHANGE != 0 {
+				// Set entry in the old directory. We are guaranteed that the entry already exists
+				let old_ent = old_parent_inner
+					.find_entry_mut(&old_entry.name)
+					.ok_or_else(|| errno!(EUCLEAN))?;
+				old_ent.node = prev;
+			} else {
+				// Decrement reference counter to the previous inode
+				let stat = prev.stat.lock();
+				stat.nlink = stat.nlink.saturating_sub(1);
+			}
+		} else {
+			// Insert entry
+			let ent = TmpfsDirEntry {
+				name: Cow::Owned(new_entry.name.try_to_owned()?),
+				node: node.clone(),
+			};
+			// TODO
 		}
-		// If the source and destination are the same node, do nothing
-		let node = entry.node();
-		if let Some(new_ent) = new_ent
-			&& new_ent.node.inode == node.inode
-		{
-			return Ok(());
-		}
-		let node_ops = NodeContent::from_ops(&*node.node_ops);
-		if let NodeContent::Directory(inner) = node_ops {
+		if let NodeContent::Directory(inner) = old_node_ops {
 			// Update the `..` entry
 			inner.lock().set_inode(b"..", new_parent_node.clone());
 			// Update links count
@@ -307,11 +323,6 @@ impl NodeOps for DirectoryContent {
 			}
 			new_parent_stat.nlink += 1;
 		}
-		// Insert or replace entry
-		let tmpfs_ent = TmpfsDirEntry {
-			name: Cow::Owned(new_name.try_to_owned()?),
-			node: node.clone(),
-		};
 		if let Some(new_ent) = new_ent {
 			*new_ent = tmpfs_ent;
 			// TODO update links count on previous entry
@@ -319,15 +330,11 @@ impl NodeOps for DirectoryContent {
 			new_parent_inner.insert(tmpfs_ent)?;
 		}
 		drop(new_parent_inner);
-		let old_parent_ops = NodeContent::from_ops(&*old_parent_node.node_ops);
-		let NodeContent::Directory(old_parent_inner) = old_parent_ops else {
-			unreachable!();
-		};
 		// Remove old entry
 		let old_parent = entry.parent.as_ref().unwrap();
 		old_parent_inner.lock().remove(&entry.name);
 		// Update links count
-		if let NodeContent::Directory(_) = node_ops {
+		if let NodeContent::Directory(_) = old_node_ops {
 			let mut old_parent_stat = old_parent_node.stat.lock();
 			old_parent_stat.nlink = old_parent_stat.nlink.saturating_sub(1);
 		}

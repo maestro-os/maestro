@@ -29,7 +29,6 @@ use core::{
 	mem,
 	num::NonZeroU32,
 	ops::{Deref, DerefMut},
-	ptr,
 	sync::atomic::{AtomicU32, Ordering::Relaxed},
 };
 use macros::AnyRepr;
