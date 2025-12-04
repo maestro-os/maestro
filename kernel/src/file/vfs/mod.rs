@@ -847,7 +847,8 @@ pub fn rename(
 		// The destination must exist
 		return Err(errno!(ENOENT));
 	}
-	old.node()
+	old_parent
+		.node()
 		.node_ops
 		.rename(old_parent, &old, &new_parent, &new_entry, flags)?;
 	// Remove the destination node if this was the last reference to it
