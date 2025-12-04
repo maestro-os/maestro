@@ -195,7 +195,7 @@ impl Entry {
 			if ptr::eq(Arc::as_ptr(parent), e) {
 				return true;
 			}
-			cur = &parent;
+			cur = parent;
 		}
 		false
 	}
