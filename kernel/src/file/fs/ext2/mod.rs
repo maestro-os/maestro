@@ -60,7 +60,7 @@ use crate::{
 			generic_file_read, generic_file_write,
 		},
 		vfs,
-		vfs::{RENAME_EXCHANGE, node::Node},
+		vfs::{RENAME_EXCHANGE, mountpoint, node::Node},
 	},
 	memory::{
 		cache::{FrameOwner, RcFrame, RcFrameVal},
@@ -244,9 +244,6 @@ impl NodeOps for Ext2NodeOps {
 
 	fn link(&self, parent: Arc<Node>, ent: &vfs::Entry) -> EResult<()> {
 		let fs = downcast_fs::<Ext2Fs>(&*parent.fs.ops);
-		if unlikely(fs.readonly) {
-			return Err(errno!(EROFS));
-		}
 		// Check the parent file is a directory
 		if parent.get_type() != Some(FileType::Directory) {
 			return Err(errno!(ENOTDIR));
@@ -287,9 +284,6 @@ impl NodeOps for Ext2NodeOps {
 
 	fn unlink(&self, parent: &Node, ent: &vfs::Entry) -> EResult<()> {
 		let fs = downcast_fs::<Ext2Fs>(&*parent.fs.ops);
-		if unlikely(fs.readonly) {
-			return Err(errno!(EROFS));
-		}
 		if ent.name == "." || ent.name == ".." {
 			return Err(errno!(EINVAL));
 		}
@@ -394,9 +388,6 @@ impl NodeOps for Ext2NodeOps {
 	) -> EResult<()> {
 		let old_node = old_entry.node();
 		let fs = downcast_fs::<Ext2Fs>(&*old_node.fs.ops);
-		if unlikely(fs.readonly) {
-			return Err(errno!(EROFS));
-		}
 		let old_parent_node = old_parent.node();
 		let new_parent_node = new_parent.node();
 		// If source and destination parent are the same
@@ -548,9 +539,6 @@ impl FileOps for Ext2FileOps {
 	fn write(&self, file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		let node = file.node();
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		if unlikely(fs.readonly) {
-			return Err(errno!(EROFS));
-		}
 		// TODO replace by filetype-specific FileOps
 		{
 			let inode_ = Ext2INode::lock(node, fs)?;
@@ -565,9 +553,6 @@ impl FileOps for Ext2FileOps {
 	fn truncate(&self, file: &File, size: u64) -> EResult<()> {
 		let node = file.node();
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		if unlikely(fs.readonly) {
-			return Err(errno!(EROFS));
-		}
 		let mut inode_ = Ext2INode::lock(node, fs)?;
 		// TODO replace by filetype-specific FileOps
 		if inode_.get_type() != FileType::Regular {
@@ -754,8 +739,6 @@ struct Ext2Fs {
 	dev: Arc<BlkDev>,
 	/// The filesystem's superblock
 	sp: RcFrameVal<Superblock>,
-	/// Tells whether the filesystem is mounted as read-only
-	readonly: bool,
 
 	/// Lock when renaming a file, to avoid concurrency issues when looking for cycles.
 	rename_lock: Mutex<()>,
@@ -955,9 +938,6 @@ impl FilesystemOps for Ext2Fs {
 	}
 
 	fn create_node(&self, fs: &Arc<Filesystem>, stat: Stat) -> EResult<Arc<Node>> {
-		if unlikely(self.readonly) {
-			return Err(errno!(EROFS));
-		}
 		let file_type = stat.get_type().ok_or_else(|| errno!(EINVAL))?;
 		// Allocate an inode
 		let inode_index = self.alloc_inode(file_type == FileType::Directory)?;
@@ -1014,9 +994,6 @@ impl FilesystemOps for Ext2Fs {
 	}
 
 	fn destroy_node(&self, node: &Node) -> EResult<()> {
-		if unlikely(self.readonly) {
-			return Err(errno!(EROFS));
-		}
 		let mut inode = Ext2INode::lock(node, self)?;
 		// Remove the inode
 		inode.i_links_count = 0;
@@ -1050,7 +1027,7 @@ impl FilesystemType for Ext2FsType {
 		&self,
 		dev: Option<Arc<BlkDev>>,
 		_mountpath: PathBuf,
-		readonly: bool,
+		mount_flags: u32,
 	) -> EResult<Arc<Filesystem>> {
 		let dev = dev.ok_or_else(|| errno!(ENODEV))?;
 		let sp = Superblock::read(&dev)?;
@@ -1076,9 +1053,11 @@ impl FilesystemType for Ext2FsType {
 				return Err(errno!(EINVAL));
 			}
 			let unsupported_write_features = WRITE_REQUIRED_DIRECTORY_BINARY_TREE;
-			if !readonly && sp.s_feature_ro_compat & unsupported_write_features != 0 {
+			if mount_flags & mountpoint::FLAG_RDONLY == 0
+				&& sp.s_feature_ro_compat & unsupported_write_features != 0
+			{
 				// TODO Log?
-				return Err(errno!(EROFS));
+				return Err(errno!(EACCES));
 			}
 		}
 		let ts = current_time_sec(Clock::Monotonic);
@@ -1103,10 +1082,10 @@ impl FilesystemType for Ext2FsType {
 			Box::new(Ext2Fs {
 				dev,
 				sp,
-				readonly,
 
 				rename_lock: Mutex::new(()),
 			})?,
+			mount_flags,
 		)?)
 	}
 }

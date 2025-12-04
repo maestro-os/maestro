@@ -260,16 +260,19 @@ pub fn do_openat(
 		O_RDWR => (true, true),
 		_ => return Err(errno!(EINVAL)),
 	};
+	if unlikely(write && file.is_fs_readonly()) {
+		return Err(errno!(EROFS));
+	}
 	let stat = file.stat();
-	if read && !can_read_file(&stat, true) {
+	if unlikely(read && !can_read_file(&stat, true)) {
 		return Err(errno!(EACCES));
 	}
-	if write && !can_write_file(&stat, true) {
+	if unlikely(write && !can_write_file(&stat, true)) {
 		return Err(errno!(EACCES));
 	}
 	let file_type = stat.get_type();
 	// If `O_DIRECTORY` is set and the file is not a directory, return an error
-	if flags & O_DIRECTORY != 0 && file_type != Some(FileType::Directory) {
+	if unlikely(flags & O_DIRECTORY != 0 && file_type != Some(FileType::Directory)) {
 		return Err(errno!(ENOTDIR));
 	}
 	// Open file
@@ -362,7 +365,7 @@ pub fn chmod(pathname: UserString, mode: file::Mode) -> EResult<usize> {
 pub fn fchmod(fd: c_int, mode: file::Mode) -> EResult<usize> {
 	let file = fd_to_file(fd)?;
 	vfs::set_stat(
-		file.vfs_entry.node(),
+		&file.vfs_entry,
 		&StatSet {
 			mode: Some(mode),
 			..Default::default()
@@ -383,7 +386,7 @@ pub fn fchmodat(
 		unreachable!();
 	};
 	vfs::set_stat(
-		file.node(),
+		&file,
 		&StatSet {
 			mode: Some(mode),
 			..Default::default()
@@ -416,7 +419,7 @@ fn do_fchownat(
 		return Err(errno!(EPERM));
 	}
 	vfs::set_stat(
-		ent.node(),
+		&ent,
 		&StatSet {
 			uid: (user > -1).then_some(user as _),
 			gid: (group > -1).then_some(group as _),
@@ -527,7 +530,7 @@ fn do_utimensat<T: TimeUnit>(
 		unreachable!();
 	};
 	vfs::set_stat(
-		file.node(),
+		&file,
 		&StatSet {
 			atime: Some(times[0].to_nano() / 1_000_000_000),
 			mtime: Some(times[1].to_nano() / 1_000_000_000),

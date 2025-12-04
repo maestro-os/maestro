@@ -190,10 +190,6 @@ impl NodeOps for NodeContent {
 	}
 
 	fn link(&self, parent: Arc<Node>, ent: &vfs::Entry) -> EResult<()> {
-		let fs = downcast_fs::<TmpFS>(&*parent.fs.ops);
-		if unlikely(fs.readonly) {
-			return Err(errno!(EROFS));
-		}
 		// Check if an entry already exists
 		let NodeContent::Directory(parent_inner) = self else {
 			return Err(errno!(ENOTDIR));
@@ -228,10 +224,6 @@ impl NodeOps for NodeContent {
 	}
 
 	fn unlink(&self, parent: &Node, ent: &vfs::Entry) -> EResult<()> {
-		let fs = downcast_fs::<TmpFS>(&*parent.fs.ops);
-		if unlikely(fs.readonly) {
-			return Err(errno!(EROFS));
-		}
 		// Find entry
 		let NodeContent::Directory(parent_inner) = self else {
 			return Err(errno!(ENOTDIR));
@@ -298,9 +290,6 @@ impl NodeOps for NodeContent {
 		let old_parent_node = old_parent.node();
 		let new_parent_node = new_parent.node();
 		let fs = downcast_fs::<TmpFS>(&*old_parent_node.fs.ops);
-		if unlikely(fs.readonly) {
-			return Err(errno!(EROFS));
-		}
 		let old_parent_ops = NodeContent::from_ops(&*old_parent_node.node_ops);
 		let NodeContent::Directory(old_parent_inner) = old_parent_ops else {
 			unreachable!();
@@ -381,11 +370,6 @@ impl FileOps for TmpFSFile {
 	}
 
 	fn write(&self, file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
-		let node = file.node();
-		let fs = downcast_fs::<TmpFS>(&*node.fs.ops);
-		if unlikely(fs.readonly) {
-			return Err(errno!(EROFS));
-		}
 		generic_file_write(file, off, buf)
 	}
 
@@ -429,11 +413,8 @@ impl FileOps for TmpFSFile {
 /// On the inside, the tmpfs works using a kernfs.
 #[derive(Debug)]
 pub struct TmpFS {
-	/// Tells whether the filesystem is readonly.
-	readonly: bool,
 	/// The inner kernfs.
 	nodes: Mutex<NodeStorage, false>,
-
 	/// Lock when renaming a file, to avoid concurrency issues when looking for cycles.
 	rename_lock: Mutex<()>,
 }
@@ -468,9 +449,6 @@ impl FilesystemOps for TmpFS {
 	}
 
 	fn create_node(&self, fs: &Arc<Filesystem>, stat: Stat) -> EResult<Arc<Node>> {
-		if unlikely(self.readonly) {
-			return Err(errno!(EROFS));
-		}
 		// Prepare content
 		let file_type = stat.get_type().ok_or_else(|| errno!(EINVAL))?;
 		let content = match file_type {
@@ -494,9 +472,6 @@ impl FilesystemOps for TmpFS {
 	}
 
 	fn destroy_node(&self, node: &Node) -> EResult<()> {
-		if unlikely(self.readonly) {
-			return Err(errno!(EROFS));
-		}
 		self.nodes.lock().remove_node(node.inode);
 		Ok(())
 	}
@@ -518,16 +493,15 @@ impl FilesystemType for TmpFsType {
 		&self,
 		_dev: Option<Arc<BlkDev>>,
 		_mountpath: PathBuf,
-		readonly: bool,
+		mount_flags: u32,
 	) -> EResult<Arc<Filesystem>> {
 		let fs = Filesystem::new(
 			0,
 			Box::new(TmpFS {
-				readonly,
 				nodes: Mutex::new(NodeStorage::new()?),
-
 				rename_lock: Mutex::new(()),
 			})?,
+			mount_flags,
 		)?;
 		let root = Arc::new(Node::new(
 			0,

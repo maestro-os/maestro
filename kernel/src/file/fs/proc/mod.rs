@@ -346,8 +346,8 @@ impl FilesystemType for ProcFsType {
 		&self,
 		_dev: Option<Arc<BlkDev>>,
 		_mountpath: PathBuf,
-		_readonly: bool,
+		mount_flags: u32,
 	) -> EResult<Arc<Filesystem>> {
-		Ok(Filesystem::new(0, Box::new(ProcFS)?)?)
+		Ok(Filesystem::new(0, Box::new(ProcFS)?, mount_flags)?)
 	}
 }

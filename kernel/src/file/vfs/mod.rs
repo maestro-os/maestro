@@ -152,6 +152,11 @@ impl Entry {
 			.expect("trying to access a non-existent node")
 	}
 
+	/// Tells whether the file's filesystem is read only.
+	pub fn is_fs_readonly(&self) -> bool {
+		self.node().fs.flags & mountpoint::FLAG_RDONLY != 0
+	}
+
 	/// Helper returning the status of the underlying node.
 	///
 	/// If the entry represents a non-existent file, the function panics.
@@ -553,7 +558,11 @@ pub fn get_file_from_path(path: &Path, follow_link: bool) -> EResult<Arc<Entry>>
 }
 
 /// Updates status of a node.
-pub fn set_stat(node: &Node, set: &StatSet) -> EResult<()> {
+pub fn set_stat(ent: &Entry, set: &StatSet) -> EResult<()> {
+	if unlikely(ent.is_fs_readonly()) {
+		return Err(errno!(EROFS));
+	}
+	let node = ent.node();
 	let mut stat = node.stat.lock();
 	// Check permissions
 	if !can_set_file_permissions(&stat) {
@@ -598,6 +607,9 @@ pub fn set_stat(node: &Node, set: &StatSet) -> EResult<()> {
 ///
 /// Other errors can be returned depending on the underlying filesystem.
 pub fn create_file(parent: Arc<Entry>, name: &[u8], mut stat: Stat) -> EResult<Arc<Entry>> {
+	if unlikely(parent.is_fs_readonly()) {
+		return Err(errno!(EROFS));
+	}
 	let parent_stat = parent.stat();
 	// Validation
 	if parent_stat.get_type() != Some(FileType::Directory) {
@@ -641,6 +653,9 @@ pub fn create_file(parent: Arc<Entry>, name: &[u8], mut stat: Stat) -> EResult<A
 ///
 /// Other errors can be returned depending on the underlying filesystem.
 pub fn link(parent: &Arc<Entry>, name: String, target: Arc<Node>) -> EResult<()> {
+	if unlikely(parent.is_fs_readonly()) {
+		return Err(errno!(EROFS));
+	}
 	let parent_stat = parent.stat();
 	// Validation
 	if parent_stat.get_type() != Some(FileType::Directory) {
@@ -677,6 +692,9 @@ pub fn link(parent: &Arc<Entry>, name: String, target: Arc<Node>) -> EResult<()>
 ///
 /// Other errors can be returned depending on the underlying filesystem.
 pub fn unlink(entry: Arc<Entry>) -> EResult<()> {
+	if unlikely(entry.is_fs_readonly()) {
+		return Err(errno!(EROFS));
+	}
 	// Get parent
 	let Some(parent) = &entry.parent else {
 		// Cannot unlink root of the VFS
@@ -727,6 +745,9 @@ pub fn unlink(entry: Arc<Entry>) -> EResult<()> {
 ///
 /// Other errors can be returned depending on the underlying filesystem.
 pub fn symlink(parent: &Arc<Entry>, name: &[u8], target: &[u8], mut stat: Stat) -> EResult<()> {
+	if unlikely(parent.is_fs_readonly()) {
+		return Err(errno!(EROFS));
+	}
 	let parent_stat = parent.stat();
 	// Validation
 	if parent_stat.get_type() != Some(FileType::Directory) {
@@ -782,14 +803,18 @@ pub fn rename(
 	}
 	// If `old` has no parent, it's the root, so it's a mountpoint
 	let old_parent = old.parent.as_ref().ok_or_else(|| errno!(EBUSY))?;
-	// Parents validation
-	if !new_parent.node().is_same_fs(old.node()) {
-		return Err(errno!(EXDEV));
-	}
-	if mountpoint::from_entry(&old).is_some() {
+	// Cannot rename a mountpoint
+	if unlikely(mountpoint::from_entry(&old).is_some()) {
 		return Err(errno!(EBUSY));
 	}
-	// Check permissions on `old`
+	// If the source and destination are not on the same mountpoint, return an error
+	if unlikely(!old_parent.node().is_same_fs(new_parent.node())) {
+		return Err(errno!(EXDEV));
+	}
+	if unlikely(old_parent.is_fs_readonly()) {
+		return Err(errno!(EROFS));
+	}
+	// Check permissions on `old_parent`
 	let old_parent_stat = old_parent.stat();
 	if !can_write_directory(&old_parent_stat) {
 		return Err(errno!(EACCES));
@@ -799,7 +824,7 @@ pub fn rename(
 	if old_stat.mode & S_ISVTX != 0 && ap.euid != old_stat.uid && ap.euid != old_parent_stat.uid {
 		return Err(errno!(EACCES));
 	}
-	// Check permissions on `new`
+	// Check permissions on `new_parent`
 	let new_parent_stat = new_parent.stat();
 	if !can_write_directory(&new_parent_stat) {
 		return Err(errno!(EACCES));

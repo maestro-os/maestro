@@ -84,6 +84,7 @@ pub(crate) fn init() -> EResult<()> {
 		ops: Box::new(FloatFs {
 			_private: (),
 		})?,
+		flags: 0,
 
 		nodes: Default::default(),
 		buffers: Default::default(),
