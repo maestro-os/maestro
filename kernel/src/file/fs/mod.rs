@@ -462,7 +462,7 @@ impl Hash for NodeWrapper {
 	}
 }
 
-impl fmt::Debug for NodeWrapper {
+impl Debug for NodeWrapper {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		fmt::Debug::fmt(&self.0, f)
 	}
@@ -475,6 +475,8 @@ pub struct Filesystem {
 	pub dev: u64,
 	/// Filesystem operations
 	pub ops: Box<dyn FilesystemOps>,
+	/// Mounted filesystem flags
+	pub flags: u32,
 
 	/// Cached [`Node`]s, to avoid duplications when several entries point to the same node
 	nodes: Mutex<HashSet<NodeWrapper>, false>,
@@ -488,10 +490,12 @@ impl Filesystem {
 	/// Arguments:
 	/// - `dev` is the device number
 	/// - `ops` is the handle for operations on the filesystem
-	pub fn new(dev: u64, ops: Box<dyn FilesystemOps>) -> AllocResult<Arc<Self>> {
+	/// - `flags` is the flags of the mounted filesystem
+	pub fn new(dev: u64, ops: Box<dyn FilesystemOps>, flags: u32) -> AllocResult<Arc<Self>> {
 		Arc::new(Self {
 			dev,
 			ops,
+			flags,
 
 			nodes: Default::default(),
 			buffers: Default::default(),
@@ -579,12 +583,12 @@ pub trait FilesystemType {
 	/// Arguments:
 	/// - `dev` is the mounted device
 	/// - `mountpath` is the path on which the filesystem is mounted
-	/// - `readonly` tells whether the filesystem is mounted in read-only
+	/// - `mount_flags` are mount flags
 	fn load_filesystem(
 		&self,
 		dev: Option<Arc<BlkDev>>,
 		mountpath: PathBuf,
-		readonly: bool,
+		mount_flags: u32,
 	) -> EResult<Arc<Filesystem>>;
 }
 
