@@ -240,7 +240,6 @@ pub fn create(
 	};
 	let fs = get_fs(&source, fs_type, target_path, flags)?;
 	let mut mps = MOUNT_POINTS.lock();
-	// TODO get root node from cache if present instead
 	// Get filesystem root node
 	let root = fs.ops.root(&fs)?;
 	// Create an entry for the root of the mountpoint

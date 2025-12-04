@@ -28,8 +28,8 @@ use crate::{
 	file::{
 		DirContext, DirEntry, File, FileType, Stat,
 		fs::{
-			FileOps, Filesystem, FilesystemOps, FilesystemType, NodeOps, Statfs, downcast_fs,
-			generic_file_read, generic_file_write, kernfs, kernfs::NodeStorage,
+			DummyOps, FileOps, Filesystem, FilesystemOps, FilesystemType, NodeOps, Statfs,
+			downcast_fs, generic_file_read, generic_file_write, kernfs, kernfs::NodeStorage,
 		},
 		perm::{ROOT_GID, ROOT_UID},
 		vfs,
@@ -39,7 +39,7 @@ use crate::{
 		cache::{FrameOwner, RcFrame},
 		user::UserSlice,
 	},
-	sync::{mutex::Mutex, spin::Spin},
+	sync::mutex::Mutex,
 };
 use core::{any::Any, ffi::c_int, hint::unlikely, mem};
 use utils::{
@@ -51,6 +51,61 @@ use utils::{
 	limits::{NAME_MAX, PAGE_SIZE},
 	ptr::{arc::Arc, cow::Cow},
 };
+
+// TODO use rwlock
+#[derive(Debug)]
+struct RegularContent(Mutex<Vec<RcFrame>, false>);
+
+impl FileOps for RegularContent {
+	fn read(&self, file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
+		generic_file_read(file, off, buf)
+	}
+
+	fn write(&self, file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
+		generic_file_write(file, off, buf)
+	}
+
+	fn truncate(&self, file: &File, size: u64) -> EResult<()> {
+		let node = file.node();
+		// Validation
+		let size: usize = size.try_into().map_err(|_| errno!(EOVERFLOW))?;
+		let new_pages_count = size.div_ceil(PAGE_SIZE);
+		let mut pages = self.0.lock();
+		// Allocate or free pages
+		if let Some(count) = new_pages_count.checked_sub(pages.len()) {
+			pages.reserve(count)?;
+			for _ in 0..count {
+				// The offset is not necessary since `writeback` is a no-op
+				let frame = RcFrame::new_zeroed(0, FrameOwner::Node(node.clone()), 0)?;
+				pages.push(frame)?;
+			}
+		} else {
+			pages.truncate(new_pages_count);
+			// Zero the last page
+			if let Some(page) = pages.last() {
+				let inner_off = size % PAGE_SIZE;
+				let slice = unsafe { page.slice_mut() };
+				slice[inner_off..].fill(0);
+			}
+			// Clear cache
+			node.mapped.truncate(new_pages_count as _);
+		}
+		// Update status
+		node.stat.lock().size = size as _;
+		Ok(())
+	}
+}
+
+impl NodeOps for RegularContent {
+	fn read_page(&self, _node: &Arc<Node>, off: u64) -> EResult<RcFrame> {
+		let i: usize = off.try_into().map_err(|_| errno!(EOVERFLOW))?;
+		self.0.lock().get(i).cloned().ok_or_else(|| errno!(EINVAL))
+	}
+
+	fn write_frame(&self, _node: &Node, _frame: &RcFrame) -> EResult<()> {
+		Ok(())
+	}
+}
 
 #[derive(Debug)]
 struct TmpfsDirEntry {
@@ -137,43 +192,26 @@ impl DirInner {
 }
 
 // TODO use rwlock
-/// The content of a [`TmpFSNode`]
-#[derive(Debug)]
-enum NodeContent {
-	/// Regular file content
-	Regular(Mutex<Vec<RcFrame>, false>),
-	/// Directory entries
-	Directory(Mutex<DirInner, false>),
-	// TODO we could avoid having a spinlock here since the path is set only when the link is
-	// created
-	/// Symbolic link path
-	Link(Spin<Vec<u8>>),
-	/// No content
-	None,
-}
+#[derive(Debug, Default)]
+struct DirectoryContent(Mutex<DirInner, false>);
 
-impl NodeContent {
-	/// Returns a reference to the content from the given [`NodeOps`].
-	fn from_ops(ops: &dyn NodeOps) -> &Self {
-		(ops as &dyn Any).downcast_ref().unwrap()
+impl DirectoryContent {
+	/// Turns `ops` into a [`DirectoryContent`] if the node is a directory.
+	#[inline]
+	fn from_ops(ops: &dyn NodeOps) -> Option<&DirectoryContent> {
+		(ops as &dyn Any).downcast_ref()
 	}
 }
 
-impl NodeOps for NodeContent {
+impl NodeOps for DirectoryContent {
 	fn lookup_entry(&self, _dir: &Node, ent: &mut vfs::Entry) -> EResult<()> {
-		let NodeContent::Directory(inner) = self else {
-			return Err(errno!(ENOTDIR));
-		};
-		ent.node = inner.lock().find(ent.name.as_ref()).cloned();
+		ent.node = self.0.lock().find(ent.name.as_ref()).cloned();
 		Ok(())
 	}
 
 	fn iter_entries(&self, _dir: &Node, ctx: &mut DirContext) -> EResult<()> {
-		let NodeContent::Directory(inner) = self else {
-			return Err(errno!(ENOTDIR));
-		};
 		let off: usize = ctx.off.try_into().map_err(|_| errno!(EOVERFLOW))?;
-		let inner = inner.lock();
+		let inner = self.0.lock();
 		let iter = inner.entries.iter().skip(off).filter_map(|e| e.as_ref());
 		for e in iter {
 			let ent = DirEntry {
@@ -190,24 +228,21 @@ impl NodeOps for NodeContent {
 	}
 
 	fn link(&self, parent: Arc<Node>, ent: &vfs::Entry) -> EResult<()> {
+		let mut parent_inner = self.0.lock();
 		// Check if an entry already exists
-		let NodeContent::Directory(parent_inner) = self else {
-			return Err(errno!(ENOTDIR));
-		};
-		let mut parent_inner = parent_inner.lock();
 		if parent_inner.find(ent.name.as_ref()).is_some() {
 			return Err(errno!(EEXIST));
 		}
 		// If this is a directory, create `.` and `..`
 		let node = ent.node();
-		let content = NodeContent::from_ops(&*node.node_ops);
-		if let NodeContent::Directory(inner) = content {
-			let mut inner = inner.lock();
-			inner.insert(TmpfsDirEntry {
+		let content = DirectoryContent::from_ops(&*node.node_ops);
+		if let Some(dir_inner) = content {
+			let mut dir_inner = dir_inner.0.lock();
+			dir_inner.insert(TmpfsDirEntry {
 				name: Cow::Borrowed(b"."),
 				node: node.clone(),
 			})?;
-			inner.insert(TmpfsDirEntry {
+			dir_inner.insert(TmpfsDirEntry {
 				name: Cow::Borrowed(b".."),
 				node: parent.clone(),
 			})?;
@@ -224,21 +259,18 @@ impl NodeOps for NodeContent {
 	}
 
 	fn unlink(&self, parent: &Node, ent: &vfs::Entry) -> EResult<()> {
+		let mut parent_inner = self.0.lock();
 		// Find entry
-		let NodeContent::Directory(parent_inner) = self else {
-			return Err(errno!(ENOTDIR));
-		};
-		let mut parent_inner = parent_inner.lock();
 		let node = parent_inner
 			.find(ent.name.as_ref())
 			.ok_or_else(|| errno!(ENOENT))?;
 		// Handle directory-specifics
-		let content = NodeContent::from_ops(&*node.node_ops);
-		if let NodeContent::Directory(inner) = content {
+		let content = DirectoryContent::from_ops(&*node.node_ops);
+		if let Some(dir_inner) = content {
 			// If not empty, error
-			let mut inner = inner.lock();
-			let not_empty = inner.used_slots > 2
-				|| inner
+			let mut dir_inner = dir_inner.0.lock();
+			let not_empty = dir_inner.used_slots > 2
+				|| dir_inner
 					.entries
 					.iter()
 					.filter_map(|e| e.as_ref())
@@ -247,7 +279,7 @@ impl NodeOps for NodeContent {
 				return Err(errno!(ENOTEMPTY));
 			}
 			// Remove `.` and `..` to break cycles
-			inner.entries.clear();
+			dir_inner.entries.clear();
 			// Decrement references count
 			node.stat.lock().nlink -= 1;
 			parent.stat.lock().nlink -= 1;
@@ -255,26 +287,6 @@ impl NodeOps for NodeContent {
 		// Remove
 		node.stat.lock().nlink -= 1;
 		parent_inner.remove(ent.name.as_ref());
-		Ok(())
-	}
-
-	fn readlink(&self, _node: &Node, buf: UserSlice<u8>) -> EResult<usize> {
-		let NodeContent::Link(content) = self else {
-			return Err(errno!(EINVAL));
-		};
-		let content = content.lock();
-		buf.copy_to_user(0, &content)
-	}
-
-	fn writelink(&self, node: &Node, buf: &[u8]) -> EResult<()> {
-		let NodeContent::Link(content) = self else {
-			return Err(errno!(EINVAL));
-		};
-		let mut content = content.lock();
-		content.resize(buf.len(), 0)?;
-		content.copy_from_slice(buf);
-		// Update status
-		node.stat.lock().size = buf.len() as _;
 		Ok(())
 	}
 
@@ -289,13 +301,7 @@ impl NodeOps for NodeContent {
 		let old_node = old_entry.node();
 		let old_parent_node = old_parent.node();
 		let new_parent_node = new_parent.node();
-		let fs = downcast_fs::<TmpFS>(&*old_parent_node.fs.ops);
-		let old_parent_ops = NodeContent::from_ops(&*old_parent_node.node_ops);
-		let NodeContent::Directory(old_parent_inner) = old_parent_ops else {
-			unreachable!();
-		};
-		let new_parent_ops = NodeContent::from_ops(&*new_parent_node.node_ops);
-		let NodeContent::Directory(new_parent_inner) = new_parent_ops else {
+		let Some(new_parent_inner) = DirectoryContent::from_ops(&*new_parent_node.node_ops) else {
 			return Err(errno!(ENOTDIR));
 		};
 		// If source and destination parent are the same
@@ -304,14 +310,14 @@ impl NodeOps for NodeContent {
 			// TODO rename entry and return
 		}
 		// Prevent concurrent renames to safeguard cycle checking
+		let fs = downcast_fs::<TmpFS>(&*old_parent_node.fs.ops);
 		let _rename_guard = fs.rename_lock.lock();
 		// Cannot make a directory a child of itself
 		if unlikely(new_entry.is_child_of(old_entry)) {
 			return Err(errno!(EINVAL));
 		}
 		let (mut old_parent_inner, mut new_parent_inner) =
-			Mutex::lock_two(old_parent_inner, new_parent_inner);
-		let old_node_ops = NodeContent::from_ops(&*old_node.node_ops);
+			Mutex::lock_two(&self.0, &new_parent_inner.0);
 		if let Some(new_ent) = new_parent_inner.find_entry_mut(&new_entry.name) {
 			// Update entry
 			let prev = mem::replace(&mut new_ent.node, old_node.clone());
@@ -334,9 +340,10 @@ impl NodeOps for NodeContent {
 				node: old_node.clone(),
 			})?;
 		}
-		if let NodeContent::Directory(inner) = old_node_ops {
+		let content = DirectoryContent::from_ops(&*old_node.node_ops);
+		if let Some(dir_inner) = content {
 			// Update the `..` entry
-			inner.lock().set_inode(b"..", new_parent_node.clone());
+			dir_inner.0.lock().set_inode(b"..", new_parent_node.clone());
 			// Update links count
 			let mut new_parent_stat = new_parent_node.stat.lock();
 			if unlikely(new_parent_stat.nlink == u16::MAX) {
@@ -346,64 +353,24 @@ impl NodeOps for NodeContent {
 		}
 		Ok(())
 	}
-
-	fn read_page(&self, _node: &Arc<Node>, off: u64) -> EResult<RcFrame> {
-		let i: usize = off.try_into().map_err(|_| errno!(EOVERFLOW))?;
-		let NodeContent::Regular(pages) = self else {
-			return Err(errno!(EINVAL));
-		};
-		pages.lock().get(i).cloned().ok_or_else(|| errno!(EINVAL))
-	}
-
-	fn write_frame(&self, _node: &Node, _frame: &RcFrame) -> EResult<()> {
-		Ok(())
-	}
 }
 
-/// Open file operations.
+// TODO remove mutex. the content should be immutable
 #[derive(Debug)]
-pub struct TmpFSFile;
+struct LinkContent(Mutex<Vec<u8>, false>);
 
-impl FileOps for TmpFSFile {
-	fn read(&self, file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
-		generic_file_read(file, off, buf)
+impl NodeOps for LinkContent {
+	fn readlink(&self, _node: &Node, buf: UserSlice<u8>) -> EResult<usize> {
+		let content = self.0.lock();
+		buf.copy_to_user(0, &content)
 	}
 
-	fn write(&self, file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
-		generic_file_write(file, off, buf)
-	}
-
-	fn truncate(&self, file: &File, size: u64) -> EResult<()> {
-		let node = file.node();
-		let pages = NodeContent::from_ops(&*node.node_ops);
-		let NodeContent::Regular(pages) = pages else {
-			return Err(errno!(EINVAL));
-		};
-		// Validation
-		let size: usize = size.try_into().map_err(|_| errno!(EOVERFLOW))?;
-		let new_pages_count = size.div_ceil(PAGE_SIZE);
-		let mut pages = pages.lock();
-		// Allocate or free pages
-		if let Some(count) = new_pages_count.checked_sub(pages.len()) {
-			pages.reserve(count)?;
-			for _ in 0..count {
-				// The offset is not necessary since `writeback` is a no-op
-				let frame = RcFrame::new_zeroed(0, FrameOwner::Node(node.clone()), 0)?;
-				pages.push(frame)?;
-			}
-		} else {
-			pages.truncate(new_pages_count);
-			// Zero the last page
-			if let Some(page) = pages.last() {
-				let inner_off = size % PAGE_SIZE;
-				let slice = unsafe { page.slice_mut() };
-				slice[inner_off..].fill(0);
-			}
-			// Clear cache
-			node.mapped.truncate(new_pages_count as _);
-		}
+	fn writelink(&self, node: &Node, buf: &[u8]) -> EResult<()> {
+		let mut content = self.0.lock();
+		content.resize(buf.len(), 0)?;
+		content.copy_from_slice(buf);
 		// Update status
-		node.stat.lock().size = size as _;
+		node.stat.lock().size = buf.len() as _;
 		Ok(())
 	}
 }
@@ -519,28 +486,11 @@ impl FilesystemType for TmpFsType {
 				mtime: 0,
 				atime: 0,
 			},
-			Box::new(NodeContent::Directory(Default::default()))?,
-			Box::new(TmpFSFile)?,
+			Box::new(DirectoryContent::default())?,
+			Box::new(DummyOps)?,
 		))?;
 		// Insert node
-		downcast_fs::<TmpFS>(&*fs.ops)
-			.nodes
-			.lock()
-			.set_root(root.clone())?;
-		// Insert `.` and `..`
-		let content = NodeContent::from_ops(&*root.node_ops);
-		let NodeContent::Directory(entries) = content else {
-			unreachable!();
-		};
-		let mut entries = entries.lock();
-		entries.insert(TmpfsDirEntry {
-			name: Cow::Borrowed(b"."),
-			node: root.clone(),
-		})?;
-		entries.insert(TmpfsDirEntry {
-			name: Cow::Borrowed(b".."),
-			node: root.clone(),
-		})?;
+		downcast_fs::<TmpFS>(&*fs.ops).nodes.lock().set_root(root)?;
 		Ok(fs)
 	}
 }
