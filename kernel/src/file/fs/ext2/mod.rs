@@ -420,7 +420,7 @@ impl NodeOps for Ext2NodeOps {
 			// Destination validation
 			let new_node = new_entry.node();
 			let mut new_inode = Ext2INode::lock(new_node, fs)?;
-			let new_is_dir = new_inode.get_type() != FileType::Directory;
+			let new_is_dir = new_inode.get_type() == FileType::Directory;
 			if old_is_dir {
 				if unlikely(new_is_dir) {
 					return Err(errno!(ENOTDIR));

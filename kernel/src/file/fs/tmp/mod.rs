@@ -332,18 +332,18 @@ impl NodeOps for NodeContent {
 					.find_entry_mut(&old_entry.name)
 					.ok_or_else(|| errno!(EUCLEAN))?;
 				old_ent.node = prev;
+				// TODO if the new file is a directory, update its `..`
 			} else {
 				// Decrement reference counter to the previous inode
-				let stat = prev.stat.lock();
+				let mut stat = prev.stat.lock();
 				stat.nlink = stat.nlink.saturating_sub(1);
 			}
 		} else {
 			// Insert entry
-			let ent = TmpfsDirEntry {
+			new_parent_inner.insert(TmpfsDirEntry {
 				name: Cow::Owned(new_entry.name.try_to_owned()?),
-				node: node.clone(),
-			};
-			// TODO
+				node: old_node.clone(),
+			})?;
 		}
 		if let NodeContent::Directory(inner) = old_node_ops {
 			// Update the `..` entry
@@ -354,21 +354,6 @@ impl NodeOps for NodeContent {
 				return Err(errno!(EMFILE));
 			}
 			new_parent_stat.nlink += 1;
-		}
-		if let Some(new_ent) = new_ent {
-			*new_ent = tmpfs_ent;
-			// TODO update links count on previous entry
-		} else {
-			new_parent_inner.insert(tmpfs_ent)?;
-		}
-		drop(new_parent_inner);
-		// Remove old entry
-		let old_parent = entry.parent.as_ref().unwrap();
-		old_parent_inner.lock().remove(&entry.name);
-		// Update links count
-		if let NodeContent::Directory(_) = old_node_ops {
-			let mut old_parent_stat = old_parent_node.stat.lock();
-			old_parent_stat.nlink = old_parent_stat.nlink.saturating_sub(1);
 		}
 		Ok(())
 	}
@@ -540,6 +525,8 @@ impl FilesystemType for TmpFsType {
 			Box::new(TmpFS {
 				readonly,
 				nodes: Mutex::new(NodeStorage::new()?),
+
+				rename_lock: Mutex::new(()),
 			})?,
 		)?;
 		let root = Arc::new(Node::new(

@@ -192,7 +192,7 @@ impl<T: ?Sized> Mutex<T, false> {
 		m0: &'a Self,
 		m1: &'b Self,
 	) -> (MutexGuard<'a, T, false>, MutexGuard<'b, T, false>) {
-		if ptr::from_ref(m0) < ptr::from_ref(m1) {
+		if ptr::from_ref(m0).cast::<()>() < ptr::from_ref(m1).cast::<()>() {
 			let m0 = m0.lock();
 			let m1 = m1.lock();
 			(m0, m1)
