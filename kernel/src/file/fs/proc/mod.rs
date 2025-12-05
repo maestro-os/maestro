@@ -320,10 +320,6 @@ impl FilesystemOps for ProcFS {
 		))?)
 	}
 
-	fn create_node(&self, _fs: &Arc<Filesystem>, _stat: Stat) -> EResult<Arc<Node>> {
-		Err(errno!(EINVAL))
-	}
-
 	fn destroy_node(&self, _node: &Node) -> EResult<()> {
 		Ok(())
 	}

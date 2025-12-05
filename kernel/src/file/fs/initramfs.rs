@@ -100,9 +100,6 @@ pub fn load(data: &[u8]) -> EResult<()> {
 				gid: hdr.c_gid,
 				dev_major: device::id::major(hdr.c_rdev as _),
 				dev_minor: device::id::minor(hdr.c_rdev as _),
-				ctime: 0,
-				mtime: 0,
-				atime: 0,
 				..Default::default()
 			},
 		);

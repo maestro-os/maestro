@@ -34,7 +34,7 @@ pub mod mountpoint;
 pub mod node;
 
 use super::{
-	FileType, Stat, perm,
+	FileType, Stat,
 	perm::{AccessProfile, S_ISVTX},
 };
 use crate::{
@@ -42,6 +42,7 @@ use crate::{
 		fs::StatSet,
 		perm::{can_search_directory, can_set_file_permissions, can_write_directory},
 	},
+	memory::user::UserString,
 	process::Process,
 	sync::{mutex::Mutex, once::OnceInit, spin::Spin},
 };
@@ -595,7 +596,7 @@ pub fn set_stat(ent: &Entry, set: &StatSet) -> EResult<()> {
 /// - The file already exists: [`errno::EEXIST`]
 ///
 /// Other errors can be returned depending on the underlying filesystem.
-pub fn create_file(parent: Arc<Entry>, name: &[u8], mut stat: Stat) -> EResult<Arc<Entry>> {
+pub fn create_file(parent: Arc<Entry>, name: &[u8], stat: Stat) -> EResult<Arc<Entry>> {
 	if unlikely(parent.is_fs_readonly()) {
 		return Err(errno!(EROFS));
 	}
@@ -607,22 +608,10 @@ pub fn create_file(parent: Arc<Entry>, name: &[u8], mut stat: Stat) -> EResult<A
 	if !can_write_directory(&parent_stat) {
 		return Err(errno!(EACCES));
 	}
-	let ap = AccessProfile::current();
-	stat.nlink = 0;
-	stat.uid = ap.euid;
-	stat.gid = if parent_stat.mode & perm::S_ISGID != 0 {
-		// If SGID is set, the newly created file shall inherit the group ID of the
-		// parent directory
-		parent_stat.gid
-	} else {
-		ap.egid
-	};
-	// Add file to filesystem
-	let parent_node = parent.node();
-	let node = parent_node.fs.ops.create_node(&parent_node.fs, stat)?;
 	// Add link to filesystem
-	let ent = Entry::new(String::try_from(name)?, Some(parent.clone()), Some(node));
-	parent_node.node_ops.link(parent_node.clone(), &ent)?;
+	let mut ent = Entry::new(String::try_from(name)?, Some(parent.clone()), None);
+	let parent_node = parent.node();
+	parent_node.node_ops.create(parent_node, &mut ent, stat)?;
 	Ok(ent.link_parent()?)
 }
 
@@ -733,7 +722,7 @@ pub fn unlink(entry: Arc<Entry>) -> EResult<()> {
 /// TODO: detail errors
 ///
 /// Other errors can be returned depending on the underlying filesystem.
-pub fn symlink(parent: &Arc<Entry>, name: &[u8], target: &[u8], mut stat: Stat) -> EResult<()> {
+pub fn symlink(parent: &Arc<Entry>, name: &[u8], target: UserString) -> EResult<()> {
 	if unlikely(parent.is_fs_readonly()) {
 		return Err(errno!(EROFS));
 	}
@@ -745,24 +734,12 @@ pub fn symlink(parent: &Arc<Entry>, name: &[u8], target: &[u8], mut stat: Stat) 
 	if !can_write_directory(&parent_stat) {
 		return Err(errno!(EACCES));
 	}
-	let ap = AccessProfile::current();
-	stat.mode = FileType::Link.to_mode() | 0o777;
-	stat.nlink = 0;
-	stat.uid = ap.euid;
-	stat.gid = if parent_stat.mode & perm::S_ISGID != 0 {
-		// If SGID is set, the newly created file shall inherit the group ID of the
-		// parent directory
-		parent_stat.gid
-	} else {
-		ap.egid
-	};
-	// Create node
+	// Create symlink
+	let mut ent = Entry::new(String::try_from(name)?, Some(parent.clone()), None);
 	let parent_node = parent.node();
-	let node = parent_node.fs.ops.create_node(&parent_node.fs, stat)?;
-	node.node_ops.writelink(&node, target)?;
-	// Add link to the filesystem
-	let ent = Entry::new(String::try_from(name)?, Some(parent.clone()), Some(node));
-	parent_node.node_ops.link(parent_node.clone(), &ent)?;
+	parent_node
+		.node_ops
+		.symlink(parent_node, &mut ent, target)?;
 	ent.link_parent()?;
 	Ok(())
 }

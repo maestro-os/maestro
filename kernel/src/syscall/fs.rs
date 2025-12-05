@@ -39,12 +39,12 @@ use crate::{
 		at::{AT_EACCESS, AT_EMPTY_PATH, AT_FDCWD, AT_SYMLINK_NOFOLLOW},
 	},
 	time::{
-		clock::{Clock, current_time_ns, current_time_sec},
+		clock::{Clock, current_time_ns},
 		unit::{TimeUnit, Timespec, Timeval, UTimBuf},
 	},
 };
 use core::{ffi::c_int, hint::unlikely, sync::atomic::Ordering::Release};
-use utils::{errno, errno::EResult, limits::SYMLINK_MAX};
+use utils::{errno, errno::EResult};
 
 /// `access` flag: Checks for existence of the file.
 const F_OK: i32 = 0;
@@ -73,15 +73,11 @@ pub fn mkdirat(dirfd: c_int, path: UserString, mode: file::Mode) -> EResult<usiz
 		return Err(errno!(EEXIST));
 	};
 	let mode = mode & !Process::current().umask();
-	let ts = current_time_sec(Clock::Realtime);
 	vfs::create_file(
 		parent,
 		name,
 		Stat {
 			mode: FileType::Directory.to_mode() | mode,
-			ctime: ts,
-			mtime: ts,
-			atime: ts,
 			..Default::default()
 		},
 	)?;
@@ -110,7 +106,6 @@ pub fn mknodat(dirfd: c_int, path: UserString, mode: file::Mode, dev: u64) -> ER
 		(_, false) => return Err(errno!(EPERM)),
 		(_, true) => return Err(errno!(EINVAL)),
 	}
-	let ts = current_time_sec(Clock::Realtime);
 	vfs::create_file(
 		parent,
 		name,
@@ -118,9 +113,6 @@ pub fn mknodat(dirfd: c_int, path: UserString, mode: file::Mode, dev: u64) -> ER
 			mode,
 			dev_major: id::major(dev),
 			dev_minor: id::minor(dev),
-			ctime: ts,
-			mtime: ts,
-			atime: ts,
 			..Default::default()
 		},
 	)?;
@@ -165,10 +157,6 @@ pub fn symlink(target: UserString, linkpath: UserString) -> EResult<usize> {
 }
 
 pub fn symlinkat(target: UserString, newdirfd: c_int, linkpath: UserString) -> EResult<usize> {
-	let target = target.copy_path_from_user()?;
-	if target.len() > SYMLINK_MAX {
-		return Err(errno!(ENAMETOOLONG));
-	}
 	let linkpath = linkpath.copy_path_from_user()?;
 	// Create link
 	let Resolved::Creatable {
@@ -178,18 +166,7 @@ pub fn symlinkat(target: UserString, newdirfd: c_int, linkpath: UserString) -> E
 	else {
 		return Err(errno!(EEXIST));
 	};
-	let ts = current_time_sec(Clock::Realtime);
-	vfs::symlink(
-		&parent,
-		name,
-		target.as_bytes(),
-		Stat {
-			ctime: ts,
-			mtime: ts,
-			atime: ts,
-			..Default::default()
-		},
-	)?;
+	vfs::symlink(&parent, name, target)?;
 	Ok(0)
 }
 
@@ -238,20 +215,14 @@ pub fn do_openat(
 		Resolved::Creatable {
 			parent,
 			name,
-		} => {
-			let ts = current_time_sec(Clock::Realtime);
-			vfs::create_file(
-				parent,
-				name,
-				Stat {
-					mode: FileType::Regular.to_mode() | mode,
-					ctime: ts,
-					mtime: ts,
-					atime: ts,
-					..Default::default()
-				},
-			)?
-		}
+		} => vfs::create_file(
+			parent,
+			name,
+			Stat {
+				mode: FileType::Regular.to_mode() | mode,
+				..Default::default()
+			},
+		)?,
 	};
 	// Check permissions
 	let (read, write) = match flags & 0b11 {
