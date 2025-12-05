@@ -29,31 +29,33 @@ use crate::{
 		DirContext, DirEntry, File, FileType, Stat,
 		fs::{
 			DummyOps, FileOps, Filesystem, FilesystemOps, FilesystemType, NodeOps, Statfs,
-			downcast_fs, generic_file_read, generic_file_write, kernfs, kernfs::NodeStorage,
+			create_file_ids, downcast_fs, generic_file_read, generic_file_write, kernfs,
+			kernfs::NodeStorage,
 		},
 		perm::{ROOT_GID, ROOT_UID},
 		vfs,
-		vfs::{RENAME_EXCHANGE, node::Node},
+		vfs::{Entry, RENAME_EXCHANGE, node::Node},
 	},
 	memory::{
 		cache::{FrameOwner, RcFrame},
-		user::UserSlice,
+		user::{UserSlice, UserString},
 	},
 	sync::mutex::Mutex,
+	time::clock::{Clock, current_time_sec},
 };
 use core::{any::Any, ffi::c_int, hint::unlikely, mem};
 use utils::{
 	TryClone, TryToOwned,
 	boxed::Box,
-	collections::{path::PathBuf, vec::Vec},
+	collections::{path::PathBuf, string::String, vec::Vec},
 	errno,
 	errno::{AllocResult, EResult},
-	limits::{NAME_MAX, PAGE_SIZE},
+	limits::{NAME_MAX, PAGE_SIZE, SYMLINK_MAX},
 	ptr::{arc::Arc, cow::Cow},
 };
 
 // TODO use rwlock
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct RegularContent(Mutex<Vec<RcFrame>, false>);
 
 impl FileOps for RegularContent {
@@ -227,6 +229,56 @@ impl NodeOps for DirectoryContent {
 		Ok(())
 	}
 
+	fn create(&self, parent: &Node, ent: &mut Entry, stat: Stat) -> EResult<()> {
+		let fs = downcast_fs::<TmpFS>(&*parent.fs.ops);
+		// Create inode
+		let (uid, gid) = create_file_ids(&parent.stat());
+		let ts = current_time_sec(Clock::Realtime);
+		let (node_ops, file_ops): (Box<dyn NodeOps>, Box<dyn FileOps>) = match stat.get_type() {
+			Some(FileType::Regular) => (
+				Box::new(RegularContent::default())?,
+				Box::new(RegularContent::default())?,
+			),
+			Some(FileType::Directory) => {
+				(Box::new(DirectoryContent::default())?, Box::new(DummyOps)?)
+			}
+			_ => (Box::new(DummyOps)?, Box::new(DummyOps)?),
+		};
+		let node = {
+			let mut nodes = fs.nodes.lock();
+			let (inode, slot) = nodes.get_free_slot()?;
+			let node = Arc::new(Node::new(
+				inode,
+				parent.fs.clone(),
+				Stat {
+					nlink: 1,
+					uid,
+					gid,
+					ctime: ts,
+					mtime: ts,
+					atime: ts,
+					..stat
+				},
+				node_ops,
+				file_ops,
+			))?;
+			*slot = Some(node.clone());
+			node
+		};
+		// Check if an entry already exists
+		let mut parent_inner = self.0.lock();
+		if unlikely(parent_inner.find(ent.name.as_ref()).is_some()) {
+			// TODO must undo
+			return Err(errno!(EEXIST));
+		}
+		// Insert directory entry
+		parent_inner.insert(TmpfsDirEntry {
+			name: Cow::Owned(ent.name.try_clone()?),
+			node: node.clone(),
+		})?; // TODO on failure, must undo
+		Ok(())
+	}
+
 	fn link(&self, parent: Arc<Node>, ent: &vfs::Entry) -> EResult<()> {
 		let mut parent_inner = self.0.lock();
 		// Check if an entry already exists
@@ -235,8 +287,7 @@ impl NodeOps for DirectoryContent {
 		}
 		// If this is a directory, create `.` and `..`
 		let node = ent.node();
-		let content = DirectoryContent::from_ops(&*node.node_ops);
-		if let Some(dir_inner) = content {
+		if let Some(dir_inner) = DirectoryContent::from_ops(&*node.node_ops) {
 			let mut dir_inner = dir_inner.0.lock();
 			dir_inner.insert(TmpfsDirEntry {
 				name: Cow::Borrowed(b"."),
@@ -255,6 +306,54 @@ impl NodeOps for DirectoryContent {
 			node: node.clone(),
 		})?;
 		node.stat.lock().nlink += 1;
+		Ok(())
+	}
+
+	fn symlink(&self, parent: &Arc<Node>, ent: &mut Entry, target: UserString) -> EResult<()> {
+		let fs = downcast_fs::<TmpFS>(&*parent.fs.ops);
+		// Read target
+		let target = target.copy_path_from_user()?;
+		if unlikely(target.len() > SYMLINK_MAX) {
+			return Err(errno!(ENAMETOOLONG));
+		}
+		// Create inode
+		let (uid, gid) = create_file_ids(&parent.stat());
+		let ts = current_time_sec(Clock::Realtime);
+		let node = {
+			let mut nodes = fs.nodes.lock();
+			let (inode, slot) = nodes.get_free_slot()?;
+			let node = Arc::new(Node::new(
+				inode,
+				parent.fs.clone(),
+				Stat {
+					mode: FileType::Link.to_mode() | 0o777,
+					nlink: 1,
+					uid,
+					gid,
+					size: target.len() as _,
+					ctime: ts,
+					mtime: ts,
+					atime: ts,
+					..Default::default()
+				},
+				Box::new(LinkContent(String::from(target).into_bytes()))?,
+				Box::new(DummyOps)?,
+			))?;
+			*slot = Some(node.clone());
+			node
+		};
+		// Check if an entry already exists
+		let mut parent_inner = self.0.lock();
+		if unlikely(parent_inner.find(ent.name.as_ref()).is_some()) {
+			// TODO must undo
+			return Err(errno!(EEXIST));
+		}
+		// Insert directory entry
+		parent_inner.insert(TmpfsDirEntry {
+			name: Cow::Owned(ent.name.try_clone()?),
+			node: node.clone(),
+		})?; // TODO on failure, must undo
+		ent.node = Some(node);
 		Ok(())
 	}
 
@@ -357,21 +456,11 @@ impl NodeOps for DirectoryContent {
 
 // TODO remove mutex. the content should be immutable
 #[derive(Debug)]
-struct LinkContent(Mutex<Vec<u8>, false>);
+struct LinkContent(Vec<u8>);
 
 impl NodeOps for LinkContent {
 	fn readlink(&self, _node: &Node, buf: UserSlice<u8>) -> EResult<usize> {
-		let content = self.0.lock();
-		buf.copy_to_user(0, &content)
-	}
-
-	fn writelink(&self, node: &Node, buf: &[u8]) -> EResult<()> {
-		let mut content = self.0.lock();
-		content.resize(buf.len(), 0)?;
-		content.copy_from_slice(buf);
-		// Update status
-		node.stat.lock().size = buf.len() as _;
-		Ok(())
+		buf.copy_to_user(0, &self.0)
 	}
 }
 
@@ -413,29 +502,6 @@ impl FilesystemOps for TmpFS {
 
 	fn root(&self, _fs: &Arc<Filesystem>) -> EResult<Arc<Node>> {
 		self.nodes.lock().get_node(kernfs::ROOT_INODE).cloned()
-	}
-
-	fn create_node(&self, fs: &Arc<Filesystem>, stat: Stat) -> EResult<Arc<Node>> {
-		// Prepare content
-		let file_type = stat.get_type().ok_or_else(|| errno!(EINVAL))?;
-		let content = match file_type {
-			FileType::Regular => NodeContent::Regular(Default::default()),
-			FileType::Directory => NodeContent::Directory(Default::default()),
-			FileType::Link => NodeContent::Link(Default::default()),
-			_ => NodeContent::None,
-		};
-		// Insert node
-		let mut nodes = self.nodes.lock();
-		let (inode, slot) = nodes.get_free_slot()?;
-		let node = Arc::new(Node::new(
-			inode,
-			fs.clone(),
-			stat,
-			Box::new(content)?,
-			Box::new(TmpFSFile)?,
-		))?;
-		*slot = Some(node.clone());
-		Ok(node)
 	}
 
 	fn destroy_node(&self, node: &Node) -> EResult<()> {

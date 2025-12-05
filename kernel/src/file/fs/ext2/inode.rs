@@ -374,21 +374,16 @@ impl Ext2INode {
 	/// Arguments:
 	/// - `superblock` is the filesystem's superblock
 	/// - `size` is the file's size
-	/// - `inline` is `true` if the inode is a symlink storing the target inline
-	pub fn set_size(&mut self, sp: &Superblock, size: u64, inline: bool) {
+	pub fn set_size(&mut self, sp: &Superblock, size: u64) {
 		let has_version = sp.s_rev_level >= 1;
 		let has_feature = sp.s_feature_ro_compat & super::WRITE_REQUIRED_64_BITS != 0;
 		if has_version && has_feature {
 			self.i_dir_acl = (size >> 32) as u32;
 		}
 		self.i_size = size as u32;
-		if !inline {
-			let blk_size = sp.get_block_size();
-			let sector_per_blk = blk_size / SECTOR_SIZE;
-			self.i_blocks = size.div_ceil(blk_size as _) as u32 * sector_per_blk;
-		} else {
-			self.i_blocks = 0;
-		}
+		let blk_size = sp.get_block_size();
+		let sector_per_blk = blk_size / SECTOR_SIZE;
+		self.i_blocks = size.div_ceil(blk_size as _) as u32 * sector_per_blk;
 	}
 
 	/// Returns the number of content blocks.
@@ -517,7 +512,7 @@ impl Ext2INode {
 		{
 			return Ok(());
 		}
-		self.set_size(&fs.sp, 0, false);
+		self.set_size(&fs.sp, 0);
 		// Free blocks
 		for (off, blk) in self.i_block.iter().enumerate() {
 			let Some(blk) = check_blk_off(*blk, &fs.sp)? else {
@@ -682,7 +677,7 @@ impl Ext2INode {
 			Dirent::write_new(buf, &fs.sp, entry_inode, rec_len, file_type, name)?;
 			// Create free entries to cover remaining free space
 			fill_free_entries(&mut buf[rec_len as usize..], &fs.sp)?;
-			self.set_size(&fs.sp, (blocks as u64 + 1) * blk_size as u64, false);
+			self.set_size(&fs.sp, (blocks as u64 + 1) * blk_size as u64);
 			blk.mark_dirty();
 		}
 		Ok(())
@@ -752,7 +747,7 @@ impl Ext2INode {
 		if inode == 0 && is_block_empty(slice, &fs.sp)? {
 			// If this is the last block, update the file's size
 			if file_blk_off as u32 + 1 >= self.get_blocks(&fs.sp) {
-				self.set_size(&fs.sp, file_blk_off * blk_size as u64, false);
+				self.set_size(&fs.sp, file_blk_off * blk_size as u64);
 			}
 			self.free_content_blk(file_blk_off as _, fs)?;
 		}
