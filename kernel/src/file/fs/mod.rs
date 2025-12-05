@@ -33,8 +33,14 @@ use super::{
 };
 use crate::{
 	device::BlkDev,
-	file::vfs::node::Node,
-	memory::{cache::RcFrame, user::UserSlice},
+	file::{
+		perm::{AccessProfile, S_ISGID},
+		vfs::node::Node,
+	},
+	memory::{
+		cache::RcFrame,
+		user::{UserSlice, UserString},
+	},
 	sync::{mutex::Mutex, spin::Spin},
 	syscall::ioctl,
 	time::unit::Timestamp,
@@ -138,6 +144,16 @@ pub trait NodeOps: Any + Debug {
 		Err(errno!(ENOTDIR))
 	}
 
+	/// Creates a new file in `parent`.
+	///
+	/// If the node is not a directory, the function returns [`errno::ENOTDIR`].
+	///
+	/// The default implementation of this function returns an error.
+	fn create(&self, parent: &Node, ent: &mut vfs::Entry, stat: Stat) -> EResult<()> {
+		let _ = (parent, ent, stat);
+		Err(errno!(ENOTDIR))
+	}
+
 	/// Adds a hard link into the directory.
 	///
 	/// Arguments:
@@ -150,6 +166,21 @@ pub trait NodeOps: Any + Debug {
 	/// The default implementation of this function returns an error.
 	fn link(&self, parent: Arc<Node>, ent: &vfs::Entry) -> EResult<()> {
 		let _ = (parent, ent);
+		Err(errno!(ENOTDIR))
+	}
+
+	/// Creates a new symbolic link in `parent`.
+	///
+	/// If the node is not a directory, the function returns [`errno::ENOTDIR`].
+	///
+	/// The default implementation of this function returns an error.
+	fn symlink(
+		&self,
+		parent: &Arc<Node>,
+		ent: &mut vfs::Entry,
+		target: UserString,
+	) -> EResult<()> {
+		let _ = (parent, ent, target);
 		Err(errno!(ENOTDIR))
 	}
 
@@ -186,22 +217,6 @@ pub trait NodeOps: Any + Debug {
 	///
 	/// The default implementation of this function returns an error.
 	fn readlink(&self, node: &Node, buf: UserSlice<u8>) -> EResult<usize> {
-		let _ = (node, buf);
-		Err(errno!(EINVAL))
-	}
-
-	/// Writes the path the symbolic link points to and writes it into `buf`.
-	///
-	/// If the node is not a symbolic link, the function returns [`errno::EINVAL`].
-	///
-	/// **Note**: this function must be called **only** for the creation of the symbolic link.
-	/// After being created, the content is immutable.
-	///
-	/// If this feature is not supported by the filesystem, the function returns
-	/// an error.
-	///
-	/// The default implementation of this function returns an error.
-	fn writelink(&self, node: &Node, buf: &[u8]) -> EResult<()> {
 		let _ = (node, buf);
 		Err(errno!(EINVAL))
 	}
@@ -410,9 +425,6 @@ pub trait FilesystemOps: Any + Debug {
 	///
 	/// If the node does not exist, the function returns [`errno::ENOENT`].
 	fn root(&self, fs: &Arc<Filesystem>) -> EResult<Arc<Node>>;
-
-	/// Creates a node on the filesystem.
-	fn create_node(&self, fs: &Arc<Filesystem>, stat: Stat) -> EResult<Arc<Node>>;
 
 	/// Removes `node` from the filesystem.
 	///
@@ -628,4 +640,18 @@ pub(crate) fn register_defaults() -> EResult<()> {
 	register(proc::ProcFsType)?;
 	// TODO sysfs
 	Ok(())
+}
+
+/// Helper for use in filesystem implementations, returning the UID and GID of a newly created
+/// file.
+pub fn create_file_ids(parent_stat: &Stat) -> (Uid, Gid) {
+	let ap = AccessProfile::current();
+	let gid = if parent_stat.mode & S_ISGID != 0 {
+		// If SGID is set, the newly created file shall inherit the group ID of the
+		// parent directory
+		parent_stat.gid
+	} else {
+		ap.egid
+	};
+	(ap.euid, gid)
 }
