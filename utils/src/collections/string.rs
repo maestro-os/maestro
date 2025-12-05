@@ -76,6 +76,12 @@ impl String {
 		self.data.as_mut_slice()
 	}
 
+	/// Converts `self` into a byte vector.
+	#[inline]
+	pub fn into_bytes(self) -> Vec<u8> {
+		self.data
+	}
+
 	/// Returns a reference to the wrapped string.
 	///
 	/// If the string isn't a valid UTF-8 string, the function returns `None`.
