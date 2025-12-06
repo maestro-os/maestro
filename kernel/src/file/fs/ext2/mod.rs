@@ -416,7 +416,7 @@ impl NodeOps for DirOps {
 		if unlikely(target.len() > SYMLINK_MAX) {
 			return Err(errno!(ENAMETOOLONG));
 		}
-		let mut parent_inode = Ext2INode::lock(&parent, fs)?;
+		let mut parent_inode = Ext2INode::lock(parent, fs)?;
 		let node = fs.alloc_inode(
 			parent,
 			&Stat {
