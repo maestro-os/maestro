@@ -264,8 +264,13 @@ pub struct Ext2INode {
 }
 
 impl Ext2INode {
-	fn lock_impl(node: &Node, fs: &Ext2Fs) -> EResult<RcFrameVal<Self>> {
-		let i: u32 = node.inode.try_into().map_err(|_| errno!(EOVERFLOW))?;
+	/// Returns a reference to the inode, without locking.
+	///
+	/// # Safety
+	///
+	/// Concurrency is the caller's responsibility.
+	pub unsafe fn get(inode: INode, fs: &Ext2Fs) -> EResult<RcFrameVal<Self>> {
+		let i: u32 = inode.try_into().map_err(|_| errno!(EOVERFLOW))?;
 		// Check the index is correct
 		let Some(i) = i.checked_sub(1) else {
 			return Err(errno!(EINVAL));
@@ -293,7 +298,7 @@ impl Ext2INode {
 	pub fn lock<'n>(node: &'n Node, fs: &Ext2Fs) -> EResult<INodeWrap<'n>> {
 		Ok(INodeWrap {
 			_guard: node.lock.lock(),
-			inode: Self::lock_impl(node, fs)?,
+			inode: unsafe { Self::get(node.inode, fs)? },
 		})
 	}
 
@@ -309,11 +314,11 @@ impl Ext2INode {
 		Ok((
 			INodeWrap {
 				_guard: n0,
-				inode: Self::lock_impl(node0, fs)?,
+				inode: unsafe { Self::get(node0.inode as _, fs)? },
 			},
 			INodeWrap {
 				_guard: n1,
-				inode: Self::lock_impl(node1, fs)?,
+				inode: unsafe { Self::get(node1.inode as _, fs)? },
 			},
 		))
 	}
