@@ -354,7 +354,7 @@ impl NodeOps for DirOps {
 			return Err(errno!(EMFILE));
 		}
 		let mut node = fs.alloc_inode(parent, &stat)?;
-		let mut inode = Ext2INode::lock(parent, fs)?;
+		let mut inode = Ext2INode::lock(&node, fs)?;
 		match file_type {
 			FileType::Directory => {
 				inode.add_dirent(fs, node.inode as _, b".", Some(FileType::Directory))?;
@@ -373,6 +373,7 @@ impl NodeOps for DirOps {
 		parent_inode.mark_dirty();
 		// Update stat on `node`
 		let stat = inode.stat(&fs.sp);
+		drop(inode);
 		node.stat = Spin::new(stat);
 		// Insert in cache
 		let node = Arc::new(node)?;
