@@ -34,7 +34,7 @@ use crate::{
 		},
 		perm::{ROOT_GID, ROOT_UID},
 		vfs,
-		vfs::{Entry, RENAME_EXCHANGE, node::Node},
+		vfs::{RENAME_EXCHANGE, node::Node},
 	},
 	memory::{
 		cache::{FrameOwner, RcFrame},
@@ -229,7 +229,7 @@ impl NodeOps for DirectoryContent {
 		Ok(())
 	}
 
-	fn create(&self, parent: &Node, ent: &mut Entry, stat: Stat) -> EResult<()> {
+	fn create(&self, parent: &Node, ent: &mut vfs::Entry, stat: Stat) -> EResult<()> {
 		let fs = downcast_fs::<TmpFS>(&*parent.fs.ops);
 		// Create inode
 		let (uid, gid) = create_file_ids(&parent.stat());
@@ -309,7 +309,7 @@ impl NodeOps for DirectoryContent {
 		Ok(())
 	}
 
-	fn symlink(&self, parent: &Arc<Node>, ent: &mut Entry, target: UserString) -> EResult<()> {
+	fn symlink(&self, parent: &Arc<Node>, ent: &mut vfs::Entry, target: UserString) -> EResult<()> {
 		let fs = downcast_fs::<TmpFS>(&*parent.fs.ops);
 		// Read target
 		let target = target.copy_path_from_user()?;
