@@ -688,6 +688,13 @@ impl Ext2INode {
 		Ok(())
 	}
 
+	/// Converts the file offset `off` into a block offset.
+	fn off_to_blk(&self, fs: &Ext2Fs, off: u64) -> EResult<Option<NonZeroU32>> {
+		let blk_size = fs.sp.get_block_size();
+		let file_blk_off = off / blk_size as u64;
+		self.translate_blk_off(file_blk_off as _, fs)
+	}
+
 	/// Changes the name of a directory entry.
 	///
 	/// Arguments:
@@ -703,15 +710,13 @@ impl Ext2INode {
 			.get_dirent(old_name, fs)?
 			.ok_or_else(|| errno!(ENOENT))?;
 		// Read block
-		let blk_size = fs.sp.get_block_size();
-		let file_blk_off = off / blk_size as u64;
-		let Some(disk_blk_off) = self.translate_blk_off(file_blk_off as _, fs)? else {
+		let Some(disk_blk_off) = self.off_to_blk(fs, off)? else {
 			return Ok(());
 		};
 		let blk = read_block(fs, disk_blk_off.get() as _)?;
 		// Read entry
 		let slice = unsafe { blk.slice_mut() };
-		let inner_off = (off % blk_size as u64) as usize;
+		let inner_off = (off % fs.sp.get_block_size() as u64) as usize;
 		let ent = Dirent::from_slice(&mut slice[inner_off..], &fs.sp)?;
 		// Attempt to reuse the same entry
 		if ent.set_name(&fs.sp, new_name) {
@@ -719,8 +724,78 @@ impl Ext2INode {
 		}
 		// The entry cannot fit the new name. Create a new entry and free the previous one
 		self.add_dirent(fs, ent.inode, ent.get_name(&fs.sp), ent.get_type(&fs.sp))?;
-		ent.inode = 0;
+		ent.inode = 0; // FIXME: double borrow of `slice`
+		blk.mark_dirty();
 		Ok(())
+	}
+
+	pub fn exchange_dirent(
+		&mut self,
+		fs: &Ext2Fs,
+		old_name: &[u8],
+		new_name: &[u8],
+	) -> EResult<()> {
+		debug_assert_eq!(self.get_type(), FileType::Directory);
+		// Get entries offsets
+		let (_, old_off) = self
+			.get_dirent(old_name, fs)?
+			.ok_or_else(|| errno!(ENOENT))?;
+		let (_, new_off) = self
+			.get_dirent(new_name, fs)?
+			.ok_or_else(|| errno!(ENOENT))?;
+		// Compute block offsets
+		let Some(old_disk_blk_off) = self.off_to_blk(fs, old_off)? else {
+			return Ok(());
+		};
+		let Some(new_disk_blk_off) = self.off_to_blk(fs, new_off)? else {
+			return Ok(());
+		};
+		// Read blocks
+		let blk_size = fs.sp.get_block_size();
+		if old_disk_blk_off == new_disk_blk_off {
+			// Same block, read only one
+			let blk = read_block(fs, old_disk_blk_off.get() as _)?;
+			let old_inner_off = (old_disk_blk_off.get() % blk_size) as usize;
+			let new_inner_off = (new_disk_blk_off.get() % blk_size) as usize;
+			// Split slice to avoid double mutable borrow issue
+			let slice = unsafe { blk.slice_mut() };
+			let (old_ent, new_ent) = if old_inner_off < new_inner_off {
+				let (old_slice, new_slice) = slice.split_at_mut(new_inner_off);
+				let old_ent = Dirent::from_slice(&mut old_slice[old_inner_off..], &fs.sp)?;
+				let new_ent = Dirent::from_slice(&mut new_slice[..], &fs.sp)?;
+				(old_ent, new_ent)
+			} else {
+				let (new_slice, old_slice) = slice.split_at_mut(old_inner_off);
+				let old_ent = Dirent::from_slice(&mut old_slice[..], &fs.sp)?;
+				let new_ent = Dirent::from_slice(&mut new_slice[new_inner_off..], &fs.sp)?;
+				(old_ent, new_ent)
+			};
+			// Swap inodes
+			if unlikely(old_ent.is_free() || new_ent.is_free()) {
+				return Err(errno!(ENOENT));
+			}
+			mem::swap(&mut old_ent.inode, &mut new_ent.inode);
+			blk.mark_dirty();
+			Ok(())
+		} else {
+			// Different blocks, read both
+			let old_blk = read_block(fs, old_disk_blk_off.get() as _)?;
+			let new_blk = read_block(fs, new_disk_blk_off.get() as _)?;
+			let old_inner_off = (old_disk_blk_off.get() % blk_size) as usize;
+			let new_inner_off = (new_disk_blk_off.get() % blk_size) as usize;
+			let old_slice = unsafe { old_blk.slice_mut() };
+			let new_slice = unsafe { new_blk.slice_mut() };
+			let old_ent = Dirent::from_slice(&mut old_slice[old_inner_off..], &fs.sp)?;
+			let new_ent = Dirent::from_slice(&mut new_slice[new_inner_off..], &fs.sp)?;
+			// Swap inodes
+			if unlikely(old_ent.is_free() || new_ent.is_free()) {
+				return Err(errno!(ENOENT));
+			}
+			mem::swap(&mut old_ent.inode, &mut new_ent.inode);
+			old_blk.mark_dirty();
+			new_blk.mark_dirty();
+			Ok(())
+		}
 	}
 
 	/// Changes the inode associated with a directory entry.
@@ -739,7 +814,7 @@ impl Ext2INode {
 		let file_blk_off = off / blk_size as u64;
 		let inner_off = (off % blk_size as u64) as usize;
 		// Read entry's block
-		let Some(disk_blk_off) = self.translate_blk_off(file_blk_off as _, fs)? else {
+		let Some(disk_blk_off) = self.off_to_blk(fs, off)? else {
 			return Ok(());
 		};
 		let blk = read_block(fs, disk_blk_off.get() as _)?;

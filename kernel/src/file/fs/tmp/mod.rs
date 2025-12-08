@@ -309,7 +309,12 @@ impl NodeOps for DirectoryContent {
 		Ok(())
 	}
 
-	fn symlink(&self, parent: &Arc<Node>, ent: &mut vfs::Entry, target: UserString) -> EResult<()> {
+	fn symlink(
+		&self,
+		parent: &Arc<Node>,
+		ent: &mut vfs::Entry,
+		target: UserString,
+	) -> EResult<()> {
 		let fs = downcast_fs::<TmpFS>(&*parent.fs.ops);
 		// Read target
 		let target = target.copy_path_from_user()?;
