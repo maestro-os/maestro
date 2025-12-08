@@ -513,11 +513,16 @@ impl NodeOps for DirOps {
 		let fs = downcast_fs::<Ext2Fs>(&*old_node.fs.ops);
 		let old_parent_node = old_parent.node();
 		let new_parent_node = new_parent.node();
+		let exchange = flags & RENAME_EXCHANGE != 0;
 		// If source and destination parent are the same
 		if old_parent_node.inode == new_parent_node.inode {
 			// No need to check for cycles, hence no need to lock the rename mutex
 			let mut parent_inode = Ext2INode::lock(new_parent_node, fs)?;
-			return parent_inode.rename_dirent(fs, &old_entry.name, &new_entry.name);
+			return if !exchange {
+				parent_inode.rename_dirent(fs, &old_entry.name, &new_entry.name)
+			} else {
+				parent_inode.exchange_dirent(fs, &old_entry.name, &new_entry.name)
+			};
 		}
 		// Prevent concurrent renames to safeguard cycle checking
 		let _rename_guard = fs.rename_lock.lock();
@@ -545,7 +550,7 @@ impl NodeOps for DirOps {
 			}
 			// Update entry
 			new_parent_inode.set_dirent_inode(off, old_node.inode, fs)?; // TODO update file type
-			if flags & RENAME_EXCHANGE != 0 {
+			if exchange {
 				// Set entry in the old directory. We are guaranteed that the entry already exists
 				let (_, off) = old_parent_inode
 					.get_dirent(&old_entry.name, fs)?
