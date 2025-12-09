@@ -35,7 +35,7 @@ use crate::{
 	device::BlkDev,
 	file::{
 		perm::{AccessProfile, S_ISGID},
-		vfs::node::Node,
+		vfs::{CachePolicy, node::Node},
 	},
 	memory::{
 		cache::RcFrame,
@@ -415,8 +415,8 @@ impl FileOps for DummyOps {}
 pub trait FilesystemOps: Any + Debug {
 	/// Returns the name of the filesystem.
 	fn get_name(&self) -> &[u8];
-	/// Tells whether the directory of this filesystem can be cached.
-	fn cache_entries(&self) -> bool;
+	/// Returns the filesystem's cache policy
+	fn cache_policy(&self) -> CachePolicy;
 
 	/// Returns statistics about the filesystem.
 	fn get_stat(&self) -> EResult<Statfs>;

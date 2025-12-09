@@ -34,7 +34,7 @@ use crate::{
 		},
 		perm::{ROOT_GID, ROOT_UID},
 		vfs,
-		vfs::{RENAME_EXCHANGE, node::Node},
+		vfs::{CachePolicy, RENAME_EXCHANGE, node::Node},
 	},
 	memory::{
 		cache::{FrameOwner, RcFrame},
@@ -485,8 +485,8 @@ impl FilesystemOps for TmpFS {
 		b"tmpfs"
 	}
 
-	fn cache_entries(&self) -> bool {
-		false
+	fn cache_policy(&self) -> CachePolicy {
+		CachePolicy::Keep
 	}
 
 	fn get_stat(&self) -> EResult<Statfs> {
