@@ -64,7 +64,7 @@ use crate::{
 			generic_file_read, generic_file_write,
 		},
 		vfs,
-		vfs::{RENAME_EXCHANGE, mountpoint, node::Node},
+		vfs::{CachePolicy, RENAME_EXCHANGE, mountpoint, node::Node},
 	},
 	memory::{
 		cache::{FrameOwner, RcFrame, RcFrameVal},
@@ -1017,8 +1017,8 @@ impl FilesystemOps for Ext2Fs {
 		b"ext2"
 	}
 
-	fn cache_entries(&self) -> bool {
-		true
+	fn cache_policy(&self) -> CachePolicy {
+		CachePolicy::MayFree
 	}
 
 	fn get_stat(&self) -> EResult<Statfs> {

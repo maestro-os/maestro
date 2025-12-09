@@ -40,7 +40,7 @@ use crate::{
 		},
 		perm::{Gid, Uid},
 		vfs,
-		vfs::node::Node,
+		vfs::{CachePolicy, node::Node},
 	},
 	process::{PROCESSES, Process, pid::Pid},
 };
@@ -291,8 +291,8 @@ impl FilesystemOps for ProcFS {
 		b"proc"
 	}
 
-	fn cache_entries(&self) -> bool {
-		false
+	fn cache_policy(&self) -> CachePolicy {
+		CachePolicy::Never
 	}
 
 	fn get_stat(&self) -> EResult<Statfs> {

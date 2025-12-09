@@ -74,6 +74,18 @@ pub const RENAME_NOREPLACE: c_int = 1;
 /// [`rename`] flag: Exchanges old and new file atomically
 pub const RENAME_EXCHANGE: c_int = 2;
 
+/// Cache policy of a filesystem
+#[derive(Eq, PartialEq)]
+pub enum CachePolicy {
+	/// Non-negative entries may get freed only by the filesystem implementation, not by shrinking
+	/// the cache
+	Keep,
+	/// Entries may get freed under memory pressure
+	MayFree,
+	/// Do not cache entries
+	Never,
+}
+
 /// A child of a VFS entry.
 ///
 /// The [`Hash`] and [`PartialEq`] traits are forwarded to the entry's name.
@@ -260,6 +272,12 @@ pub fn shrink_entries() -> bool {
 	let mut lru = LRU.lock();
 	for cursor in lru.iter().rev() {
 		let entry = cursor.arc();
+		// If the entry is on a filesystem whose nodes cannot be freed, skip
+		if let Some(node) = &entry.node
+			&& node.fs.ops.cache_policy() == CachePolicy::Keep
+		{
+			continue;
+		}
 		// The following is the same as the implementation of `Entry::release`. We don't call
 		// directly to reuse the lock on `LRU`
 		let Some(parent) = entry.parent.clone() else {
@@ -377,7 +395,7 @@ fn resolve_entry(lookup_dir: &Arc<Entry>, name: &[u8]) -> EResult<Arc<Entry>> {
 		.node_ops
 		.lookup_entry(lookup_dir_node, &mut entry)?;
 	let entry = Arc::new(entry)?;
-	if lookup_dir_node.fs.ops.cache_entries() {
+	if lookup_dir_node.fs.ops.cache_policy() != CachePolicy::Never {
 		// Insert in cache. Do not use `link_parent` to keep `children` locked
 		children.insert(EntryChild(entry.clone()))?;
 		drop(children);
