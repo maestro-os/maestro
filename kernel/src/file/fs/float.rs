@@ -24,7 +24,7 @@ use crate::{
 		FileType, Stat,
 		fs::{DummyOps, FileOps, Filesystem, FilesystemOps, Statfs},
 		vfs,
-		vfs::node::Node,
+		vfs::{CachePolicy, node::Node},
 	},
 	sync::once::OnceInit,
 };
@@ -41,8 +41,8 @@ impl FilesystemOps for FloatFs {
 		b"floatfs"
 	}
 
-	fn cache_entries(&self) -> bool {
-		false
+	fn cache_policy(&self) -> CachePolicy {
+		CachePolicy::Never
 	}
 
 	fn get_stat(&self) -> EResult<Statfs> {
