@@ -70,7 +70,7 @@ use crate::{
 		cache::{FrameOwner, RcFrame, RcFrameVal},
 		user::{UserSlice, UserString},
 	},
-	sync::{mutex::Mutex, spin::Spin},
+	sync::spin::Spin,
 	time::clock::{Clock, current_time_sec},
 };
 use bgd::BlockGroupDescriptor;
@@ -318,9 +318,10 @@ impl NodeOps for DirOps {
 		Ok(())
 	}
 
-	fn iter_entries(&self, dir: &Node, ctx: &mut DirContext) -> EResult<()> {
-		let fs = downcast_fs::<Ext2Fs>(&*dir.fs.ops);
-		let inode = Ext2INode::lock(dir, fs)?;
+	fn iter_entries(&self, dir: &vfs::Entry, ctx: &mut DirContext) -> EResult<()> {
+		let node = dir.node();
+		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
+		let inode = Ext2INode::lock(node, fs)?;
 		// Iterate on entries
 		let mut blk = None;
 		for ent in DirentIterator::new(fs, &inode, &mut blk, ctx.off)? {
@@ -523,12 +524,6 @@ impl NodeOps for DirOps {
 			} else {
 				parent_inode.exchange_dirent(fs, &old_entry.name, &new_entry.name)
 			};
-		}
-		// Prevent concurrent renames to safeguard cycle checking
-		let _rename_guard = fs.rename_lock.lock();
-		// Cannot make a directory a child of itself
-		if unlikely(new_entry.is_child_of(old_entry)) {
-			return Err(errno!(EINVAL));
 		}
 		let (mut old_parent_inode, mut new_parent_inode) =
 			Ext2INode::lock_two(old_parent_node, new_parent_node, fs)?;
@@ -803,9 +798,6 @@ struct Ext2Fs {
 	dev: Arc<BlkDev>,
 	/// The filesystem's superblock
 	sp: RcFrameVal<Superblock>,
-
-	/// Lock when renaming a file, to avoid concurrency issues when looking for cycles.
-	rename_lock: Mutex<()>,
 }
 
 impl Ext2Fs {
@@ -1142,8 +1134,6 @@ impl FilesystemType for Ext2FsType {
 			Box::new(Ext2Fs {
 				dev,
 				sp,
-
-				rename_lock: Mutex::new(()),
 			})?,
 			mount_flags,
 		)?)

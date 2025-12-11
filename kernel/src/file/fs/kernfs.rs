@@ -26,7 +26,7 @@
 
 use crate::{
 	file::{
-		DirContext, DirEntry, FileType, INode, Stat,
+		DirContext, DirEntry, FileType, Stat,
 		fs::{DummyOps, FileOps, NodeOps},
 		vfs,
 		vfs::node::Node,
@@ -40,87 +40,10 @@ use core::{
 use utils::{
 	DisplayableStr,
 	boxed::Box,
-	collections::vec::Vec,
 	errno,
 	errno::{AllocResult, EResult},
 	ptr::arc::Arc,
 };
-
-/// The index of the root inode.
-pub const ROOT_INODE: INode = 1;
-
-/// Storage of kernfs nodes.
-///
-/// Each element of the inner vector is a slot to store a node. If a slot is `None`, it means it is
-/// free to be used.
-#[derive(Debug)]
-pub struct NodeStorage(Vec<Option<Arc<Node>>>);
-
-impl NodeStorage {
-	/// Creates a new instance.
-	pub fn new() -> AllocResult<Self> {
-		Ok(Self(Vec::new()))
-	}
-
-	/// Returns an immutable reference to the node with inode `inode`.
-	///
-	/// If the node does not exist, the function returns an error.
-	pub fn get_node(&self, inode: INode) -> EResult<&Arc<Node>> {
-		let index = (inode as usize)
-			.checked_sub(1)
-			.ok_or_else(|| errno!(ENOENT))?;
-		self.0
-			.get(index)
-			.and_then(Option::as_ref)
-			.ok_or_else(|| errno!(ENOENT))
-	}
-
-	/// Sets the root node.
-	pub fn set_root(&mut self, root: Arc<Node>) -> AllocResult<()> {
-		if let Some(slot) = self.0.first_mut() {
-			*slot = Some(root);
-			Ok(())
-		} else {
-			self.0.push(Some(root))
-		}
-	}
-
-	/// Returns a free slot for a new node.
-	///
-	/// If no slot is available, the function allocates a new one.
-	pub fn get_free_slot(&mut self) -> EResult<(INode, &mut Option<Arc<Node>>)> {
-		let slot = self
-			.0
-			.iter_mut()
-			.enumerate()
-			.find(|(_, s)| s.is_none())
-			.map(|(i, _)| i);
-		let index = match slot {
-			// Use an existing slot
-			Some(i) => i,
-			// Allocate a new node slot
-			None => {
-				let i = self.0.len();
-				self.0.push(None)?;
-				i
-			}
-		};
-		let inode = index as u64 + 1;
-		let slot = &mut self.0[index];
-		Ok((inode, slot))
-	}
-
-	/// Removes the node with inode `inode`.
-	///
-	/// If the node is a non-empty directory, its content is **NOT** removed. It is the caller's
-	/// responsibility to ensure no file is left allocated without a reference to it. Failure to do
-	/// so results in a memory leak.
-	///
-	/// If the node doesn't exist, the function does nothing.
-	pub fn remove_node(&mut self, inode: INode) -> Option<Arc<Node>> {
-		self.0.get_mut(inode as usize - 1).and_then(Option::take)
-	}
-}
 
 /// Writer for [`format_content_args`].
 #[derive(Debug)]
@@ -291,7 +214,7 @@ impl<T: 'static + Clone + Debug> NodeOps for StaticDir<T> {
 		Ok(())
 	}
 
-	fn iter_entries(&self, _dir: &Node, ctx: &mut DirContext) -> EResult<()> {
+	fn iter_entries(&self, _dir: &vfs::Entry, ctx: &mut DirContext) -> EResult<()> {
 		let iter = self.entries.iter().skip(ctx.off as usize);
 		for e in iter {
 			let stat = (e.stat)(self.data.clone());
