@@ -721,9 +721,6 @@ pub fn unlink(entry: Arc<Entry>) -> EResult<()> {
 	};
 	// Validation
 	let parent_stat = parent.stat();
-	if parent_stat.get_type() != Some(FileType::Directory) {
-		return Err(errno!(ENOTDIR));
-	}
 	if !can_write_directory(&parent_stat) {
 		return Err(errno!(EACCES));
 	}
@@ -811,6 +808,7 @@ pub fn rename(
 	{
 		return Err(errno!(EINVAL));
 	}
+	let exchange = flags & RENAME_EXCHANGE != 0;
 	// If `old` has no parent, it's the root, so it's a mountpoint
 	let old_parent = old.parent.as_ref().ok_or_else(|| errno!(EBUSY))?;
 	// Cannot rename a mountpoint
@@ -862,12 +860,17 @@ pub fn rename(
 			if unlikely(new_stat.get_type() != Some(FileType::Directory)) {
 				return Err(errno!(EISDIR));
 			}
-			// Look for overflow due to the `..` entry
+			// Look for overflow (entry + `..`)
+			if unlikely(new_parent_stat.nlink >= u16::MAX - 1) {
+				return Err(errno!(EMFILE));
+			}
+		} else {
+			// Lock for overflow
 			if unlikely(new_parent_stat.nlink == u16::MAX) {
 				return Err(errno!(EMFILE));
 			}
 		}
-	} else if flags & RENAME_EXCHANGE != 0 {
+	} else if exchange {
 		// The destination must exist
 		return Err(errno!(ENOENT));
 	}
@@ -880,7 +883,7 @@ pub fn rename(
 		.node()
 		.node_ops
 		.rename(old_parent, &old, &new_parent, &new_entry, flags)?;
-	if flags & RENAME_EXCHANGE == 0 {
+	if !exchange {
 		// TODO move
 		// Remove the destination node if this was the last reference to it
 		Entry::release(new_entry)?;
