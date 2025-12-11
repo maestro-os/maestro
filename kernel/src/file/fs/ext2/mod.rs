@@ -380,6 +380,10 @@ impl NodeOps for DirOps {
 		let node = Arc::new(node)?;
 		parent.fs.node_insert(node.clone())?;
 		ent.node = Some(node);
+		// Add reference for `..`
+		if file_type == FileType::Directory {
+			parent.stat.lock().nlink += 1;
+		}
 		Ok(())
 	}
 

@@ -196,6 +196,10 @@ impl NodeOps for DirectoryContent {
 			file_ops,
 		))?;
 		ent.node = Some(node);
+		// Add reference for `..`
+		if file_type == Some(FileType::Directory) {
+			parent.stat.lock().nlink += 1;
+		}
 		Ok(())
 	}
 
@@ -247,6 +251,9 @@ impl NodeOps for DirectoryContent {
 	fn unlink(&self, parent: &Node, ent: &vfs::Entry) -> EResult<()> {
 		let node = ent.node();
 		if node.get_type() == Some(FileType::Directory) {
+			if !ent.children.lock().is_empty() {
+				return Err(errno!(ENOTEMPTY));
+			}
 			parent.stat.lock().nlink -= 1;
 		}
 		node.stat.lock().nlink -= 1;
