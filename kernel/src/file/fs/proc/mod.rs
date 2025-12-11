@@ -247,7 +247,7 @@ impl NodeOps for RootDir {
 		Ok(())
 	}
 
-	fn iter_entries(&self, _dir: &Node, ctx: &mut DirContext) -> EResult<()> {
+	fn iter_entries(&self, _dir: &vfs::Entry, ctx: &mut DirContext) -> EResult<()> {
 		let off: usize = ctx.off.try_into().map_err(|_| errno!(EINVAL))?;
 		// Iterate on static entries
 		let static_iter = Self::STATIC.entries.iter().skip(off);

@@ -90,7 +90,15 @@ pub enum CachePolicy {
 ///
 /// The [`Hash`] and [`PartialEq`] traits are forwarded to the entry's name.
 #[derive(Debug)]
-struct EntryChild(Arc<Entry>);
+pub struct EntryChild(Arc<Entry>);
+
+impl EntryChild {
+	/// Returns the inner value
+	#[inline]
+	pub fn inner(&self) -> &Arc<Entry> {
+		&self.0
+	}
+}
 
 impl Borrow<[u8]> for EntryChild {
 	fn borrow(&self) -> &[u8] {
@@ -126,7 +134,7 @@ pub struct Entry {
 	/// The list of cached file entries.
 	///
 	/// This is not an exhaustive list of the file's entries. Only those that are loaded.
-	children: Mutex<HashSet<EntryChild>, false>,
+	pub children: Mutex<HashSet<EntryChild>, false>,
 	/// The node associated with the entry.
 	///
 	/// If `None`, the entry is negative.
@@ -218,6 +226,15 @@ impl Entry {
 		false
 	}
 
+	/// Tells whether the entry has a non-negative child entry named `name`.
+	pub fn has_child(&self, name: &[u8]) -> bool {
+		self.children
+			.lock()
+			.get(name)
+			.map(|ent| !ent.0.is_negative())
+			.unwrap_or(false)
+	}
+
 	/// Makes `self` a child of its parent, if any. The entry is also inserted in the LRU.
 	///
 	/// The function returns `self` wrapped into an [`Arc`].
@@ -302,8 +319,10 @@ pub fn shrink_entries() -> bool {
 	false
 }
 
-/// The root entry of the VFS.
+/// The root entry of the VFS
 pub static ROOT: OnceInit<Arc<Entry>> = unsafe { OnceInit::new() };
+/// Global rename lock, to avoid concurrency issues while checking for cycles
+pub static RENAME_LOCK: Mutex<()> = Mutex::new(());
 
 /// Settings for a path resolution operation.
 #[derive(Clone, Debug)]
@@ -630,12 +649,14 @@ pub fn create_file(parent: Arc<Entry>, name: &[u8], stat: Stat) -> EResult<Arc<E
 		return Err(errno!(EROFS));
 	}
 	let parent_stat = parent.stat();
-	// Validation
 	if parent_stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
 	}
 	if !can_write_directory(&parent_stat) {
 		return Err(errno!(EACCES));
+	}
+	if parent.has_child(name) {
+		return Err(errno!(EEXIST));
 	}
 	// Add link to filesystem
 	let mut ent = Entry::new(String::try_from(name)?, Some(parent.clone()), None);
@@ -664,9 +685,17 @@ pub fn link(parent: &Arc<Entry>, name: String, target: Arc<Node>) -> EResult<()>
 		return Err(errno!(EROFS));
 	}
 	let parent_stat = parent.stat();
-	// Validation
 	if parent_stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
+	}
+	if !can_write_directory(&parent_stat) {
+		return Err(errno!(EACCES));
+	}
+	if !parent.node().is_same_fs(&target) {
+		return Err(errno!(EXDEV));
+	}
+	if parent.has_child(&name) {
+		return Err(errno!(EEXIST));
 	}
 	let target_stat = target.stat();
 	if target_stat.get_type() == Some(FileType::Directory) {
@@ -674,12 +703,6 @@ pub fn link(parent: &Arc<Entry>, name: String, target: Arc<Node>) -> EResult<()>
 	}
 	if target_stat.nlink >= LINK_MAX as u16 {
 		return Err(errno!(EMLINK));
-	}
-	if !can_write_directory(&parent_stat) {
-		return Err(errno!(EACCES));
-	}
-	if !parent.node().is_same_fs(&target) {
-		return Err(errno!(EXDEV));
 	}
 	// Add link to the filesystem
 	let ent = Entry::new(name, Some(parent.clone()), Some(target));
@@ -763,6 +786,9 @@ pub fn symlink(parent: &Arc<Entry>, name: &[u8], target: UserString) -> EResult<
 	if !can_write_directory(&parent_stat) {
 		return Err(errno!(EACCES));
 	}
+	if parent.has_child(name) {
+		return Err(errno!(EEXIST));
+	}
 	// Create symlink
 	let mut ent = Entry::new(String::try_from(name)?, Some(parent.clone()), None);
 	let parent_node = parent.node();
@@ -819,7 +845,6 @@ pub fn rename(
 	if old_stat.mode & S_ISVTX != 0 && ap.euid != old_stat.uid && ap.euid != old_parent_stat.uid {
 		return Err(errno!(EACCES));
 	}
-	// Check permissions on `new_parent`
 	let new_parent_stat = new_parent.stat();
 	if !can_write_directory(&new_parent_stat) {
 		return Err(errno!(EACCES));
@@ -844,20 +869,34 @@ pub fn rename(
 		{
 			return Err(errno!(EACCES));
 		}
-		if old_stat.get_type() == Some(FileType::Directory)
-			&& unlikely(new_stat.get_type() != Some(FileType::Directory))
-		{
-			return Err(errno!(EISDIR));
+		if old_stat.get_type() == Some(FileType::Directory) {
+			if unlikely(new_stat.get_type() != Some(FileType::Directory)) {
+				return Err(errno!(EISDIR));
+			}
+			// Look for overflow due to the `..` entry
+			if unlikely(new_parent_stat.nlink == u16::MAX) {
+				return Err(errno!(EMFILE));
+			}
 		}
 	} else if flags & RENAME_EXCHANGE != 0 {
 		// The destination must exist
 		return Err(errno!(ENOENT));
 	}
+	let _guard = RENAME_LOCK.lock();
+	// Cannot make a directory a child of itself
+	if unlikely(new_entry.is_child_of(&old)) {
+		return Err(errno!(EINVAL));
+	}
 	old_parent
 		.node()
 		.node_ops
 		.rename(old_parent, &old, &new_parent, &new_entry, flags)?;
-	// Remove the destination node if this was the last reference to it
-	Entry::release(new_entry)?;
+	if flags & RENAME_EXCHANGE == 0 {
+		// TODO move
+		// Remove the destination node if this was the last reference to it
+		Entry::release(new_entry)?;
+	} else {
+		// TODO exchange
+	}
 	Ok(())
 }
