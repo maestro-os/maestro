@@ -139,7 +139,7 @@ pub trait NodeOps: Any + Debug {
 	/// If the node is not a directory, the function returns [`errno::ENOTDIR`].
 	///
 	/// The default implementation of this function returns an error.
-	fn iter_entries(&self, dir: &Node, ctx: &mut DirContext) -> EResult<()> {
+	fn iter_entries(&self, dir: &vfs::Entry, ctx: &mut DirContext) -> EResult<()> {
 		let _ = (dir, ctx);
 		Err(errno!(ENOTDIR))
 	}
