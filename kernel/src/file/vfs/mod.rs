@@ -55,6 +55,7 @@ use core::{
 };
 use node::Node;
 use utils::{
+	TryClone,
 	collections::{
 		hashset::HashSet,
 		list::ListNode,
@@ -894,12 +895,37 @@ pub fn rename(
 		.node()
 		.node_ops
 		.rename(old_parent, &old, &new_parent, &new_entry, flags)?;
+	// Update VFS
+	let (mut old_parent_children, mut new_parent_children) =
+		Mutex::lock_two(&old_parent.children, &new_parent.children);
+	// We create new entries, dropping the previous. We do this instead of atomically swapping
+	// nodes because open file descriptions point toward VFS entries and not toward inodes
 	if !exchange {
-		// TODO move
+		let new_entry = Arc::new(Entry::new(
+			new_entry.name.try_clone()?,
+			Some(new_parent.clone()),
+			Some(old.node().clone()),
+		))?;
+		let prev = new_parent_children.insert(EntryChild(new_entry))?;
+		old_parent_children.remove(old.name.as_bytes());
 		// Remove the destination node if this was the last reference to it
-		Entry::release(new_entry)?;
+		if let Some(ent) = prev {
+			Entry::release(ent.0)?;
+		}
 	} else {
-		// TODO exchange
+		let old_entry = Arc::new(Entry::new(
+			old.name.try_clone()?,
+			Some(old_parent.clone()),
+			Some(new_entry.node().clone()),
+		))?;
+		let new_entry = Arc::new(Entry::new(
+			new_entry.name.try_clone()?,
+			Some(new_parent.clone()),
+			Some(old.node().clone()),
+		))?;
+		// No need to release the underlying nodes because we know they are still referenced
+		old_parent_children.insert(EntryChild(old_entry))?;
+		new_parent_children.insert(EntryChild(new_entry))?;
 	}
 	Ok(())
 }
