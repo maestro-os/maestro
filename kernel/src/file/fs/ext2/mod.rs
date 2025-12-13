@@ -523,11 +523,13 @@ impl NodeOps for DirOps {
 		if old_parent_node.inode == new_parent_node.inode {
 			// No need to check for cycles, hence no need to lock the rename mutex
 			let mut parent_inode = Ext2INode::lock(new_parent_node, fs)?;
-			return if !exchange {
-				parent_inode.rename_dirent(fs, &old_entry.name, &new_entry.name)
+			if !exchange {
+				parent_inode.rename_dirent(fs, &old_entry.name, &new_entry.name)?;
 			} else {
-				parent_inode.exchange_dirent(fs, &old_entry.name, &new_entry.name)
-			};
+				parent_inode.exchange_dirent(fs, &old_entry.name, &new_entry.name)?;
+			}
+			parent_inode.mark_dirty();
+			return Ok(());
 		}
 		let (mut old_parent_inode, mut new_parent_inode) =
 			Ext2INode::lock_two(old_parent_node, new_parent_node, fs)?;
