@@ -22,7 +22,6 @@
 use crate::device::{
 	BlockDeviceOps,
 	bar::BAR,
-	bus::pci,
 	storage::{PhysicalDevice, pata::PATAInterface},
 };
 use utils::{boxed::Box, errno::AllocResult};
@@ -92,7 +91,7 @@ impl Channel {
 	}
 }
 
-/// Structure representing an IDE controller.
+/// An IDE controller.
 #[derive(Debug)]
 pub struct Controller {
 	/// Programming Interface Byte
@@ -103,16 +102,10 @@ pub struct Controller {
 }
 
 impl Controller {
-	/// Creates a new instance from the given `PhysicalDevice`.
-	///
-	/// If the given device is not an IDE controller, the function returns `None`.
-	pub fn new(dev: &dyn PhysicalDevice) -> Option<Self> {
-		if dev.get_class() != pci::CLASS_MASS_STORAGE_CONTROLLER || dev.get_subclass() != 0x01 {
-			return None;
-		}
-
+	/// Creates a new instance.
+	pub fn new(dev: &dyn PhysicalDevice) -> Self {
 		let bars = dev.get_bars();
-		Some(Self {
+		Self {
 			prog_if: dev.get_prog_if(),
 
 			bars: [
@@ -122,7 +115,7 @@ impl Controller {
 				bars[3].clone(),
 				bars[4].clone(),
 			],
-		})
+		}
 	}
 
 	/// Tells whether the primary bus of the controller is in PCI mode.
