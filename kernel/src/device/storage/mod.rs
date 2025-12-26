@@ -18,9 +18,10 @@
 
 //! Storage management implementation.
 
-pub mod ide;
-pub mod partition;
-pub mod pata;
+mod ide;
+mod nvme;
+mod partition;
+mod pata;
 
 use crate::{
 	device,
@@ -37,7 +38,6 @@ use crate::{
 		cache::{FrameOwner, RcFrame},
 		user::UserPtr,
 	},
-	println,
 	syscall::{FromSyscallArg, ioctl},
 };
 use core::{
@@ -59,7 +59,13 @@ use utils::{
 };
 
 /// The major number for storage devices.
-const STORAGE_MAJOR: u32 = 8;
+const SCSI_MAJOR: u32 = 8;
+
+/// NVMe controller major number
+const NVME_CONTROLLER_MAJOR: u32 = 239;
+/// NVME driver major number
+const NVME_MAJOR: u32 = 259;
+
 /// The mode of the device file for a storage device.
 const STORAGE_MODE: Mode = 0o660;
 /// The maximum number of partitions in a disk.
@@ -162,13 +168,16 @@ impl BlockDeviceOps for PartitionOps {
 	}
 }
 
-/// An instance of StorageManager manages devices on a whole major number.
-///
-/// The manager has name `storage`.
+/// Manages storage controllers, devices and their partitions.
 pub struct StorageManager {
-	/// The allocated device major number for storage devices.
-	major_block: MajorBlock,
-	/// The list of detected interfaces.
+	/// Allocated device major number for SCSI devices
+	scsi_major: MajorBlock,
+	/// Allocated device major number for NVMe controllers
+	nvme_ctrlr_major: MajorBlock,
+	/// Allocated device major number for NVMe drives
+	nvme_major: MajorBlock,
+
+	/// The list of detected interfaces
 	interfaces: Vec<Arc<BlkDev>>,
 }
 
@@ -176,7 +185,10 @@ impl StorageManager {
 	/// Creates a new instance.
 	pub fn new() -> EResult<Self> {
 		Ok(Self {
-			major_block: id::alloc_major(DeviceType::Block, Some(STORAGE_MAJOR))?,
+			scsi_major: id::alloc_major(DeviceType::Block, Some(SCSI_MAJOR))?,
+			nvme_ctrlr_major: id::alloc_major(DeviceType::Char, Some(NVME_CONTROLLER_MAJOR))?,
+			nvme_major: id::alloc_major(DeviceType::Block, Some(NVME_MAJOR))?,
+
 			interfaces: Vec::new(),
 		})
 	}
@@ -211,7 +223,7 @@ impl StorageManager {
 			let dev = BlkDev::new(
 				DeviceID {
 					// TODO use a different major for different storage device types
-					major: STORAGE_MAJOR,
+					major: SCSI_MAJOR,
 					minor: storage_id * MAX_PARTITIONS as u32 + part_nbr,
 				},
 				path,
@@ -251,7 +263,7 @@ impl StorageManager {
 		// Create the main device file
 		let dev = BlkDev::new(
 			DeviceID {
-				major: self.major_block.get_major(),
+				major: self.scsi_major.get_major(),
 				minor: storage_id * MAX_PARTITIONS as u32,
 			},
 			main_path.try_clone()?,
@@ -380,18 +392,24 @@ impl DeviceManager for StorageManager {
 		if dev.get_class() != pci::CLASS_MASS_STORAGE_CONTROLLER {
 			return Ok(());
 		}
-
-		// TODO use device class as a hint
-		// TODO handle other controller types
-		if let Some(ide) = ide::Controller::new(dev) {
-			for iface in ide.detect() {
-				let res = iface.map_err(Into::into).and_then(|ops| self.add(ops));
-				if let Err(e) = res {
-					println!("Could not register storage device: {e}");
+		match dev.get_subclass() {
+			// IDE
+			0x01 => {
+				let ide = ide::Controller::new(dev);
+				for iface in ide.detect() {
+					self.add(iface?)?;
 				}
 			}
+			// NVM
+			0x08 => {
+				let Some(_nvm) = nvme::Controller::new(dev) else {
+					return Ok(());
+				};
+				// TODO insert controller device
+				// TODO insert drives devices
+			}
+			_ => {}
 		}
-
 		Ok(())
 	}
 

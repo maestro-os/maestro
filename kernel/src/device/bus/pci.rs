@@ -19,7 +19,7 @@
 //! The PCI (Peripheral Component Interconnect) is a bus which allows to attach
 //! hardware devices on the motherboard.
 //!
-//! This module allows to retrieve informations on the devices attached to the computer's PCI.
+//! This module allows to retrieve information on the devices attached to the computer's PCI.
 //!
 //! The device ID, vendor ID, class and subclass of a device allows to determine
 //! which driver is required for the device.
@@ -491,7 +491,7 @@ impl PCIManager {
 		self.devices = (0..=255u8)
 			// Iterate devices on bus
 			.flat_map(|bus| (0..32u8).map(move |device| (bus, device)))
-			// If the device doesn't exist, ignore
+			// If the device does not exist, ignore
 			.filter(|(bus, device)| {
 				let vendor_id = read_long(*bus, *device, 0, 0) & 0xffff;
 				vendor_id != 0xffff
@@ -515,7 +515,7 @@ impl PCIManager {
 
 				(0..max_func_count).map(move |func| (bus, device, func))
 			})
-			// If the function doesn't exist, ignore
+			// If the function does not exist, ignore
 			.filter(|(bus, device, func)| {
 				let vendor_id = read_long(*bus, *device, *func, 0) & 0xffff;
 				vendor_id != 0xffff

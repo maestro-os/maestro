@@ -31,7 +31,8 @@ grub-mkrescue -o kernel.iso iso
 export QEMUDISK=qemu_disk
 export QEMUFLAGS="-device isa-debug-exit,iobase=0xf4,iosize=0x04 $QEMUFLAGS"
 if [ -f $QEMUDISK ]; then
-  QEMUFLAGS="-drive file=$QEMUDISK,format=raw $QEMUFLAGS"
+  # TODO allow testing both IDE and NVMe
+  QEMUFLAGS="-device nvme,serial=deadbeef,drive=nvme -drive file=$QEMUDISK,format=raw,if=none,id=nvme $QEMUFLAGS"
 fi
 
 ${QEMU} -cdrom kernel.iso $QEMUFLAGS
