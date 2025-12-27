@@ -414,7 +414,6 @@ impl DeviceManager for StorageManager {
 	}
 
 	fn on_unplug(&mut self, _dev: &dyn PhysicalDevice) -> EResult<()> {
-		// TODO remove device
-		todo!();
+		todo!() // remove device
 	}
 }
