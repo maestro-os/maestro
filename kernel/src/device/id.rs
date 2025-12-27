@@ -23,9 +23,9 @@ use core::cell::OnceCell;
 use utils::{collections::id_allocator::IDAllocator, errno::AllocResult};
 
 /// The number of major numbers.
-const MAJOR_COUNT: u32 = 256;
+const MAJOR_COUNT: u32 = 512;
 /// The number of minor numbers.
-const MINORS_COUNT: u32 = 256;
+const MINORS_COUNT: u32 = 512;
 
 /// Returns the major number from a device number.
 pub fn major(dev: u64) -> u32 {
@@ -106,9 +106,9 @@ impl Drop for MajorBlock {
 	}
 }
 
-/// The major number allocator
+/// Major numbers allocator
 static BLOCK_MAJOR_ALLOCATOR: Spin<OnceCell<IDAllocator>> = Spin::new(OnceCell::new());
-/// The major number allocator
+/// Major numbers allocator
 static CHAR_MAJOR_ALLOCATOR: Spin<OnceCell<IDAllocator>> = Spin::new(OnceCell::new());
 
 /// Allocates a major number.
