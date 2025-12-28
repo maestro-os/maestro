@@ -53,7 +53,7 @@ use utils::{
 		vec::Vec,
 	},
 	errno,
-	errno::EResult,
+	errno::{ENOMEM, EResult},
 	format,
 	ptr::arc::Arc,
 };
@@ -402,8 +402,10 @@ impl DeviceManager for StorageManager {
 			}
 			// NVM
 			0x08 => {
-				let Some(_nvm) = nvme::Controller::new(dev) else {
-					return Ok(());
+				let _nvm = match nvme::Controller::new(dev) {
+					Ok(n) => n,
+					Err(e) if e.as_int() == ENOMEM => return Err(e),
+					Err(_) => return Ok(()),
 				};
 				// TODO insert controller device
 				// TODO insert drives devices

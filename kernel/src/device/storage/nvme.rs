@@ -17,11 +17,34 @@
  */
 
 //! Non-Volatile Memory Express (NVMe) storage driver
+//!
+//! [NVMe specification](https://nvmexpress.org/wp-content/uploads/NVM-Express-Base-Specification-Revision-2.3-2025.08.01-Ratified.pdf)
 
 use crate::{
 	device::{bar::BAR, manager::PhysicalDevice},
+	memory::buddy,
 	println,
 };
+use core::hint;
+use utils::{errno, errno::EResult, limits::PAGE_SIZE};
+
+/// Register: Controller capabilities
+const REG_CAP: usize = 0x00;
+/// Register: Controller Configuration
+const REG_CC: usize = 0x14;
+/// Register: Controller Status
+const REG_CSTS: usize = 0x1c;
+/// Register: Admin queue attributes
+const REG_AQA: usize = 0x24;
+/// Register: Admin submission queue
+const REG_ASQ: usize = 0x28;
+/// Register: Admin completion queue
+const REG_ACQ: usize = 0x30;
+
+/// Flag (CC): Enable
+const FLAG_CC_EN: u64 = 0b1;
+/// Flag (CSTS): Ready
+const FLAG_CSTS_RDY: u64 = 0b1;
 
 #[repr(C)]
 struct IoQueue {
@@ -33,7 +56,7 @@ struct IoQueue {
 struct SubmissionQueueEntry {
 	/// Command
 	command: u32,
-	/// Namespace identifier
+	/// Namespace (drive) identifier
 	nsid: u32,
 	_reserved: [u32; 2],
 	/// Metadata address
@@ -59,6 +82,16 @@ struct CompletionQueueEntry {
 	status: u16,
 }
 
+fn wait_rdy(bar: &BAR, rdy: bool) {
+	loop {
+		let sts = bar.read::<u64>(REG_CSTS);
+		if (sts & FLAG_CSTS_RDY != 0) == rdy {
+			break;
+		}
+		hint::spin_loop();
+	}
+}
+
 /// A NVMe controller.
 pub struct Controller {
 	/// Base Address Register
@@ -69,20 +102,38 @@ impl Controller {
 	/// Creates a new instance.
 	///
 	/// If the device is invalid, the function returns `None`.
-	pub fn new(dev: &dyn PhysicalDevice) -> Option<Self> {
+	pub fn new(dev: &dyn PhysicalDevice) -> EResult<Self> {
 		let bar = dev.get_bars().first().cloned().flatten();
-		if let Some(bar) = bar {
-			Some(Self {
-				bar,
-			})
-		} else {
+		let Some(bar) = bar else {
 			println!("NVMe controller does not have a BAR");
-			None
-		}
+			return Err(errno!(EINVAL));
+		};
+		// Wait any previous reset to be done
+		wait_rdy(&bar, false);
+		// Initialize ASQ and ACQ. A SQE (64 bytes) is four times larger than a CQE (16 bytes)
+		let asq = buddy::alloc_kernel(2, 0)?;
+		let acq = buddy::alloc_kernel(0, 0)?;
+		let asq_len = (PAGE_SIZE << 2) / size_of::<SubmissionQueueEntry>();
+		let acq_len = PAGE_SIZE / size_of::<CompletionQueueEntry>();
+		let aqa = (acq_len << 16) | asq_len;
+		bar.write::<u64>(REG_ASQ, asq.as_ptr() as u64);
+		bar.write::<u64>(REG_ACQ, acq.as_ptr() as u64);
+		bar.write::<u32>(REG_AQA, aqa as u64);
+		// TODO check/set controller capabilities
+		// Enable controller
+		bar.write::<u64>(REG_CC, bar.read::<u64>(REG_CC) | FLAG_CC_EN);
+		wait_rdy(&bar, true);
+		// TODO identify controller
+		// TODO check the controller supports I/O submission/completion queues
+		// TODO allocate I/O queues
+		Ok(Self {
+			bar,
+		})
 	}
 
 	/// Detect drives.
 	pub fn detect(&self) {
+		// use the identify command to detect namespaces
 		todo!()
 	}
 }
