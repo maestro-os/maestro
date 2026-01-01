@@ -22,10 +22,14 @@
 
 use crate::{
 	device::{bar::BAR, manager::PhysicalDevice},
-	memory::buddy,
+	memory::{VirtAddr, buddy},
 	println,
 };
-use core::hint;
+use core::{
+	hint, mem,
+	ptr::NonNull,
+	sync::atomic::{AtomicUsize, Ordering::Release},
+};
 use utils::{errno, errno::EResult, limits::PAGE_SIZE};
 
 /// Register: Controller capabilities
@@ -45,6 +49,12 @@ const REG_ACQ: usize = 0x30;
 const FLAG_CC_EN: u64 = 0b1;
 /// Flag (CSTS): Ready
 const FLAG_CSTS_RDY: u64 = 0b1;
+
+/// Command opcode: Identify
+const CMD_IDENTIFY: u32 = 0x6;
+
+const ASQ_LEN: usize = (PAGE_SIZE << 2) / size_of::<SubmissionQueueEntry>();
+const ACQ_LEN: usize = PAGE_SIZE / size_of::<CompletionQueueEntry>();
 
 #[repr(C)]
 struct IoQueue {
@@ -82,6 +92,266 @@ struct CompletionQueueEntry {
 	status: u16,
 }
 
+/// Controller identification response
+#[repr(C, align(4096))]
+struct IdentifyController {
+	// Controller Capabilities and Features
+	/// PCI Vendor ID
+	vid: u16,
+	/// PCI Subsystem Vendor ID
+	ssvid: u16,
+	/// Serial Number
+	sn: [u8; 20],
+	/// Model Number
+	mn: [u8; 40],
+	/// Firmware Revision
+	fr: [u8; 8],
+	/// Recommended Arbitration Burst
+	rab: u8,
+	/// IEEE OUI Identifier
+	ieee: [u8; 3],
+	/// Controller Multi-Path and Namespace Sharing Capabilities
+	cmic: u8,
+	/// Maximum Data Transfer Size
+	mdts: u8,
+	/// Controller ID
+	cntlid: u16,
+	/// Version
+	ver: u32,
+	/// RTD3 Resume Latency
+	rtd3r: u32,
+	/// RTD3 Entry Latency
+	rtd3e: u32,
+	/// Optional Asynchronous Events Supported
+	oaes: u32,
+	/// Controller Attributes
+	ctratt: u32,
+	/// Read Recover Levels Supported
+	rrls: u16,
+	/// Boot Partition Capabilities
+	bpcap: u8,
+	_reserved0: u8,
+	/// NVM Subsystem Shutdown Latency
+	nssl: u32,
+	_reserved1: u16,
+	/// Power Loss Signaling Information
+	plsi: u8,
+	/// Controller Type
+	cntrltype: u8,
+	/// FRU Globally Unique Identifier
+	fguid: [u8; 16],
+	/// Command Retry Delay Time 1
+	crdt1: u16,
+	/// Command Retry Delay Time 1
+	crdt2: u16,
+	/// Command Retry Delay Time 1
+	crdt3: u16,
+	/// Controller Reachability Capabilities
+	crcap: u8,
+	/// Controller Instance Uniquifier
+	ciu: u8,
+	/// Controller Instance Random Number
+	cirn: [u8; 8],
+	_reserved2: [u8; 96],
+	_reserved3: [u8; 13],
+	/// NVM Subsystem Report
+	nvmsr: u8,
+	/// VPD Write Cycle Information
+	vwci: u8,
+	/// Management Endpoint Capabilities
+	mec: u8,
+
+	// Admin Command Set Attributes & Optional Controller Capabilities
+	/// Optional Admin Command Support
+	oacs: u16,
+	/// Abort Command Limit
+	acl: u8,
+	/// Asynchronous Event Request Limit
+	aerl: u8,
+	/// Firmware Updates
+	frmw: u8,
+	/// Log Page Attributes
+	lpa: u8,
+	/// Error Log Page Entries
+	elpe: u8,
+	/// Number of Power States Support
+	npss: u8,
+	/// Admin Vendor Specific Command Configuration
+	avscc: u8,
+	/// Autonomous Power State Transition Attributes
+	apsta: u8,
+	/// Warning Composite Temperature Threshold
+	wctemp: u16,
+	/// Critical Composite Temperature Threshold
+	cctemp: u16,
+	/// Maximum Time for Firmware Activation
+	mtfa: u16,
+	/// Host Memory Buffer Preferred Size
+	hmpre: u32,
+	/// Host Memory Buffer Minimum Size
+	hmmin: u32,
+	/// Total NVM Capacity
+	tnvmcap: [u64; 2],
+	/// Unallocated NVM Capacity
+	unvmcap: [u64; 2],
+	/// Replay Protected Memory Block Support
+	rpmbs: u32,
+	/// Extended Device Self-test Time
+	edstt: u16,
+	/// Device Self-test Options
+	dsto: u8,
+	/// Firmware Update Granularity
+	fwug: u8,
+	/// Keep Alive Support
+	kas: u16,
+	/// Host Controlled Thermal Management Attributes
+	hctma: u16,
+	/// Minimum Thermal Management Temperature
+	mntmt: u16,
+	/// Maximum Thermal Management Temperature
+	mxtmt: u16,
+	/// Sanitize Capabilities
+	sanicap: u32,
+	/// Host Memory Buffer Minimum Descriptor Entry Size
+	hmminds: u32,
+	/// Host Memory Maximum Descriptors Entries
+	hmmaxd: u16,
+	/// NVM Set Identifier Maximum
+	nsetidmax: u16,
+	/// Endurance Group Identifier Maximum
+	endgidmax: u16,
+	/// ANA Transition Time
+	anatt: u8,
+	/// Asymmetric Namespace Access Capabilities
+	anacap: u8,
+	/// ANA Group Identifier Maximum
+	anagrpmax: u32,
+	/// Number of ANA Group Identifiers
+	nanagrpid: u32,
+	/// Persistent Event Log Size
+	pels: u32,
+	/// Domain Identifier
+	did: u16,
+	/// Key Per I/O Capabilities
+	kpioc: u8,
+	_reserved4: u8,
+	/// Maximum Processing Time for Firmware Activation Without Reset
+	mptfawr: u16,
+	_reserved5: u16,
+	/// Max Endurance Group Capacity
+	megcap: [u64; 2],
+	/// Temperature Threshold Hysteresis Attributes
+	tmpthha: u8,
+	/// Maximum Unlimited Power Attributes
+	mupa: u8,
+	/// Command Quiesce Time
+	cqt: u16,
+	/// Configurable Device Personality Attributes
+	cdpa: u16,
+	/// Maximum Unlimited Power
+	mup: u16,
+	/// Interval Power Measurement Sample Rate
+	ipmsr: u16,
+	/// Maximum Stop Measurement Time
+	msmt: u16,
+	_reserved6: [u8; 116],
+
+	// NVM Command Set Attributes
+	/// Submission Queue Entry Size
+	sqes: u8,
+	/// Completion Queue Entry Size
+	cqes: u8,
+	/// Maximum Outstanding Commands
+	maxcmd: u16,
+	/// Number of Namespaces
+	nn: u32,
+	/// Optional NVM Command Support
+	oncs: u16,
+	/// Fused Operation Support
+	fuses: u16,
+	/// Format NVM Attributes
+	fna: u8,
+	/// Volatile Write Cache
+	vwc: u8,
+	/// Atomic Write Unit Normal
+	awun: u16,
+	/// Atomic Write Unit Power Fail
+	awupf: u16,
+	/// I/O Command Set Vendor Specific Command Configuration
+	icsvscc: u8,
+	/// Namespace Write Protection Capabilities
+	nwpc: u8,
+	/// Atomic Compare & Write Unit
+	acwu: u16,
+	/// Copy Descriptor Formats Supported
+	cdfs: u16,
+	/// SGL Support
+	sgls: u32,
+	/// Maximum Number of Allowed Namespaces
+	mnan: u32,
+	/// Maximum Domain Namespace Attachments
+	maxdna: [u64; 2],
+	/// Maximum I/O Controller Namespace Attachments
+	maxcna: u32,
+	/// Optimal Aggregated Queue Depth
+	oaqd: u32,
+	/// Recommended Host-Initiated Refresh Interval
+	rhiri: u8,
+	/// Host-Initiated Refresh Time
+	hirt: u8,
+	/// Controller Maximum Memory Range Tracking Descriptors
+	cmmrtd: u16,
+	/// NVM Subsystem Maximum Memory Range Tracking Descriptors
+	nmmrtd: u16,
+	/// Minimum Memory Range Tracking Granularity
+	minmrtg: u8,
+	/// Maximum Memory Range Tracking Granularity
+	maxmrtg: u8,
+	/// Tracking Attributes
+	trattr: u8,
+	_reserved7: u8,
+	/// Maximum Controller User Data Migration Queues
+	mcudmq: u16,
+	/// Maximum NVM Subsystem User Data Migration Queues
+	mnsudmq: u16,
+	/// Maximum CDQ Memory Ranges
+	mcmr: u16,
+	/// NVM Subsystem Maximum CDQ Memory Ranges
+	nmcmr: u16,
+	/// Maximum Controller Data Queue PRP Count
+	mcdqpc: u16,
+	_reserved8: [u8; 180],
+	/// NVM Subsystem NVMe Qualified Name
+	subnqn: [u8; 256],
+	_reserved9: [u8; 768],
+
+	// Fabric Specific
+	/// I/O Queue Command Capsule Supported Size
+	ioccsz: u32,
+	/// I/O Queue Response Capsule Support Size
+	iorcsz: u32,
+	/// In Capsule Data Offset
+	icdoff: u16,
+	/// Fabrics Controller Attributes
+	fcatt: u8,
+	/// Maximum SGL Data Block Descriptors
+	msdbd: u8,
+	/// Optional Fabrics Commands Support
+	ofcs: u16,
+	/// Discovery Controller Type
+	dctype: u8,
+	/// Cross-Controller Reset Limit
+	ccrl: u8,
+	_reserved10: [u8; 240],
+
+	// Power State Descriptors
+	/// Power State Descriptors
+	psd: [[u8; 32]; 32],
+
+	/// Vendor Specific
+	vs: [u8; 1024],
+}
+
 fn wait_rdy(bar: &BAR, rdy: bool) {
 	loop {
 		let sts = bar.read::<u64>(REG_CSTS);
@@ -96,6 +366,16 @@ fn wait_rdy(bar: &BAR, rdy: bool) {
 pub struct Controller {
 	/// Base Address Register
 	bar: BAR,
+
+	/// Admin submission queue
+	asq: NonNull<SubmissionQueueEntry>,
+	/// Admin submission queues tail
+	asq_tail: AtomicUsize,
+
+	/// Admin completion queue
+	acq: NonNull<CompletionQueueEntry>,
+	/// Admin completion queues head
+	acq_head: AtomicUsize,
 }
 
 impl Controller {
@@ -113,9 +393,7 @@ impl Controller {
 		// Initialize ASQ and ACQ. A SQE (64 bytes) is four times larger than a CQE (16 bytes)
 		let asq = buddy::alloc_kernel(2, 0)?;
 		let acq = buddy::alloc_kernel(0, 0)?;
-		let asq_len = (PAGE_SIZE << 2) / size_of::<SubmissionQueueEntry>();
-		let acq_len = PAGE_SIZE / size_of::<CompletionQueueEntry>();
-		let aqa = (acq_len << 16) | asq_len;
+		let aqa = (ACQ_LEN << 16) | ASQ_LEN;
 		bar.write::<u64>(REG_ASQ, asq.as_ptr() as u64);
 		bar.write::<u64>(REG_ACQ, acq.as_ptr() as u64);
 		bar.write::<u32>(REG_AQA, aqa as u64);
@@ -123,12 +401,47 @@ impl Controller {
 		// Enable controller
 		bar.write::<u64>(REG_CC, bar.read::<u64>(REG_CC) | FLAG_CC_EN);
 		wait_rdy(&bar, true);
-		// TODO identify controller
+		// Identify controller
+		let mut data: IdentifyController = unsafe { mem::zeroed() };
+		let data_addr = VirtAddr::from(&mut data).kernel_to_physical().unwrap();
+		let identify_sqe = SubmissionQueueEntry {
+			command: CMD_IDENTIFY,
+			nsid: 0,
+			_reserved: [0; 2],
+			metadata_addr: [0; 2],
+			data_addr: [0; 4],
+			command_specific: [
+				// TODO
+				0, 0, 0, 0, 0, 0,
+			],
+		};
 		// TODO check the controller supports I/O submission/completion queues
 		// TODO allocate I/O queues
 		Ok(Self {
 			bar,
+
+			asq: asq.cast(),
+			asq_tail: AtomicUsize::new(0),
+
+			acq: acq.cast(),
+			acq_head: AtomicUsize::new(0),
 		})
+	}
+
+	fn send_admin_command(&self, cmd: SubmissionQueueEntry) {
+		// Overflow is fine because ASQ_LEN is a power of 2
+		let asq_tail = self.asq_tail.fetch_add(1, Release) % ASQ_LEN;
+		unsafe {
+			self.asq.add(asq_tail).write_volatile(cmd);
+		}
+		// TODO write new tail to register
+		// TODO wait for completion
+		// TODO head below is not correct. We must take it before writing the tail
+		// Overflow is fine because ACQ_LEN is a power of 2
+		let acq_head = self.asq_tail.fetch_add(1, Release) % ASQ_LEN;
+		unsafe {
+			self.acq.add(acq_head).read();
+		}
 	}
 
 	/// Detect drives.
