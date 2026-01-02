@@ -19,7 +19,7 @@
 //! The device manager is the structure which links the physical devices to
 //! device files.
 
-use crate::{device::bar::BAR, sync::spin::Spin};
+use crate::{device::bar::Bar, sync::spin::Spin};
 use core::any::{Any, TypeId};
 use utils::{collections::hashmap::HashMap, errno::EResult, ptr::arc::Arc};
 
@@ -49,7 +49,7 @@ pub trait PhysicalDevice {
 	fn is_hotplug(&self) -> bool;
 
 	/// Returns the list of available BARs for the device.
-	fn get_bars(&self) -> &[Option<BAR>];
+	fn get_bars(&self) -> &[Option<Bar>];
 
 	/// Returns the interrupt line used by the device.
 	///

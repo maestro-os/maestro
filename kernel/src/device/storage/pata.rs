@@ -42,25 +42,25 @@ use core::{hint::unlikely, num::NonZeroU64};
 use utils::{bytes::slice_from_bytes, errno, errno::EResult, limits::PAGE_SIZE};
 
 /// Offset to the data register
-const DATA_REGISTER_OFFSET: u16 = 0;
+const REG_DATA: usize = 0;
 /// Offset to the error register
-const ERROR_REGISTER_OFFSET: u16 = 1;
+const REG_ERROR: usize = 1;
 /// Offset to the features register
-const FEATURES_REGISTER_OFFSET: u16 = 1;
+const REG_FEATURES: usize = 1;
 /// Offset to the sectors count register
-const SECTORS_COUNT_REGISTER_OFFSET: u16 = 2;
+const REG_SEC_CNT: usize = 2;
 /// Offset to the LBA low register
-const LBA_LO_REGISTER_OFFSET: u16 = 3;
+const REG_LBA_LO: usize = 3;
 /// Offset to the LBA mid register
-const LBA_MID_REGISTER_OFFSET: u16 = 4;
+const REG_LBA_MID: usize = 4;
 /// Offset to the LBA high register
-const LBA_HI_REGISTER_OFFSET: u16 = 5;
+const REG_LBA_HI: usize = 5;
 /// Offset to the drive register
-const DRIVE_REGISTER_OFFSET: u16 = 6;
+const REG_DRIVE: usize = 6;
 /// Offset to the status register
-const STATUS_REGISTER_OFFSET: u16 = 7;
+const REG_STATUS: usize = 7;
 /// Offset to the command register
-const COMMAND_REGISTER_OFFSET: u16 = 7;
+const REG_COMMAND: usize = 7;
 
 /// Selects the master drive
 const SELECT_MASTER: u8 = 0xa0;
@@ -68,32 +68,15 @@ const SELECT_MASTER: u8 = 0xa0;
 const SELECT_SLAVE: u8 = 0xb0;
 
 /// Reads sectors from the disk (LBA28)
-const COMMAND_READ_SECTORS: u8 = 0x20;
+const CMD_READ_SECTORS: u8 = 0x20;
 /// Writes sectors on the disk (LBA28)
-const COMMAND_WRITE_SECTORS: u8 = 0x30;
+const CMD_WRITE_SECTORS: u8 = 0x30;
 /// Flush cache command
-const COMMAND_CACHE_FLUSH: u8 = 0xe7;
+const CMD_CACHE_FLUSH: u8 = 0xe7;
 /// Flush cache command (LBA48)
-const COMMAND_CACHE_FLUSH_EXT: u8 = 0xea;
+const CMD_CACHE_FLUSH_EXT: u8 = 0xea;
 /// Identifies the selected drive
-const COMMAND_IDENTIFY: u8 = 0xec;
-
-/// Address mark not found
-const ERROR_AMNF: u8 = 0b00000001;
-/// Track zero not found
-const ERROR_TKZNF: u8 = 0b00000010;
-/// Aborted command
-const ERROR_ABRT: u8 = 0b00000100;
-/// Media change request
-const ERROR_MCR: u8 = 0b00001000;
-/// ID not found
-const ERROR_IDNF: u8 = 0b00010000;
-/// Media changed
-const ERROR_MC: u8 = 0b00100000;
-/// Uncorrectable data error
-const ERROR_UNC: u8 = 0b01000000;
-/// Bad block detected
-const ERROR_BBK: u8 = 0b10000000;
+const CMD_IDENTIFY: u8 = 0xec;
 
 /// Indicates an error occurred
 const STATUS_ERR: u8 = 0b00000001;
@@ -121,17 +104,9 @@ fn delay(n: u32) {
 	let n = n.div_ceil(30) * 1000;
 	for _ in 0..n {
 		unsafe {
-			inb(STATUS_REGISTER_OFFSET);
+			inb(REG_STATUS as _);
 		}
 	}
-}
-
-/// An enumeration representing port offset types for ATA.
-enum PortOffset {
-	/// Port offset on general register ports.
-	Ata(u16),
-	/// Port offset on control register ports.
-	Control(u16),
 }
 
 /// A PATA interface with a unique disk.
@@ -173,54 +148,15 @@ impl PATAInterface {
 		Ok(s)
 	}
 
-	/// Reads a byte from the register at offset `port_off`.
-	#[inline(always)]
-	fn inb(&self, port_off: PortOffset) -> u8 {
-		let (bar, off) = match port_off {
-			PortOffset::Ata(off) => (&self.channel.ata_bar, off),
-			PortOffset::Control(off) => (&self.channel.control_bar, off),
-		};
-		bar.read::<u8>(off as _) as _
-	}
-
-	/// Reads a word from the register at offset `port_off`.
-	#[inline(always)]
-	fn inw(&self, port_off: PortOffset) -> u16 {
-		let (bar, off) = match port_off {
-			PortOffset::Ata(off) => (&self.channel.ata_bar, off),
-			PortOffset::Control(off) => (&self.channel.control_bar, off),
-		};
-		bar.read::<u16>(off as _) as _
-	}
-
-	/// Writes a byte into the register at offset `port_off`.
-	#[inline(always)]
-	fn outb(&self, port_off: PortOffset, value: u8) {
-		let (bar, off) = match port_off {
-			PortOffset::Ata(off) => (&self.channel.ata_bar, off),
-			PortOffset::Control(off) => (&self.channel.control_bar, off),
-		};
-		bar.write::<u8>(off as _, value as _) as _
-	}
-
-	/// Writes a word into the register at offset `port_off`.
-	#[inline(always)]
-	fn outw(&self, port_off: PortOffset, value: u16) {
-		let (bar, off) = match port_off {
-			PortOffset::Ata(off) => (&self.channel.ata_bar, off),
-			PortOffset::Control(off) => (&self.channel.control_bar, off),
-		};
-		bar.write::<u16>(off as _, value as _) as _
-	}
-
 	/// Returns the content of the error register.
+	#[inline]
 	fn get_error(&self) -> u8 {
-		self.inb(PortOffset::Ata(ERROR_REGISTER_OFFSET))
+		unsafe { self.channel.ata_bar.read(REG_ERROR) }
 	}
 
 	/// Returns the content of the status register.
 	fn get_status(&self) -> u8 {
-		self.inb(PortOffset::Ata(STATUS_REGISTER_OFFSET))
+		unsafe { self.channel.ata_bar.read(REG_STATUS) }
 	}
 
 	/// Tells whether the device is ready to accept a command.
@@ -253,7 +189,9 @@ impl PATAInterface {
 	///
 	/// `command` is the command.
 	fn send_command(&self, command: u8) {
-		self.outb(PortOffset::Ata(COMMAND_REGISTER_OFFSET), command);
+		unsafe {
+			self.channel.ata_bar.write(REG_COMMAND, command);
+		}
 	}
 
 	/// Selects the drive.
@@ -271,16 +209,18 @@ impl PATAInterface {
 		} else {
 			SELECT_SLAVE
 		};
-		self.outb(PortOffset::Ata(DRIVE_REGISTER_OFFSET), value);
+		unsafe {
+			self.channel.ata_bar.write(REG_DRIVE, value);
+		}
 		delay(420);
 	}
 
 	/// Flushes the drive's cache. The device is assumed to be selected.
 	fn cache_flush(&self, lba48: bool) {
 		if lba48 {
-			self.send_command(COMMAND_CACHE_FLUSH_EXT);
+			self.send_command(CMD_CACHE_FLUSH_EXT);
 		} else {
-			self.send_command(COMMAND_CACHE_FLUSH);
+			self.send_command(CMD_CACHE_FLUSH);
 		}
 		self.wait_busy();
 	}
@@ -289,13 +229,15 @@ impl PATAInterface {
 	///
 	/// The current drive may not be selected anymore after this function returns.
 	fn reset(&self) {
-		self.outb(PortOffset::Control(0), 1 << 2);
-		delay(5000);
-		self.outb(PortOffset::Control(0), 0);
-		delay(5000);
+		unsafe {
+			self.channel.control_bar.write::<u8>(0, 1 << 2);
+			delay(5000);
+			self.channel.control_bar.write::<u8>(0, 0);
+			delay(5000);
+		}
 	}
 
-	/// Identifies the drive, retrieving informations about the drive.
+	/// Identifies the drive, retrieving information about the drive.
 	///
 	/// On error, the function returns a string telling the cause.
 	fn identify(&mut self) -> Result<(), &'static str> {
@@ -306,13 +248,15 @@ impl PATAInterface {
 			return Err("Drive doesn't exist");
 		}
 
-		self.outb(PortOffset::Ata(SECTORS_COUNT_REGISTER_OFFSET), 0);
-		self.outb(PortOffset::Ata(LBA_LO_REGISTER_OFFSET), 0);
-		self.outb(PortOffset::Ata(LBA_MID_REGISTER_OFFSET), 0);
-		self.outb(PortOffset::Ata(LBA_HI_REGISTER_OFFSET), 0);
+		unsafe {
+			self.channel.ata_bar.write::<u8>(REG_SEC_CNT, 0);
+			self.channel.ata_bar.write::<u8>(REG_LBA_LO, 0);
+			self.channel.ata_bar.write::<u8>(REG_LBA_MID, 0);
+			self.channel.ata_bar.write::<u8>(REG_LBA_HI, 0);
+		}
 		delay(420);
 
-		self.send_command(COMMAND_IDENTIFY);
+		self.send_command(CMD_IDENTIFY);
 		delay(420);
 
 		let status = self.get_status();
@@ -321,9 +265,12 @@ impl PATAInterface {
 		}
 		self.wait_busy();
 
-		let lba_mid = self.inb(PortOffset::Ata(LBA_MID_REGISTER_OFFSET));
-		let lba_hi = self.inb(PortOffset::Ata(LBA_HI_REGISTER_OFFSET));
-
+		let lba_mid: u8;
+		let lba_hi: u8;
+		unsafe {
+			lba_mid = self.channel.ata_bar.read(REG_LBA_MID);
+			lba_hi = self.channel.ata_bar.read(REG_LBA_HI);
+		}
 		if lba_mid != 0 || lba_hi != 0 {
 			return Err("Unknown device");
 		}
@@ -340,7 +287,9 @@ impl PATAInterface {
 
 		let mut data: [u16; 256] = [0; 256];
 		for d in data.iter_mut() {
-			*d = self.inw(PortOffset::Ata(DATA_REGISTER_OFFSET));
+			unsafe {
+				*d = self.channel.ata_bar.read::<u16>(REG_DATA);
+			}
 		}
 
 		// Retrieve disk size
@@ -385,28 +334,29 @@ impl PATAInterface {
 		if !lba48 {
 			drive |= ((off >> 24) & 0xf) as u8;
 		}
-		self.outb(PortOffset::Ata(DRIVE_REGISTER_OFFSET), drive);
+		unsafe {
+			self.channel.ata_bar.write::<u8>(REG_DRIVE, drive);
+		}
 		// Write sectors count and offset
 		let max = if lba48 { u16::MAX } else { u8::MAX as u16 };
 		let count = count.min(max);
-		if lba48 {
-			self.outb(
-				PortOffset::Ata(SECTORS_COUNT_REGISTER_OFFSET),
-				(count >> 8) as u8,
-			);
-			self.outb(PortOffset::Ata(LBA_LO_REGISTER_OFFSET), (off >> 24) as u8);
-			self.outb(PortOffset::Ata(LBA_MID_REGISTER_OFFSET), (off >> 32) as u8);
-			self.outb(PortOffset::Ata(LBA_HI_REGISTER_OFFSET), (off >> 40) as u8);
+		unsafe {
+			if lba48 {
+				self.channel.ata_bar.write(REG_SEC_CNT, (count >> 8) as u8);
+				self.channel.ata_bar.write(REG_LBA_LO, (off >> 24) as u8);
+				self.channel.ata_bar.write(REG_LBA_MID, (off >> 32) as u8);
+				self.channel.ata_bar.write(REG_LBA_HI, (off >> 40) as u8);
+			}
+			self.channel.ata_bar.write(REG_SEC_CNT, count as u8);
+			self.channel.ata_bar.write(REG_LBA_LO, off as u8);
+			self.channel.ata_bar.write(REG_LBA_MID, (off >> 8) as u8);
+			self.channel.ata_bar.write(REG_LBA_HI, (off >> 16) as u8);
 		}
-		self.outb(PortOffset::Ata(SECTORS_COUNT_REGISTER_OFFSET), count as u8);
-		self.outb(PortOffset::Ata(LBA_LO_REGISTER_OFFSET), off as u8);
-		self.outb(PortOffset::Ata(LBA_MID_REGISTER_OFFSET), (off >> 8) as u8);
-		self.outb(PortOffset::Ata(LBA_HI_REGISTER_OFFSET), (off >> 16) as u8);
 		// Send command
 		let mut cmd = if !write {
-			COMMAND_READ_SECTORS
+			CMD_READ_SECTORS
 		} else {
-			COMMAND_WRITE_SECTORS
+			CMD_WRITE_SECTORS
 		};
 		if lba48 {
 			cmd |= 0x4;
@@ -468,7 +418,9 @@ impl BlockDeviceOps for PATAInterface {
 				self.wait_io()?;
 				for k in 0..256 {
 					let index = j * 256 + k;
-					buf[index] = self.inw(PortOffset::Ata(DATA_REGISTER_OFFSET));
+					unsafe {
+						buf[index] = self.channel.ata_bar.read::<u16>(REG_DATA);
+					}
 				}
 			}
 			i += count as u64;
@@ -506,7 +458,7 @@ impl BlockDeviceOps for PATAInterface {
 				self.wait_io()?;
 				for k in 0..256 {
 					let index = j * 256 + k;
-					self.outw(PortOffset::Ata(DATA_REGISTER_OFFSET), buf[index])
+					unsafe { self.channel.ata_bar.write::<u16>(REG_DATA, buf[index]) }
 				}
 			}
 			self.cache_flush(lba48);
