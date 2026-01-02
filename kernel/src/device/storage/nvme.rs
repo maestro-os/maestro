@@ -53,8 +53,26 @@ const FLAG_CSTS_RDY: u64 = 0b1;
 /// Command opcode: Identify
 const CMD_IDENTIFY: u32 = 0x6;
 
+/// Controller or Namespace Structure: Namespace
+const CNS_NAMESPACE: u32 = 0;
+/// Controller or Namespace Structure: Controller
+const CNS_CONTROLLER: u32 = 1;
+/// Controller or Namespace Structure: Active Namespace ID List
+const CNS_NAMESPACE_LIST: u32 = 1;
+
 const ASQ_LEN: usize = (PAGE_SIZE << 2) / size_of::<SubmissionQueueEntry>();
 const ACQ_LEN: usize = PAGE_SIZE / size_of::<CompletionQueueEntry>();
+
+/// Returns the register offset for the doorbell property of the given `queue`.
+///
+/// Arguments:
+/// - `completion`: if `false`, returns the offset for the *completion* queue, else the
+///   *submission* queue
+/// - `stride`: the stride defined in the controller's capabilities
+#[inline]
+fn queue_doorbell_off(queue: usize, completion: bool, stride: usize) -> usize {
+	0x1000 + (2 * queue + completion as usize) * (4 << stride)
+}
 
 #[repr(C)]
 struct IoQueue {
@@ -64,35 +82,36 @@ struct IoQueue {
 
 #[repr(C)]
 struct SubmissionQueueEntry {
-	/// Command
-	command: u32,
+	/// Command DWORD 0
+	cdw0: u32,
 	/// Namespace (drive) identifier
 	nsid: u32,
-	_reserved: [u32; 2],
-	/// Metadata address
-	metadata_addr: [u32; 2],
-	/// Data addresses
-	data_addr: [u32; 4],
-	/// Command-specific values
-	command_specific: [u32; 6],
+	/// Command DWORD 1-2
+	cdw12: [u32; 2],
+	/// Metadata Pointer
+	mptr: [u32; 2],
+	/// Data Pointer
+	dptr: [u64; 2],
+	/// Command DWORD 10-15
+	cdw: [u32; 6],
 }
 
 #[repr(C)]
 struct CompletionQueueEntry {
-	/// Command-specific values
-	command_specific: u64,
-	_reserved: u64,
-	/// Submission queue head address
-	submission_queue_head: u16,
-	/// Submission queue ID
-	submission_queue_id: u16,
-	/// Command identifier
-	cmd_id: u16,
+	/// Command DWORD 0-1
+	cdw01: [u32; 2],
+	/// SQ Head Pointer
+	sqhd: u16,
+	/// SQ Identifier
+	sqid: u16,
+	/// Command Identifier
+	cid: u16,
 	/// Status
 	status: u16,
 }
 
 /// Controller identification response
+#[derive(Debug)]
 #[repr(C, align(4096))]
 struct IdentifyController {
 	// Controller Capabilities and Features
@@ -362,20 +381,29 @@ fn wait_rdy(bar: &BAR, rdy: bool) {
 	}
 }
 
+struct QueuePair {
+	id: usize,
+
+	/// Submission queue
+	sq: NonNull<SubmissionQueueEntry>,
+	/// Completion queue
+	cq: NonNull<CompletionQueueEntry>,
+
+	/// Submission queues tail
+	sq_tail: AtomicUsize,
+	/// Completion queues head
+	cq_head: AtomicUsize,
+}
+
 /// A NVMe controller.
 pub struct Controller {
 	/// Base Address Register
 	bar: BAR,
 
-	/// Admin submission queue
-	asq: NonNull<SubmissionQueueEntry>,
-	/// Admin submission queues tail
-	asq_tail: AtomicUsize,
+	/// Doorbell Stride
+	dstrd: usize,
 
-	/// Admin completion queue
-	acq: NonNull<CompletionQueueEntry>,
-	/// Admin completion queues head
-	acq_head: AtomicUsize,
+	admin_queues: QueuePair,
 }
 
 impl Controller {
@@ -397,51 +425,58 @@ impl Controller {
 		bar.write::<u64>(REG_ASQ, asq.as_ptr() as u64);
 		bar.write::<u64>(REG_ACQ, acq.as_ptr() as u64);
 		bar.write::<u32>(REG_AQA, aqa as u64);
-		// TODO check/set controller capabilities
+		// Read controller capabilities
+		let cap = bar.read::<u64>(REG_CAP);
 		// Enable controller
 		bar.write::<u64>(REG_CC, bar.read::<u64>(REG_CC) | FLAG_CC_EN);
 		wait_rdy(&bar, true);
-		// Identify controller
-		let mut data: IdentifyController = unsafe { mem::zeroed() };
-		let data_addr = VirtAddr::from(&mut data).kernel_to_physical().unwrap();
-		let identify_sqe = SubmissionQueueEntry {
-			command: CMD_IDENTIFY,
-			nsid: 0,
-			_reserved: [0; 2],
-			metadata_addr: [0; 2],
-			data_addr: [0; 4],
-			command_specific: [
-				// TODO
-				0, 0, 0, 0, 0, 0,
-			],
-		};
-		// TODO check the controller supports I/O submission/completion queues
-		// TODO allocate I/O queues
-		Ok(Self {
+		let controller = Self {
 			bar,
 
-			asq: asq.cast(),
-			asq_tail: AtomicUsize::new(0),
+			dstrd: ((cap as usize) >> 32) & 0xf,
 
-			acq: acq.cast(),
-			acq_head: AtomicUsize::new(0),
-		})
+			admin_queues: QueuePair {
+				id: 0,
+
+				sq: asq.cast(),
+				cq: acq.cast(),
+
+				sq_tail: AtomicUsize::new(0),
+				cq_head: AtomicUsize::new(0),
+			},
+		};
+		// Identify controller
+		let mut data: IdentifyController = unsafe { mem::zeroed() };
+		let dptr = VirtAddr::from(&mut data).kernel_to_physical().unwrap();
+		controller.submit_cmd_sync(
+			&controller.admin_queues,
+			SubmissionQueueEntry {
+				cdw0: CMD_IDENTIFY,
+				nsid: 0,
+				cdw12: [0; 2],
+				mptr: [0; 2],
+				dptr: [dptr.0 as _, 0],
+				cdw: [CNS_CONTROLLER, 0, 0, 0, 0, 0],
+			},
+		);
+		println!("-> {:?}", data);
+		// TODO list namespaces and identify them
+		// TODO allocate I/O queues
+		Ok(controller)
 	}
 
-	fn send_admin_command(&self, cmd: SubmissionQueueEntry) {
+	/// Submits a command, returning when completed
+	fn submit_cmd_sync(&self, queue: &QueuePair, cmd: SubmissionQueueEntry) {
 		// Overflow is fine because ASQ_LEN is a power of 2
-		let asq_tail = self.asq_tail.fetch_add(1, Release) % ASQ_LEN;
+		let asq_tail = queue.sq_tail.fetch_add(1, Release) % ASQ_LEN;
 		unsafe {
-			self.asq.add(asq_tail).write_volatile(cmd);
+			queue.sq.add(asq_tail).write_volatile(cmd);
 		}
-		// TODO write new tail to register
-		// TODO wait for completion
-		// TODO head below is not correct. We must take it before writing the tail
-		// Overflow is fine because ACQ_LEN is a power of 2
-		let acq_head = self.asq_tail.fetch_add(1, Release) % ASQ_LEN;
-		unsafe {
-			self.acq.add(acq_head).read();
-		}
+		self.bar.write::<u32>(
+			queue_doorbell_off(queue.id, false, self.dstrd),
+			asq_tail as _,
+		);
+		// TODO wait for completion (sleep)
 	}
 
 	/// Detect drives.
