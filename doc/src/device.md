@@ -12,8 +12,6 @@ Device type abbreviations:
 
 The following sections describe devices that may be present on the system. This list may be extended by kernel modules and as such, doesn't include every possible devices.
 
-
-
 ## Default devices list
 
 The following devices are present on the system by default.
@@ -26,8 +24,6 @@ The following devices are present on the system by default.
 | `/dev/urandom` | C    | `1`   | `9`   | Reading returns random bytes and writing to it feeds the kernel's entropy pool. Contrary to `/dev/random`, reading is never blocking    |
 | `/dev/kmsg`    | C    | `1`   | `11`  | Reading returns kernel logs and writing appends kernel logs                                                                             |
 | `/dev/tty`     | C    | `5`   | `0`   | Device representing the TTY of the current process                                                                                      |
-
-
 
 ## Dynamic devices
 

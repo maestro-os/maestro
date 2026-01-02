@@ -1,4 +1,4 @@
-# Module
+# Kernel modules
 
 Kernel modules add features to the kernel at runtime. They are especially useful for implementing drivers.
 
@@ -25,13 +25,13 @@ A kernel module template is available in `mod/template/`. It has the following f
 `Cargo.toml`:
 
 ```toml
-{{#include ../../mod/template/Cargo.toml}}
+{{#include ../../../mod/template/Cargo.toml}}
 ```
 
 `mod.rs`:
 
 ```rust
-{{#include ../../mod/template/src/mod.rs}}
+{{#include ../../../mod/template/src/mod.rs}}
 ```
 
 The `kernel` crate gives access to the kernel's functions.
