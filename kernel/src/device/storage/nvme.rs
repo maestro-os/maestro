@@ -21,7 +21,7 @@
 //! [NVMe specification](https://nvmexpress.org/wp-content/uploads/NVM-Express-Base-Specification-Revision-2.3-2025.08.01-Ratified.pdf)
 
 use crate::{
-	device::{bar::BAR, manager::PhysicalDevice},
+	device::{bar::Bar, manager::PhysicalDevice},
 	memory::{VirtAddr, buddy},
 	println,
 };
@@ -46,9 +46,9 @@ const REG_ASQ: usize = 0x28;
 const REG_ACQ: usize = 0x30;
 
 /// Flag (CC): Enable
-const FLAG_CC_EN: u64 = 0b1;
+const FLAG_CC_EN: u32 = 0b1;
 /// Flag (CSTS): Ready
-const FLAG_CSTS_RDY: u64 = 0b1;
+const FLAG_CSTS_RDY: u32 = 0b1;
 
 /// Command opcode: Identify
 const CMD_IDENTIFY: u32 = 0x6;
@@ -371,10 +371,10 @@ struct IdentifyController {
 	vs: [u8; 1024],
 }
 
-fn wait_rdy(bar: &BAR, rdy: bool) {
+fn wait_rdy(bar: &Bar) {
 	loop {
-		let sts = bar.read::<u64>(REG_CSTS);
-		if (sts & FLAG_CSTS_RDY != 0) == rdy {
+		let sts = unsafe { bar.read::<u32>(REG_CSTS) };
+		if sts & FLAG_CSTS_RDY != 0 {
 			break;
 		}
 		hint::spin_loop();
@@ -398,7 +398,7 @@ struct QueuePair {
 /// A NVMe controller.
 pub struct Controller {
 	/// Base Address Register
-	bar: BAR,
+	bar: Bar,
 
 	/// Doorbell Stride
 	dstrd: usize,
@@ -416,24 +416,25 @@ impl Controller {
 			println!("NVMe controller does not have a BAR");
 			return Err(errno!(EINVAL));
 		};
-		// Wait any previous reset to be done
-		wait_rdy(&bar, false);
 		// Initialize ASQ and ACQ. A SQE (64 bytes) is four times larger than a CQE (16 bytes)
 		let asq = buddy::alloc_kernel(2, 0)?;
 		let acq = buddy::alloc_kernel(0, 0)?;
 		let aqa = (ACQ_LEN << 16) | ASQ_LEN;
-		bar.write::<u64>(REG_ASQ, asq.as_ptr() as u64);
-		bar.write::<u64>(REG_ACQ, acq.as_ptr() as u64);
-		bar.write::<u32>(REG_AQA, aqa as u64);
-		// Read controller capabilities
-		let cap = bar.read::<u64>(REG_CAP);
-		// Enable controller
-		bar.write::<u64>(REG_CC, bar.read::<u64>(REG_CC) | FLAG_CC_EN);
-		wait_rdy(&bar, true);
+		let cap = unsafe {
+			bar.write(REG_ASQ, asq.as_ptr() as u64);
+			bar.write(REG_ACQ, acq.as_ptr() as u64);
+			bar.write(REG_AQA, aqa as u32);
+			// Read controller capabilities
+			let cap: u64 = bar.read(REG_CAP);
+			// Enable controller
+			bar.write(REG_CC, bar.read::<u32>(REG_CC) | FLAG_CC_EN);
+			cap
+		};
+		wait_rdy(&bar);
 		let controller = Self {
 			bar,
 
-			dstrd: ((cap as usize) >> 32) & 0xf,
+			dstrd: ((cap >> 32) & 0xf) as usize,
 
 			admin_queues: QueuePair {
 				id: 0,
@@ -471,11 +472,11 @@ impl Controller {
 		let asq_tail = queue.sq_tail.fetch_add(1, Release) % ASQ_LEN;
 		unsafe {
 			queue.sq.add(asq_tail).write_volatile(cmd);
+			self.bar.write::<u32>(
+				queue_doorbell_off(queue.id, false, self.dstrd),
+				asq_tail as _,
+			);
 		}
-		self.bar.write::<u32>(
-			queue_doorbell_off(queue.id, false, self.dstrd),
-			asq_tail as _,
-		);
 		// TODO wait for completion (sleep)
 	}
 

@@ -21,7 +21,7 @@
 
 use crate::device::{
 	BlockDeviceOps,
-	bar::BAR,
+	bar::Bar,
 	storage::{PhysicalDevice, pata::PATAInterface},
 };
 use utils::{boxed::Box, errno::AllocResult};
@@ -51,9 +51,9 @@ const SECONDARY_ALTERNATE_STATUS_PORT: u16 = 0x376;
 #[derive(Debug)]
 pub struct Channel {
 	/// The BAR for ATA ports.
-	pub ata_bar: BAR,
+	pub ata_bar: Bar,
 	/// The BAR for control port.
-	pub control_bar: BAR,
+	pub control_bar: Bar,
 }
 
 impl Channel {
@@ -63,27 +63,23 @@ impl Channel {
 	pub fn new_compatibility(secondary: bool) -> Self {
 		if secondary {
 			Self {
-				ata_bar: BAR::IOSpace {
+				ata_bar: Bar::IOSpace {
 					address: SECONDARY_ATA_BUS_PORT_BEGIN as _,
-
 					size: 8,
 				},
-				control_bar: BAR::IOSpace {
+				control_bar: Bar::IOSpace {
 					address: SECONDARY_DEVICE_CONTROL_PORT as _,
-
 					size: 4,
 				},
 			}
 		} else {
 			Self {
-				ata_bar: BAR::IOSpace {
+				ata_bar: Bar::IOSpace {
 					address: PRIMARY_ATA_BUS_PORT_BEGIN as _,
-
 					size: 8,
 				},
-				control_bar: BAR::IOSpace {
+				control_bar: Bar::IOSpace {
 					address: PRIMARY_DEVICE_CONTROL_PORT as _,
-
 					size: 4,
 				},
 			}
@@ -98,7 +94,7 @@ pub struct Controller {
 	prog_if: u8,
 
 	/// IDE controller's BARs.
-	bars: [Option<BAR>; 5],
+	bars: [Option<Bar>; 5],
 }
 
 impl Controller {
