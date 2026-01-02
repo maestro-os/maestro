@@ -2,8 +2,6 @@
 
 This section describes debugging features integrated to the kernel.
 
-
-
 ## Selftesting
 
 Unit tests and integration tests are present in the kernel.
@@ -14,15 +12,11 @@ To run them, use the command:
 cargo test
 ```
 
-
-
 ## GDB
 
 GDB can be attached to the kernel in order to debug it. To do so, run the script located at `scripts/gdb.sh`.
 
 The script runs the kernel with QEMU, using the disk present in the file `qemu_disk` and automatically attaches GDB to it. To begin execution, just type the `continue` command on GDB.
-
-
 
 ## Logging
 

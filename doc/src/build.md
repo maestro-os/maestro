@@ -5,8 +5,6 @@ If you are just willing to quickly install a system, the best option is to use t
 
 > An intermediate system (such as a Linux distribution) is required to perform the installation from scratch.
 
-
-
 # BIOS setup
 
 While the kernel partially supports UEFI, it must boot using the legacy bios.
@@ -14,8 +12,6 @@ While the kernel partially supports UEFI, it must boot using the legacy bios.
 This is due to the fact that the only way the kernel currently uses to display information on the screen is via the VGA text mode, which is not supported under UEFI.
 
 Make sure legacy boot is enabled in your BIOS, or the kernel will not show anything on screen.
-
-
 
 ## Kernel compilation
 
@@ -31,8 +27,6 @@ The configuration file located at `build-config.toml` allows to specify which fe
 
 A default configuration is available in the file `default.build-config.toml`.
 If `build-config.toml` does not exist, the default configuration is used instead.
-
-
 
 ## Build
 
@@ -51,8 +45,6 @@ The list of available architecture can be retrieved by typing:
 ls -1 arch/
 ```
 
-
-
 # Disk creation (QEMU)
 
 > This section is for QEMU only. If building for a physical machine, skip it.
@@ -64,8 +56,6 @@ dd if=/dev/zero of=qemu_disk count=1G status=progress
 ```
 
 The `count` option can be tweaked to modify the size of the disk.
-
-
 
 # Disk preparation
 
@@ -90,8 +80,6 @@ It is recommended to create at least two partitions:
 - a boot partition for GRUB (approximately 200MB)
 - a main partition for the system
 
-
-
 ## Create filesystems
 
 For each partition, create a filesystem using the `mkfs` command.
@@ -107,8 +95,6 @@ mkfs.ext2 /dev/sdXX
 
 The only filesystem that is currently supported is `ext2`.
 
-
-
 # Build the system
 
 Now comes the moment to populate the filesystem.
@@ -121,8 +107,6 @@ mount <device file> mnt
 ```
 
 When building for QEMU, use the `qemu_disk` file as device file.
-
-
 
 ## Files hierarchy
 
@@ -142,8 +126,6 @@ mkdir -pv mnt/var/{cache,lib,local,log,mail,opt,spool}
 mkdir -pv mnt/var/lib/{color,misc,locate}
 ```
 
-
-
 ## Install packages
 
 You can decide to compile and install packages by hand, or you can use [maestro's package manager](https://github.com/maestro-os/blimp).
@@ -157,8 +139,6 @@ The minimum recommended packages are:
 - `solfege`: the boot system
 
 Make sure to **cross compile** packages so that they are compatible with the kernel.
-
-
 
 ## Install the bootloader
 
@@ -195,8 +175,6 @@ Then, copy the kernel you compiled before:
 cp -v target/<arch>/<profile>/maestro mnt/boot/
 ```
 
-
-
 ## Set hostname
 
 Set the hostname of the machine my writing it into the `/etc/hostname` file.
@@ -205,15 +183,11 @@ Set the hostname of the machine my writing it into the `/etc/hostname` file.
 echo "myhostname" >mnt/etc/hostname
 ```
 
-
-
 ## Create users and groups
 
 You must at least create the `root` user for the system to work correctly. It is also recommended to create at least one other user with the name of your choice.
 
 TODO
-
-
 
 # The end
 
