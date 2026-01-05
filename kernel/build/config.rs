@@ -117,13 +117,22 @@ struct ConfigMemory {
 	writeback_timeout: u64,
 }
 
+/// Kernel panic section of the configuration file
+#[derive(Deserialize)]
+struct ConfigPanic {
+	/// The maximum depth of the callstack to print on panic.
+	callstack_depth: usize,
+}
+
 /// The compilation configuration.
 #[derive(Deserialize)]
 pub struct Config {
-	/// Debug section.
+	/// Debug section
 	debug: ConfigDebug,
-	/// Memory management section.
+	/// Memory management section
 	memory: ConfigMemory,
+	/// Kernel panic section
+	panic: ConfigPanic,
 }
 
 impl Config {
@@ -154,5 +163,6 @@ impl Config {
 		}
 
 		generate_const_file!(self.memory.writeback_timeout);
+		generate_const_file!(self.panic.callstack_depth);
 	}
 }

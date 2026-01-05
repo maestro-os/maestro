@@ -70,7 +70,8 @@ fn panic_impl(msg: impl fmt::Display, loc: Option<&Location>, frame: Option<&Int
 		#[cfg(target_arch = "x86_64")]
 		let frame = register_get!("rbp");
 		let frame = ptr::with_exposed_provenance(frame);
-		let mut callstack: [VirtAddr; 8] = [VirtAddr::default(); 8];
+		const CALLSTACK_DEPTH: usize = build_cfg!(config_panic_callstack_depth);
+		let mut callstack: [VirtAddr; CALLSTACK_DEPTH] = [VirtAddr::default(); CALLSTACK_DEPTH];
 		unsafe {
 			debug::get_callstack(frame, &mut callstack);
 		}
