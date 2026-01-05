@@ -4,9 +4,6 @@ on:
     branches:
       - master
   pull_request:
-concurrency:
-  group: check
-  cancel-in-progress: false
 jobs:
   clippy:
     runs-on: [self-hosted, linux]
