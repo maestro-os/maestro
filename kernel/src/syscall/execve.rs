@@ -28,7 +28,6 @@ use crate::{
 	},
 	memory::user::{UserArray, UserSlice, UserString},
 	process::{
-		Process,
 		exec::{elf, exec},
 		scheduler::switch::init_ctx,
 	},
@@ -168,8 +167,7 @@ pub fn execveat(
 		let (file, argv) = get_file(ent, path, argv)?;
 		let envp = envp.iter().collect::<EResult<CollectResult<Vec<_>>>>()?.0?;
 		let program_image = elf::exec(file, argv, envp)?;
-		let proc = Process::current();
-		exec(&proc, frame, program_image)?;
+		exec(frame, program_image)?;
 	}
 	// Use `init_ctx` to handle transition to compatibility mode
 	unsafe {

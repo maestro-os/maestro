@@ -59,7 +59,7 @@ pub fn getresgid(rgid: UserPtr<Gid>, egid: UserPtr<Gid>, sgid: UserPtr<Gid>) -> 
 }
 
 pub fn setuid(uid: Uid) -> EResult<usize> {
-	Process::current().fs().lock().ap.set_uid(uid)?;
+	Process::current().fs.lock().ap.set_uid(uid)?;
 	Ok(0)
 }
 
@@ -84,7 +84,7 @@ pub fn setreuid(ruid: c_int, euid: c_int) -> EResult<usize> {
 		i => i as _,
 	};
 	let proc = Process::current();
-	let mut fs = proc.fs().lock();
+	let mut fs = proc.fs.lock();
 	fs.ap.uid = new_ruid;
 	fs.ap.euid = new_euid;
 	if new_ruid != ap.uid || new_euid != ap.uid {
@@ -107,7 +107,7 @@ pub fn setresuid(ruid: c_int, euid: c_int, suid: c_int) -> EResult<usize> {
 	}
 	// Update
 	let proc = Process::current();
-	let mut fs = proc.fs().lock();
+	let mut fs = proc.fs.lock();
 	fs.ap.uid = match ruid {
 		-1 => ap.uid,
 		i => i as _,
@@ -124,7 +124,7 @@ pub fn setresuid(ruid: c_int, euid: c_int, suid: c_int) -> EResult<usize> {
 }
 
 pub fn setgid(gid: Gid) -> EResult<usize> {
-	Process::current().fs().lock().ap.set_gid(gid)?;
+	Process::current().fs.lock().ap.set_gid(gid)?;
 	Ok(0)
 }
 
@@ -150,7 +150,7 @@ pub fn setregid(rgid: c_int, egid: c_int) -> EResult<usize> {
 		i => i as _,
 	};
 	let proc = Process::current();
-	let mut fs = proc.fs().lock();
+	let mut fs = proc.fs.lock();
 	fs.ap.gid = new_rgid;
 	fs.ap.egid = new_egid;
 	if new_rgid != ap.gid || new_egid != ap.gid {
@@ -173,7 +173,7 @@ pub fn setresgid(rgid: c_int, egid: c_int, sgid: c_int) -> EResult<usize> {
 	}
 	// Update
 	let proc = Process::current();
-	let mut fs = proc.fs().lock();
+	let mut fs = proc.fs.lock();
 	fs.ap.gid = match rgid {
 		-1 => ap.gid,
 		i => i as _,
@@ -191,7 +191,7 @@ pub fn setresgid(rgid: c_int, egid: c_int, sgid: c_int) -> EResult<usize> {
 
 pub fn getgroups(size: c_int, list: *mut Gid) -> EResult<usize> {
 	let proc = Process::current();
-	let fs = proc.fs().lock();
+	let fs = proc.fs.lock();
 	if size > 0 {
 		if size as usize != fs.groups.len() {
 			return Err(errno!(EINVAL));
@@ -208,7 +208,7 @@ pub fn getgroups32(size: c_int, list: *mut Gid) -> EResult<usize> {
 
 pub fn setgroups(size: usize, list: *mut Gid) -> EResult<usize> {
 	let proc = Process::current();
-	let mut fs = proc.fs().lock();
+	let mut fs = proc.fs.lock();
 	if unlikely(!is_privileged()) {
 		return Err(errno!(EPERM));
 	}

@@ -455,7 +455,7 @@ pub fn fchownat(
 
 pub fn getcwd(buf: *mut u8, size: usize) -> EResult<usize> {
 	let buf = UserSlice::from_user(buf, size)?;
-	let cwd = vfs::Entry::get_path(&Process::current().fs().lock().cwd)?;
+	let cwd = vfs::Entry::get_path(&Process::current().fs.lock().cwd)?;
 	if unlikely(size < cwd.len() + 1) {
 		return Err(errno!(ERANGE));
 	}
@@ -477,7 +477,7 @@ pub fn chdir(path: UserString) -> EResult<usize> {
 		return Err(errno!(EACCES));
 	}
 	// Set new cwd
-	Process::current().fs().lock().cwd = dir;
+	Process::current().fs.lock().cwd = dir;
 	Ok(0)
 }
 
@@ -498,7 +498,7 @@ pub fn chroot(path: UserString) -> EResult<usize> {
 	if ent.get_type()? != FileType::Directory {
 		return Err(errno!(ENOTDIR));
 	}
-	Process::current().fs().lock().chroot = ent;
+	Process::current().fs.lock().chroot = ent;
 	Ok(0)
 }
 
@@ -512,7 +512,7 @@ pub fn fchdir(fd: c_int) -> EResult<usize> {
 	if !can_list_directory(&stat) {
 		return Err(errno!(EACCES));
 	}
-	Process::current().fs().lock().cwd = file;
+	Process::current().fs.lock().cwd = file;
 	Ok(0)
 }
 
