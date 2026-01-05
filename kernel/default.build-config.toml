@@ -28,3 +28,7 @@ malloc_check = false
 [memory]
 # The timeout, in milliseconds, after which a dirty page may be written back to disk.
 writeback_timeout = 100
+
+[panic]
+# The maximum depth of the callstack to print on panic.
+callstack_depth = 16
