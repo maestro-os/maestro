@@ -77,12 +77,7 @@ use scheduler::cpu::{PerCpu, per_cpu};
 use signal::{Signal, SignalHandler};
 use utils::{
 	TryClone,
-	collections::{
-		btreemap::BTreeMap,
-		list::ListNode,
-		path::{Path, PathBuf},
-		vec::Vec,
-	},
+	collections::{btreemap::BTreeMap, list::ListNode, path::Path, vec::Vec},
 	errno,
 	errno::{AllocResult, EResult},
 	ptr::arc::Arc,

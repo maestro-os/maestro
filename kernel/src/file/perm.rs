@@ -96,16 +96,16 @@ pub struct AccessProfile {
 
 impl AccessProfile {
 	/// Creates a profile from the given IDs.
-	pub fn new(uid: Uid, gid: Gid) -> Self {
+	pub const fn root() -> Self {
 		Self {
-			uid,
-			gid,
+			uid: ROOT_UID,
+			gid: ROOT_GID,
 
-			euid: uid,
-			egid: gid,
+			euid: ROOT_UID,
+			egid: ROOT_GID,
 
-			suid: uid,
-			sgid: gid,
+			suid: ROOT_UID,
+			sgid: ROOT_GID,
 		}
 	}
 
@@ -195,7 +195,7 @@ pub struct ProcessFs {
 impl Default for ProcessFs {
 	fn default() -> Self {
 		Self {
-			ap: AccessProfile::new(ROOT_UID, ROOT_GID),
+			ap: AccessProfile::root(),
 			groups: Vec::new(),
 			cwd: vfs::ROOT.clone(),
 			chroot: vfs::ROOT.clone(),
@@ -208,7 +208,7 @@ impl ProcessFs {
 	pub fn dummy() -> AllocResult<Self> {
 		let root = Arc::new(vfs::Entry::new(String::new(), None, None))?;
 		Ok(Self {
-			ap: AccessProfile::new(ROOT_UID, ROOT_GID),
+			ap: AccessProfile::root(),
 			groups: Vec::new(),
 			cwd: root.clone(),
 			chroot: root,
