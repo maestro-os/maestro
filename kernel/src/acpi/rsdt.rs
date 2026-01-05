@@ -60,7 +60,7 @@ impl<const EXTENDED: bool> Sdt<EXTENDED> {
 	pub fn get_table<T: Table>(&self) -> Option<&T> {
 		let hdr = self.tables().find(|hdr| hdr.signature == *T::SIGNATURE)?;
 		if !hdr.check::<T>() {
-			panic!("APCI: invalid table for signature {:?}", hdr.signature)
+			panic!("ACPI: invalid table for signature {:?}", hdr.signature)
 		}
 		Some(unsafe { &*(hdr as *const _ as *const T) })
 	}
@@ -73,7 +73,7 @@ impl<const EXTENDED: bool> Sdt<EXTENDED> {
 	pub fn get_table_unsized<T: Table + ?Sized + Pointee<Metadata = usize>>(&self) -> Option<&T> {
 		let hdr = self.tables().find(|hdr| hdr.signature == *T::SIGNATURE)?;
 		if !hdr.check::<T>() {
-			panic!("APCI: invalid table for signature {:?}", hdr.signature)
+			panic!("ACPI: invalid table for signature {:?}", hdr.signature)
 		}
 		Some(unsafe {
 			let ptr = ptr::from_raw_parts::<T>(hdr as *const _ as *const (), hdr.length as usize);
