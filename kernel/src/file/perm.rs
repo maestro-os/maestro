@@ -22,7 +22,13 @@
 
 use super::{FileType, Mode, Stat, vfs};
 use crate::process::Process;
-use utils::{TryClone, collections::vec::Vec, errno, errno::EResult, ptr::arc::Arc};
+use utils::{
+	TryClone,
+	collections::{string::String, vec::Vec},
+	errno,
+	errno::{AllocResult, EResult},
+	ptr::arc::Arc,
+};
 
 /// Type representing a user ID.
 pub type Uid = u16;
@@ -105,10 +111,7 @@ impl AccessProfile {
 
 	/// Returns a copy of the current process's instance.
 	pub fn current() -> Self {
-		match &Process::current().fs {
-			Some(fs) => fs.lock().ap,
-			None => Self::new(ROOT_UID, ROOT_GID),
-		}
+		Process::current().fs.lock().ap
 	}
 
 	/// Sets the user ID in the same way the `setgid` system call does.
@@ -189,6 +192,30 @@ pub struct ProcessFs {
 	pub chroot: Arc<vfs::Entry>,
 }
 
+impl Default for ProcessFs {
+	fn default() -> Self {
+		Self {
+			ap: AccessProfile::new(ROOT_UID, ROOT_GID),
+			groups: Vec::new(),
+			cwd: vfs::ROOT.clone(),
+			chroot: vfs::ROOT.clone(),
+		}
+	}
+}
+
+impl ProcessFs {
+	/// Creates a dummy instance to be used before files management is fully initialized
+	pub fn dummy() -> AllocResult<Self> {
+		let root = Arc::new(vfs::Entry::new(String::new(), None, None))?;
+		Ok(Self {
+			ap: AccessProfile::new(ROOT_UID, ROOT_GID),
+			groups: Vec::new(),
+			cwd: root.clone(),
+			chroot: root,
+		})
+	}
+}
+
 impl TryClone for ProcessFs {
 	fn try_clone(&self) -> Result<Self, Self::Error> {
 		Ok(Self {
@@ -210,10 +237,7 @@ pub fn is_privileged() -> bool {
 #[inline]
 fn match_ids(stat: &Stat, effective: bool) -> (bool, bool) {
 	let proc = Process::current();
-	let Some(fs) = &proc.fs else {
-		return (true, true);
-	};
-	let fs = fs.lock();
+	let fs = proc.fs.lock();
 	let (uid, gid) = if effective {
 		(fs.ap.euid, fs.ap.egid)
 	} else {
@@ -310,7 +334,7 @@ pub fn can_kill(proc: &Process) -> bool {
 		return true;
 	}
 	let ap = AccessProfile::current();
-	let other_ap = proc.fs().lock().ap;
+	let other_ap = proc.fs.lock().ap;
 	// if sender's `uid` or `euid` equals receiver's `uid` or `suid`
 	ap.uid == other_ap.uid
 		|| ap.uid == other_ap.suid

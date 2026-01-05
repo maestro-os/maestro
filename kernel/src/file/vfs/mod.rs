@@ -259,7 +259,7 @@ pub fn shrink_entries() -> bool {
 	false
 }
 
-/// The root entry of the VFS.
+/// The root entry of the VFS
 pub static ROOT: OnceInit<Arc<Entry>> = unsafe { OnceInit::new() };
 
 /// Settings for a path resolution operation.
@@ -290,24 +290,13 @@ impl ResolutionSettings {
 	/// - `follow_link` tells whether symbolic links are followed
 	pub fn cur_task(create: bool, follow_link: bool) -> Self {
 		let proc = Process::current();
-		match &proc.fs {
-			Some(fs) => {
-				let fs = fs.lock();
-				Self {
-					root: fs.chroot.clone(),
-					cwd: Some(fs.cwd.clone()),
+		let fs = proc.fs.lock();
+		Self {
+			root: fs.chroot.clone(),
+			cwd: Some(fs.cwd.clone()),
 
-					create,
-					follow_link,
-				}
-			}
-			None => Self {
-				root: ROOT.clone(),
-				cwd: None,
-
-				create,
-				follow_link,
-			},
+			create,
+			follow_link,
 		}
 	}
 }

@@ -36,7 +36,7 @@ use crate::{
 	file::{
 		File, O_RDWR,
 		fd::{FileDescriptorTable, NewFDConstraint},
-		perm::{AccessProfile, ProcessFs, ROOT_GID, ROOT_UID},
+		perm::ProcessFs,
 		vfs,
 	},
 	int,
@@ -346,11 +346,8 @@ pub struct Process {
 
 	/// The virtual memory of the process.
 	mem_space: UnsafeMut<Option<Arc<MemSpace>>>,
-	/// Filesystem access information.
-	///
-	/// This is an `Option` in order to solve a chicken-or-egg issue (initializing files
-	/// management or per-CPU structures first).
-	pub fs: Option<Spin<ProcessFs>>,
+	/// Filesystem access information
+	pub fs: Spin<ProcessFs>,
 	/// The process's current umask.
 	pub umask: AtomicU32,
 	/// The list of open file descriptors with their respective ID.
@@ -455,6 +452,38 @@ pub(crate) fn init() -> EResult<()> {
 	})?);
 	// Re-enable timer since it has been disabled by delay functions
 	timer::apic::periodic(100_000_000);
+	// Create init process
+	let proc = Process::init()?;
+	per_cpu().sched.swap_current_process(proc);
+	Ok(())
+}
+
+pub(crate) fn init2() -> EResult<()> {
+	// Re-init ProcessFs
+	let proc = Process::get_by_pid(INIT_PID).unwrap();
+	*proc.fs.lock() = Default::default();
+	Ok(())
+}
+
+pub(crate) fn init3() -> EResult<()> {
+	let tty_path = Path::new_unbounded(TTY_DEVICE_PATH);
+	let tty_ent = vfs::get_file_from_path(tty_path, true)?;
+	let tty_file = File::open(tty_ent, O_RDWR)?;
+	let proc = Process::get_by_pid(INIT_PID).unwrap();
+	let fd_table = proc.file_descriptors();
+	let mut fd_table = fd_table.lock();
+	let (stdin_fd_id, _) = fd_table.create_fd(0, tty_file)?;
+	assert_eq!(stdin_fd_id, STDIN_FILENO);
+	fd_table.duplicate_fd(
+		STDIN_FILENO as _,
+		NewFDConstraint::Fixed(STDOUT_FILENO as _),
+		false,
+	)?;
+	fd_table.duplicate_fd(
+		STDIN_FILENO as _,
+		NewFDConstraint::Fixed(STDERR_FILENO as _),
+		false,
+	)?;
 	Ok(())
 }
 
@@ -529,7 +558,7 @@ impl Process {
 
 			// Not needed for kernel threads
 			mem_space: Default::default(),
-			fs: None,
+			fs: Spin::new(ProcessFs::dummy()?),
 			umask: Default::default(),
 			fd_table: Default::default(),
 			timer_manager: Arc::new(Spin::new(TimerManager::new()?))?,
@@ -559,24 +588,6 @@ impl Process {
 	///
 	/// The process is set to state [`State::Running`] by default and has user root.
 	pub fn init() -> EResult<Arc<Self>> {
-		// Create the default file descriptors table
-		let mut fd_table = FileDescriptorTable::default();
-		let tty_path = PathBuf::try_from(TTY_DEVICE_PATH.as_bytes())?;
-		let tty_ent = vfs::get_file_from_path(&tty_path, true)?;
-		let tty_file = File::open(tty_ent, O_RDWR)?;
-		let (stdin_fd_id, _) = fd_table.create_fd(0, tty_file)?;
-		assert_eq!(stdin_fd_id, STDIN_FILENO);
-		fd_table.duplicate_fd(
-			STDIN_FILENO as _,
-			NewFDConstraint::Fixed(STDOUT_FILENO as _),
-			false,
-		)?;
-		fd_table.duplicate_fd(
-			STDIN_FILENO as _,
-			NewFDConstraint::Fixed(STDERR_FILENO as _),
-			false,
-		)?;
-		let root_dir = vfs::get_file_from_path(Path::root(), false)?;
 		let proc = Arc::new(Self {
 			pid: PidHandle::mark_used(INIT_PID)?,
 			tid: INIT_PID,
@@ -602,14 +613,9 @@ impl Process {
 			tls: Default::default(),
 
 			mem_space: UnsafeMut::new(None),
-			fs: Some(Spin::new(ProcessFs {
-				ap: AccessProfile::new(ROOT_UID, ROOT_GID),
-				groups: Vec::new(),
-				cwd: root_dir.clone(),
-				chroot: root_dir,
-			})),
+			fs: Spin::new(ProcessFs::dummy()?),
 			umask: AtomicU32::new(DEFAULT_UMASK),
-			fd_table: UnsafeMut::new(Some(Arc::new(Spin::new(fd_table))?)),
+			fd_table: UnsafeMut::new(Some(Arc::new(Default::default())?)),
 			timer_manager: Arc::new(Spin::new(TimerManager::new()?))?,
 			sig_handlers: UnsafeMut::new(Arc::new(Default::default())?),
 			signal: Spin::new(ProcessSignal {
@@ -881,7 +887,7 @@ impl Process {
 			tls: Spin::new(*parent.tls.lock()),
 
 			mem_space: UnsafeMut::new(Some(mem_space)),
-			fs: Some(Spin::new(parent.fs().lock().try_clone()?)),
+			fs: Spin::new(parent.fs.lock().try_clone()?),
 			umask: AtomicU32::new(parent.umask.load(Relaxed)),
 			fd_table: UnsafeMut::new(fd_table),
 			// TODO if creating a thread: timer_manager: parent.timer_manager.clone(),
@@ -929,16 +935,6 @@ impl Process {
 	#[inline]
 	pub fn mem_space_opt(&self) -> &Option<Arc<MemSpace>> {
 		self.mem_space.deref()
-	}
-
-	/// Returns the process's [`ProcessFs`].
-	///
-	/// If the process is a kernel thread, the function panics.
-	#[inline]
-	pub fn fs(&self) -> &Spin<ProcessFs> {
-		self.fs
-			.as_ref()
-			.expect("kernel threads don't have ProcessFS structures")
 	}
 
 	/// Returns the umask

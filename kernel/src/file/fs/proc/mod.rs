@@ -62,9 +62,8 @@ use version::Version;
 fn get_proc_owner(pid: Pid) -> (Uid, Gid) {
 	Process::get_by_pid(pid)
 		.as_ref()
-		.and_then(|proc| proc.fs.as_ref())
-		.map(|fs| {
-			let fs = fs.lock();
+		.map(|proc| {
+			let fs = proc.fs.lock();
 			(fs.ap.euid, fs.ap.egid)
 		})
 		.unwrap_or((0, 0))

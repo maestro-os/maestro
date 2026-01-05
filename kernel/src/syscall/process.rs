@@ -542,7 +542,7 @@ fn is_valid_affinity_mask(mask: &[usize]) -> bool {
 
 pub fn sched_setaffinity(pid: Pid, cpusetsize: usize, mask: *mut usize) -> EResult<usize> {
 	// Get process
-	let src_euid = Process::current().fs().lock().ap.euid;
+	let src_euid = Process::current().fs.lock().ap.euid;
 	let dst = if pid == 0 {
 		Process::current()
 	} else {
@@ -550,7 +550,7 @@ pub fn sched_setaffinity(pid: Pid, cpusetsize: usize, mask: *mut usize) -> EResu
 	};
 	// Check permission
 	if !is_privileged() {
-		let fs = dst.fs().lock();
+		let fs = dst.fs.lock();
 		if unlikely(src_euid != fs.ap.uid && src_euid != fs.ap.euid) {
 			return Err(errno!(EPERM));
 		}

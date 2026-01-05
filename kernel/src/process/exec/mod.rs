@@ -48,11 +48,12 @@ pub struct ProgramImage {
 	user_stack: VirtAddr,
 }
 
-/// Executes the program image `image` on the process `proc`.
+/// Executes the program image `image` on the current process.
 ///
 /// `frame` is the interrupt frame of the current content. The function sets the appropriate values
 /// for each register so that the execution beings when the interrupt handler returns.
-pub fn exec(proc: &Process, frame: &mut IntFrame, image: ProgramImage) -> EResult<()> {
+pub fn exec(frame: &mut IntFrame, image: ProgramImage) -> EResult<()> {
+	let proc = Process::current();
 	// Preform all fallible operations first before touching the process
 	let fds = proc
 		.fd_table

@@ -34,13 +34,8 @@ pub struct Cwd(pub Pid);
 impl NodeOps for Cwd {
 	fn readlink(&self, _node: &Node, buf: UserSlice<u8>) -> EResult<usize> {
 		let proc = Process::get_by_pid(self.0).ok_or_else(|| errno!(ENOENT))?;
-		match &proc.fs {
-			Some(fs) => {
-				let fs = fs.lock();
-				let cwd = vfs::Entry::get_path(&fs.cwd)?;
-				format_content!(0, buf, "{cwd}")
-			}
-			None => format_content!(0, buf, "/"),
-		}
+		let fs = proc.fs.lock();
+		let cwd = vfs::Entry::get_path(&fs.cwd)?;
+		format_content!(0, buf, "{cwd}")
 	}
 }

@@ -94,11 +94,7 @@ use crate::{
 		Process, exec,
 		exec::exec,
 		scheduler,
-		scheduler::{
-			cpu::{CPU, per_cpu},
-			switch,
-			switch::idle_task,
-		},
+		scheduler::{cpu::CPU, switch, switch::idle_task},
 	},
 	sync::spin::Spin,
 	tty::TTY,
@@ -140,9 +136,7 @@ fn init(init_path: String) -> EResult<IntFrame> {
 				b"TERM=maestro".try_into()?,
 			]?,
 		)?;
-		let proc = Process::init()?;
-		exec(&proc, &mut frame, program_image)?;
-		per_cpu().sched.swap_current_process(proc);
+		exec(&mut frame, program_image)?;
 	}
 	Ok(frame)
 }
@@ -190,6 +184,12 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	println!("Setup time management");
 	time::init().expect("time management initialization failed");
 
+	println!("Setup SMP");
+	smp::init().expect("SMP setup failed");
+	println!("Setup processes");
+	process::init().expect("processes initialization failed");
+	exec::vdso::init().expect("vDSO loading failed");
+
 	println!("Setup devices management");
 	device::init().expect("devices management initialization failed");
 	net::osi::init().expect("network initialization failed");
@@ -202,13 +202,10 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 		println!("Load initramfs");
 		initramfs::load(initramfs).expect("initramfs loading failed");
 	}
-	device::stage2().expect("device files creation failure");
 
-	println!("Setup SMP");
-	smp::init().expect("SMP setup failed");
-	println!("Setup processes");
-	process::init().expect("processes initialization failed");
-	exec::vdso::init().expect("vDSO loading failed");
+	process::init2().expect("process initialization stage 2 failed");
+	device::stage2().expect("device files creation failure");
+	process::init3().expect("process initialization stage 3 failed");
 
 	let init_path = args_parser.get_init_path().unwrap_or(INIT_PATH);
 	let init_path = String::try_from(init_path).unwrap();
