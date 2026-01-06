@@ -24,7 +24,7 @@ use crate::{
 		FileType, Stat,
 		fs::{DummyOps, FileOps, Filesystem, FilesystemOps, Statfs},
 		vfs,
-		vfs::node::Node,
+		vfs::{CachePolicy, node::Node},
 	},
 	sync::once::OnceInit,
 };
@@ -41,8 +41,8 @@ impl FilesystemOps for FloatFs {
 		b"floatfs"
 	}
 
-	fn cache_entries(&self) -> bool {
-		false
+	fn cache_policy(&self) -> CachePolicy {
+		CachePolicy::Never
 	}
 
 	fn get_stat(&self) -> EResult<Statfs> {
@@ -65,10 +65,6 @@ impl FilesystemOps for FloatFs {
 		Err(errno!(EINVAL))
 	}
 
-	fn create_node(&self, _fs: &Arc<Filesystem>, _stat: Stat) -> EResult<Arc<Node>> {
-		Err(errno!(EINVAL))
-	}
-
 	fn destroy_node(&self, _node: &Node) -> EResult<()> {
 		Err(errno!(EINVAL))
 	}
@@ -84,6 +80,7 @@ pub(crate) fn init() -> EResult<()> {
 		ops: Box::new(FloatFs {
 			_private: (),
 		})?,
+		flags: 0,
 
 		nodes: Default::default(),
 		buffers: Default::default(),

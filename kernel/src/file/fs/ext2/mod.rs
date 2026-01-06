@@ -55,16 +55,20 @@ use crate::{
 	file::{
 		DirContext, DirEntry, File, FileType, INode, Stat,
 		fs::{
-			FileOps, Filesystem, FilesystemOps, FilesystemType, NodeOps, Statfs, downcast_fs,
-			ext2::{dirent::DirentIterator, inode::ROOT_DIRECTORY_INODE},
+			DummyOps, FileOps, Filesystem, FilesystemOps, FilesystemType, NodeOps, Statfs,
+			create_file_ids, downcast_fs,
+			ext2::{
+				dirent::DirentIterator,
+				inode::{DIRECT_BLOCKS_COUNT, ROOT_DIRECTORY_INODE, SYMLINK_INLINE_LIMIT},
+			},
 			generic_file_read, generic_file_write,
 		},
 		vfs,
-		vfs::node::Node,
+		vfs::{CachePolicy, RENAME_EXCHANGE, mountpoint, node::Node},
 	},
 	memory::{
 		cache::{FrameOwner, RcFrame, RcFrameVal},
-		user::UserSlice,
+		user::{UserSlice, UserString},
 	},
 	sync::spin::Spin,
 	time::clock::{Clock, current_time_sec},
@@ -72,6 +76,7 @@ use crate::{
 use bgd::BlockGroupDescriptor;
 use core::{
 	cmp::max,
+	ffi::c_int,
 	hint::unlikely,
 	sync::atomic::{
 		AtomicU8, AtomicU16, AtomicU32, AtomicUsize,
@@ -85,7 +90,7 @@ use utils::{
 	bytes,
 	collections::path::PathBuf,
 	errno,
-	errno::EResult,
+	errno::{AllocResult, EResult},
 	limits::{NAME_MAX, PAGE_SIZE, SYMLINK_MAX},
 	math,
 	ptr::arc::Arc,
@@ -188,312 +193,39 @@ fn bitmap_alloc_impl(blk: &RcFrame) -> Option<u32> {
 	None
 }
 
-/// Node operations.
-#[derive(Debug)]
-struct Ext2NodeOps;
-
-impl NodeOps for Ext2NodeOps {
-	fn lookup_entry<'n>(&self, dir: &Node, ent: &mut vfs::Entry) -> EResult<()> {
-		let fs = downcast_fs::<Ext2Fs>(&*dir.fs.ops);
-		let inode_ = Ext2INode::get(dir, fs)?;
-		ent.node = inode_
-			.get_dirent(&ent.name, fs)?
-			.map(|(inode, ..)| -> EResult<_> {
-				dir.fs.node_get_or_insert(inode as _, || {
-					let mut node = Node::new(
-						inode as _,
-						dir.fs.clone(),
-						Default::default(),
-						Box::new(Ext2NodeOps)?,
-						Box::new(Ext2FileOps)?,
-					);
-					let stat = Ext2INode::get(&node, fs)?.stat(&fs.sp);
-					node.stat = Spin::new(stat);
-					Ok(Arc::new(node)?)
-				})
-			})
-			.transpose()?;
-		Ok(())
-	}
-
-	fn iter_entries(&self, dir: &Node, ctx: &mut DirContext) -> EResult<()> {
-		let fs = downcast_fs::<Ext2Fs>(&*dir.fs.ops);
-		let inode = Ext2INode::get(dir, fs)?;
-		if inode.get_type() != FileType::Directory {
-			return Err(errno!(ENOTDIR));
-		}
-		// Iterate on entries
-		let mut blk = None;
-		for ent in DirentIterator::new(fs, &inode, &mut blk, ctx.off)? {
-			let (off, ent) = ent?;
-			if !ent.is_free() {
-				let e = DirEntry {
-					inode: ent.inode as _,
-					entry_type: ent.get_type(&fs.sp),
-					name: ent.get_name(&fs.sp),
-				};
-				if !(ctx.write)(&e)? {
-					break;
-				}
-			}
-			ctx.off = off + ent.rec_len as u64;
-		}
-		Ok(())
-	}
-
-	fn link(&self, parent: Arc<Node>, ent: &vfs::Entry) -> EResult<()> {
-		let fs = downcast_fs::<Ext2Fs>(&*parent.fs.ops);
-		if unlikely(fs.readonly) {
-			return Err(errno!(EROFS));
-		}
-		// Check the parent file is a directory
-		if parent.get_type() != Some(FileType::Directory) {
-			return Err(errno!(ENOTDIR));
-		}
-		let target = ent.node();
-		// Parent inode
-		let mut parent_inode = Ext2INode::get(&parent, fs)?;
-		// Check the entry does not exist
-		if parent_inode.get_dirent(&ent.name, fs)?.is_some() {
-			return Err(errno!(EEXIST));
-		}
-		let mut target_inode = Ext2INode::get(target, fs)?;
-		if unlikely(target_inode.i_links_count == u16::MAX) {
-			return Err(errno!(EMFILE));
-		}
-		if target_inode.get_type() == FileType::Directory {
-			if unlikely(parent_inode.i_links_count == u16::MAX) {
-				return Err(errno!(EMFILE));
-			}
-			// Create the `..` entry
-			target_inode.add_dirent(fs, parent.inode as _, b"..", FileType::Directory)?;
-			parent_inode.i_links_count += 1;
-			parent.stat.lock().nlink = parent_inode.i_links_count;
-		}
-		// Create entry
-		parent_inode.add_dirent(fs, target.inode as _, &ent.name, target_inode.get_type())?;
-		target_inode.i_links_count += 1;
-		target.stat.lock().nlink = target_inode.i_links_count;
-		parent_inode.mark_dirty();
-		target_inode.mark_dirty();
-		Ok(())
-	}
-
-	fn unlink(&self, parent: &Node, ent: &vfs::Entry) -> EResult<()> {
-		let fs = downcast_fs::<Ext2Fs>(&*parent.fs.ops);
-		if unlikely(fs.readonly) {
-			return Err(errno!(EROFS));
-		}
-		if ent.name == "." || ent.name == ".." {
-			return Err(errno!(EINVAL));
-		}
-		// The parent inode
-		let mut parent_ = Ext2INode::get(parent, fs)?;
-		// Check the parent file is a directory
-		if parent_.get_type() != FileType::Directory {
-			return Err(errno!(ENOTDIR));
-		}
-		// The offset of the entry to the remove
-		let (_, remove_off) = parent_
-			.get_dirent(&ent.name, fs)?
-			.ok_or_else(|| errno!(ENOENT))?;
-		let mut target = Ext2INode::get(ent.node(), fs)?;
-		// Remove the directory entry
-		parent_.set_dirent_inode(remove_off, 0, fs)?;
-		target.i_links_count = target.i_links_count.saturating_sub(1);
-		ent.node().stat.lock().nlink = target.i_links_count;
-		if target.get_type() == FileType::Directory {
-			// If the directory is not empty, error
-			if !target.is_directory_empty(fs)? {
-				return Err(errno!(ENOTEMPTY));
-			}
-			// Remove `..`
-			if let Some((_, parent_entry_off)) = target.get_dirent(b"..", fs)? {
-				target.set_dirent_inode(parent_entry_off, 0, fs)?;
-				parent_.i_links_count = parent_.i_links_count.saturating_sub(1);
-				parent.stat.lock().nlink = parent_.i_links_count;
-			}
-		}
-		parent_.mark_dirty();
-		target.mark_dirty();
-		Ok(())
-	}
-
-	fn readlink(&self, node: &Node, buf: UserSlice<u8>) -> EResult<usize> {
-		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		let inode_ = Ext2INode::get(node, fs)?;
-		if inode_.get_type() != FileType::Link {
-			return Err(errno!(EINVAL));
-		}
-		let size = inode_.get_size(&fs.sp);
-		if unlikely(size > SYMLINK_MAX as u64) {
-			return Err(errno!(EUCLEAN));
-		}
-		if size <= inode::SYMLINK_INLINE_LIMIT {
-			// The target is stored inline in the inode
-			let src = bytes::as_bytes(&inode_.i_block);
-			let len = buf.copy_to_user(0, &src[..size as usize])?;
-			Ok(len)
-		} else {
-			// The target is stored like in regular files
-			let blk =
-				inode::check_blk_off(inode_.i_block[0], &fs.sp)?.ok_or_else(|| errno!(EUCLEAN))?;
-			let blk = read_block(fs, blk.get() as _)?;
-			let len = buf.copy_to_user(0, &blk.slice()[..size as usize])?;
-			Ok(len)
-		}
-	}
-
-	fn writelink(&self, node: &Node, buf: &[u8]) -> EResult<()> {
-		if unlikely(buf.len() > SYMLINK_MAX) {
-			return Err(errno!(ENAMETOOLONG));
-		}
-		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		let mut inode_ = Ext2INode::get(node, fs)?;
-		if inode_.get_type() != FileType::Link {
-			return Err(errno!(EINVAL));
-		}
-		// Get storage slice
-		let inline = buf.len() <= inode::SYMLINK_INLINE_LIMIT as usize;
-		if inline {
-			// Store inline
-			let dst = bytes::as_bytes_mut(&mut inode_.i_block);
-			dst[..buf.len()].copy_from_slice(buf);
-			dst[buf.len()..].fill(0);
-		} else {
-			// Allocate a block
-			let blk_off = inode_.alloc_content_blk(0, fs)?;
-			inode_.i_block[0] = blk_off;
-			let blk = read_block(fs, blk_off as _)?;
-			// No one else can access the block since we just allocated it
-			let dst = unsafe { blk.slice_mut() };
-			// Copy
-			dst[..buf.len()].copy_from_slice(buf);
-			dst[buf.len()..].fill(0);
-		}
-		// Update size
-		inode_.set_size(&fs.sp, buf.len() as _, inline);
-		node.stat.lock().size = buf.len() as _;
-		inode_.mark_dirty();
-		Ok(())
-	}
-
-	fn rename(&self, entry: &vfs::Entry, new_parent: &vfs::Entry, new_name: &[u8]) -> EResult<()> {
-		let entry_node = entry.node();
-		let fs = downcast_fs::<Ext2Fs>(&*entry_node.fs.ops);
-		if unlikely(fs.readonly) {
-			return Err(errno!(EROFS));
-		}
-		// Create new entry
-		let dir = {
-			let new_parent_node = new_parent.node();
-			let mut new_parent_inode = Ext2INode::get(new_parent_node, fs)?;
-			// Check the entry does not exist
-			if new_parent_inode.get_dirent(new_name, fs)?.is_some() {
-				return Err(errno!(EEXIST));
-			}
-			let mut inode = Ext2INode::get(entry.node(), fs)?;
-			let dir = inode.get_type() == FileType::Directory;
-			// Update the `..` entry
-			if dir {
-				if unlikely(new_parent_inode.i_links_count == u16::MAX) {
-					return Err(errno!(EMFILE));
-				}
-				let (_, off) = inode
-					.get_dirent(b"..", fs)?
-					.ok_or_else(|| errno!(EUCLEAN))?;
-				inode.set_dirent_inode(off, new_parent_node.inode, fs)?;
-				// Update links count
-				new_parent_inode.i_links_count += 1;
-				new_parent.node().stat.lock().nlink = new_parent_inode.i_links_count;
-			}
-			new_parent_inode.add_dirent(fs, entry_node.inode as _, new_name, inode.get_type())?;
-			new_parent_inode.mark_dirty();
-			inode.mark_dirty();
-			dir
-		};
-		// Remove old entry
-		let old_parent = entry.parent.as_ref().unwrap();
-		let old_parent_node = old_parent.node();
-		let mut old_parent_inode = Ext2INode::get(old_parent_node, fs)?;
-		let (_, off) = old_parent_inode
-			.get_dirent(&entry.name, fs)?
-			.ok_or_else(|| errno!(ENOENT))?;
-		old_parent_inode.set_dirent_inode(off, 0, fs)?;
-		// Update links count
-		if dir {
-			old_parent_inode.i_links_count = old_parent_inode.i_links_count.saturating_sub(1);
-			old_parent_node.stat.lock().nlink = old_parent_inode.i_links_count;
-		}
-		old_parent_inode.mark_dirty();
-		Ok(())
-	}
-
-	fn read_page(&self, node: &Arc<Node>, off: u64) -> EResult<RcFrame> {
-		node.mapped.get_or_insert_frame(off, 0, || {
-			let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-			let inode = Ext2INode::get(node, fs)?;
-			let off: u32 = off.try_into().map_err(|_| errno!(EOVERFLOW))?;
-			let blk_off = inode
-				.translate_blk_off(off, fs)?
-				.ok_or_else(|| errno!(EOVERFLOW))?;
-			fs.dev
-				.ops
-				.read_frame(blk_off.get() as _, 0, FrameOwner::Node(node.clone()))
-		})
-	}
-
-	fn write_frame(&self, node: &Node, frame: &RcFrame) -> EResult<()> {
-		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		fs.dev.ops.write_pages(frame.dev_offset(), frame.slice())
-	}
-
-	fn set_stat(&self, node: &Node, stat: &Stat) -> EResult<()> {
-		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		let mut inode_ = Ext2INode::get(node, fs)?;
-		inode_.set_permissions(stat.mode);
-		inode_.i_uid = stat.uid;
-		inode_.i_gid = stat.gid;
-		inode_.i_ctime = stat.ctime as _;
-		inode_.i_mtime = stat.mtime as _;
-		inode_.i_atime = stat.atime as _;
-		inode_.mark_dirty();
-		Ok(())
-	}
+fn type_to_ops(file_type: Option<FileType>) -> AllocResult<(Box<dyn NodeOps>, Box<dyn FileOps>)> {
+	let r: (Box<dyn NodeOps>, Box<dyn FileOps>) = match file_type {
+		Some(FileType::Regular) => (Box::new(RegularOps)?, Box::new(RegularOps)?),
+		Some(FileType::Directory) => (Box::new(DirOps)?, Box::new(DummyOps)?),
+		Some(FileType::Link) => (Box::new(LinkOps)?, Box::new(DummyOps)?),
+		_ => (Box::new(DummyOps)?, Box::new(DummyOps)?),
+	};
+	Ok(r)
 }
 
-/// Open file operations.
-#[derive(Debug)]
-pub struct Ext2FileOps;
+fn do_set_stat(node: &Node, stat: &Stat) -> EResult<()> {
+	let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
+	let mut inode_ = Ext2INode::lock(node, fs)?;
+	inode_.set_permissions(stat.mode);
+	inode_.i_uid = stat.uid;
+	inode_.i_gid = stat.gid;
+	inode_.i_ctime = stat.ctime as _;
+	inode_.i_mtime = stat.mtime as _;
+	inode_.i_atime = stat.atime as _;
+	inode_.mark_dirty();
+	Ok(())
+}
 
-impl FileOps for Ext2FileOps {
+#[derive(Debug)]
+struct RegularOps;
+
+impl FileOps for RegularOps {
 	fn read(&self, file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
-		// TODO replace by filetype-specific FileOps
-		let node = file.node();
-		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		{
-			let inode_ = Ext2INode::get(node, fs)?;
-			if inode_.get_type() != FileType::Regular {
-				return Err(errno!(EINVAL));
-			}
-		}
 		// TODO O_DIRECT
 		generic_file_read(file, off, buf)
 	}
 
 	fn write(&self, file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
-		let node = file.node();
-		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		if unlikely(fs.readonly) {
-			return Err(errno!(EROFS));
-		}
-		// TODO replace by filetype-specific FileOps
-		{
-			let inode_ = Ext2INode::get(node, fs)?;
-			if inode_.get_type() != FileType::Regular {
-				return Err(errno!(EINVAL));
-			}
-		}
 		// TODO O_DIRECT
 		generic_file_write(file, off, buf)
 	}
@@ -501,14 +233,7 @@ impl FileOps for Ext2FileOps {
 	fn truncate(&self, file: &File, size: u64) -> EResult<()> {
 		let node = file.node();
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		if unlikely(fs.readonly) {
-			return Err(errno!(EROFS));
-		}
-		let mut inode_ = Ext2INode::get(node, fs)?;
-		// TODO replace by filetype-specific FileOps
-		if inode_.get_type() != FileType::Regular {
-			return Err(errno!(EINVAL));
-		}
+		let mut inode_ = Ext2INode::lock(node, fs)?;
 		// The size of a block
 		let blk_size = fs.sp.get_block_size();
 		let old_size = inode_.get_size(&fs.sp);
@@ -530,10 +255,399 @@ impl FileOps for Ext2FileOps {
 			}
 		}
 		// Update size
-		inode_.set_size(&fs.sp, size, false);
+		inode_.set_size(&fs.sp, size);
 		inode_.mark_dirty();
 		node.stat.lock().size = size;
 		Ok(())
+	}
+}
+
+impl NodeOps for RegularOps {
+	fn read_page(&self, node: &Arc<Node>, off: u64) -> EResult<RcFrame> {
+		node.mapped.get_or_insert_frame(off, 0, || {
+			let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
+			let inode = Ext2INode::lock(node, fs)?;
+			let off: u32 = off.try_into().map_err(|_| errno!(EOVERFLOW))?;
+			let blk_off = inode
+				.translate_blk_off(off, fs)?
+				.ok_or_else(|| errno!(EOVERFLOW))?;
+			fs.dev
+				.ops
+				.read_frame(blk_off.get() as _, 0, FrameOwner::Node(node.clone()))
+		})
+	}
+
+	fn write_frame(&self, node: &Node, frame: &RcFrame) -> EResult<()> {
+		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
+		fs.dev.ops.write_pages(frame.dev_offset(), frame.slice())
+	}
+
+	#[inline]
+	fn set_stat(&self, node: &Node, stat: &Stat) -> EResult<()> {
+		do_set_stat(node, stat)
+	}
+}
+
+#[derive(Debug)]
+struct DirOps;
+
+impl NodeOps for DirOps {
+	fn lookup_entry<'n>(&self, dir: &Node, ent: &mut vfs::Entry) -> EResult<()> {
+		let fs = downcast_fs::<Ext2Fs>(&*dir.fs.ops);
+		let inode_ = Ext2INode::lock(dir, fs)?;
+		ent.node = inode_
+			.get_dirent(&ent.name, fs)?
+			.map(|(inode, ..)| -> EResult<_> {
+				dir.fs.node_get_or_insert(inode as _, || {
+					let mut node = Node::new(
+						inode as _,
+						dir.fs.clone(),
+						Default::default(),
+						Box::new(DummyOps)?,
+						Box::new(DummyOps)?,
+					);
+					let stat = Ext2INode::lock(&node, fs)?.stat(&fs.sp);
+					let (node_ops, file_ops) = type_to_ops(stat.get_type())?;
+					node.stat = Spin::new(stat);
+					node.node_ops = node_ops;
+					node.file_ops = file_ops;
+					Ok(Arc::new(node)?)
+				})
+			})
+			.transpose()?;
+		Ok(())
+	}
+
+	fn iter_entries(&self, dir: &vfs::Entry, ctx: &mut DirContext) -> EResult<()> {
+		let node = dir.node();
+		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
+		let inode = Ext2INode::lock(node, fs)?;
+		// Iterate on entries
+		let mut blk = None;
+		for ent in DirentIterator::new(fs, &inode, &mut blk, ctx.off)? {
+			let (off, ent) = ent?;
+			if !ent.is_free() {
+				let e = DirEntry {
+					inode: ent.inode as _,
+					entry_type: ent.get_type(&fs.sp),
+					name: ent.get_name(&fs.sp),
+				};
+				if !(ctx.write)(&e)? {
+					break;
+				}
+			}
+			ctx.off = off + ent.rec_len as u64;
+		}
+		Ok(())
+	}
+
+	fn create(&self, parent: &Node, ent: &mut vfs::Entry, stat: Stat) -> EResult<()> {
+		let fs = downcast_fs::<Ext2Fs>(&*parent.fs.ops);
+		let file_type = stat.get_type().ok_or_else(|| errno!(EINVAL))?;
+		let is_dir = file_type == FileType::Directory;
+		// Check the entry does not exist
+		let mut parent_inode = Ext2INode::lock(parent, fs)?;
+		if unlikely(parent_inode.get_dirent(&ent.name, fs)?.is_some()) {
+			return Err(errno!(EEXIST));
+		}
+		// Prevent links count overflow
+		if is_dir && unlikely(parent_inode.i_links_count == u16::MAX) {
+			return Err(errno!(EMFILE));
+		}
+		let mut node = fs.alloc_inode(parent, &stat)?;
+		let mut inode = Ext2INode::lock(&node, fs)?;
+		match file_type {
+			FileType::Directory => {
+				inode.add_dirent(fs, node.inode as _, b".", Some(FileType::Directory))?;
+				inode.add_dirent(fs, parent.inode as _, b"..", Some(FileType::Directory))?;
+				inode.i_links_count += 1;
+				parent_inode.i_links_count += 1;
+			}
+			FileType::BlockDevice | FileType::CharDevice => {
+				inode.set_device(stat.dev_major as u8, stat.dev_minor as u8);
+			}
+			_ => {}
+		}
+		// Create entry
+		parent_inode.add_dirent(fs, node.inode as _, &ent.name, Some(file_type))?;
+		inode.mark_dirty();
+		parent_inode.mark_dirty();
+		// Update stat on `node`
+		let stat = inode.stat(&fs.sp);
+		drop(inode);
+		node.stat = Spin::new(stat);
+		// Insert in cache
+		let node = Arc::new(node)?;
+		parent.fs.node_insert(node.clone())?;
+		ent.node = Some(node);
+		// Add reference for `..`
+		if file_type == FileType::Directory {
+			parent.stat.lock().nlink += 1;
+		}
+		Ok(())
+	}
+
+	fn link(&self, parent: Arc<Node>, ent: &vfs::Entry) -> EResult<()> {
+		let fs = downcast_fs::<Ext2Fs>(&*parent.fs.ops);
+		let target = ent.node();
+		// Parent inode
+		let mut parent_inode = Ext2INode::lock(&parent, fs)?;
+		// Check the entry does not exist
+		if unlikely(parent_inode.get_dirent(&ent.name, fs)?.is_some()) {
+			return Err(errno!(EEXIST));
+		}
+		let mut target_inode = Ext2INode::lock(target, fs)?;
+		if unlikely(target_inode.i_links_count == u16::MAX) {
+			return Err(errno!(EMFILE));
+		}
+		if target_inode.get_type() == FileType::Directory {
+			if unlikely(parent_inode.i_links_count == u16::MAX) {
+				return Err(errno!(EMFILE));
+			}
+			// Create the `..` entry
+			target_inode.add_dirent(fs, parent.inode as _, b"..", Some(FileType::Directory))?;
+			parent_inode.i_links_count += 1;
+			parent.stat.lock().nlink = parent_inode.i_links_count;
+		}
+		// Create entry
+		parent_inode.add_dirent(
+			fs,
+			target.inode as _,
+			&ent.name,
+			Some(target_inode.get_type()),
+		)?;
+		target_inode.i_links_count += 1;
+		target.stat.lock().nlink = target_inode.i_links_count;
+		parent_inode.mark_dirty();
+		target_inode.mark_dirty();
+		Ok(())
+	}
+
+	fn symlink(
+		&self,
+		parent: &Arc<Node>,
+		ent: &mut vfs::Entry,
+		target: UserString,
+	) -> EResult<()> {
+		let fs = downcast_fs::<Ext2Fs>(&*parent.fs.ops);
+		// Read target
+		let target = target.copy_path_from_user()?;
+		if unlikely(target.len() > SYMLINK_MAX) {
+			return Err(errno!(ENAMETOOLONG));
+		}
+		let mut parent_inode = Ext2INode::lock(parent, fs)?;
+		let node = fs.alloc_inode(
+			parent,
+			&Stat {
+				mode: FileType::Link.to_mode() | 0o777,
+				..Default::default()
+			},
+		)?;
+		let mut inode = Ext2INode::lock(&node, fs)?;
+		// Get storage slice
+		if target.len() <= SYMLINK_INLINE_LIMIT as usize {
+			// Store inline
+			let dst = bytes::as_bytes_mut(&mut inode.i_block);
+			dst[..target.len()].copy_from_slice(target.as_bytes());
+			dst[target.len()..].fill(0);
+		} else {
+			// Allocate a block
+			let blk_off = inode.alloc_content_blk(0, fs)?;
+			inode.i_block[0] = blk_off;
+			let blk = read_block(fs, blk_off as _)?;
+			// No one else can access the block since we just allocated it
+			let dst = unsafe { blk.slice_mut() };
+			// Copy
+			dst[..target.len()].copy_from_slice(target.as_bytes());
+			dst[target.len()..].fill(0);
+		}
+		// Update size
+		inode.i_size = target.len() as _;
+		inode.i_blocks = 0;
+		node.stat.lock().size = target.len() as _;
+		// Create entry
+		parent_inode.add_dirent(fs, node.inode as _, &ent.name, Some(FileType::Link))?;
+		inode.mark_dirty();
+		parent_inode.mark_dirty();
+		drop(inode);
+		ent.node = Some(Arc::new(node)?);
+		Ok(())
+	}
+
+	fn unlink(&self, parent: &Node, ent: &vfs::Entry) -> EResult<()> {
+		let fs = downcast_fs::<Ext2Fs>(&*parent.fs.ops);
+		if ent.name == "." || ent.name == ".." {
+			return Err(errno!(EINVAL));
+		}
+		let mut parent_inode = Ext2INode::lock(parent, fs)?;
+		// The offset of the entry to the remove
+		let (_, remove_off) = parent_inode
+			.get_dirent(&ent.name, fs)?
+			.ok_or_else(|| errno!(ENOENT))?;
+		let mut target = Ext2INode::lock(ent.node(), fs)?;
+		// Remove the directory entry
+		parent_inode.set_dirent_inode(remove_off, 0, fs)?;
+		target.i_links_count = target.i_links_count.saturating_sub(1);
+		ent.node().stat.lock().nlink = target.i_links_count;
+		if target.get_type() == FileType::Directory {
+			// If the directory is not empty, error
+			if !target.is_directory_empty(fs)? {
+				return Err(errno!(ENOTEMPTY));
+			}
+			// Remove `..`
+			if let Some((_, parent_entry_off)) = target.get_dirent(b"..", fs)? {
+				target.set_dirent_inode(parent_entry_off, 0, fs)?;
+				parent_inode.i_links_count = parent_inode.i_links_count.saturating_sub(1);
+				parent.stat.lock().nlink = parent_inode.i_links_count;
+			}
+		}
+		parent_inode.mark_dirty();
+		target.mark_dirty();
+		Ok(())
+	}
+
+	fn rename(
+		&self,
+		old_parent: &vfs::Entry,
+		old_entry: &vfs::Entry,
+		new_parent: &vfs::Entry,
+		new_entry: &vfs::Entry,
+		flags: c_int,
+	) -> EResult<()> {
+		let old_node = old_entry.node();
+		let fs = downcast_fs::<Ext2Fs>(&*old_node.fs.ops);
+		let old_parent_node = old_parent.node();
+		let new_parent_node = new_parent.node();
+		let exchange = flags & RENAME_EXCHANGE != 0;
+		// If source and destination parent are the same
+		if old_parent_node.inode == new_parent_node.inode {
+			// No need to check for cycles, hence no need to lock the rename mutex
+			let mut parent_inode = Ext2INode::lock(new_parent_node, fs)?;
+			if !exchange {
+				parent_inode.rename_dirent(fs, &old_entry.name, &new_entry.name)?;
+			} else {
+				parent_inode.exchange_dirent(fs, &old_entry.name, &new_entry.name)?;
+			}
+			parent_inode.mark_dirty();
+			return Ok(());
+		}
+		let (mut old_parent_inode, mut new_parent_inode) =
+			Ext2INode::lock_two(old_parent_node, new_parent_node, fs)?;
+		let mut old_inode = Ext2INode::lock(old_node, fs)?;
+		let old_is_dir = old_inode.get_type() == FileType::Directory;
+		// Insert or replace new entry
+		if let Some((_, off)) = new_parent_inode.get_dirent(&new_entry.name, fs)? {
+			// Destination validation
+			let new_node = new_entry.node();
+			let mut new_inode = Ext2INode::lock(new_node, fs)?;
+			let new_is_dir = new_inode.get_type() == FileType::Directory;
+			if old_is_dir {
+				if unlikely(new_is_dir) {
+					return Err(errno!(ENOTDIR));
+				}
+				if unlikely(!new_inode.is_directory_empty(fs)?) {
+					return Err(errno!(ENOTEMPTY));
+				}
+			}
+			// Update entry
+			new_parent_inode.set_dirent_inode(off, old_node.inode, fs)?; // TODO update file type
+			if exchange {
+				// Set entry in the old directory. We are guaranteed that the entry already exists
+				let (_, off) = old_parent_inode
+					.get_dirent(&old_entry.name, fs)?
+					.ok_or_else(|| errno!(EUCLEAN))?;
+				old_parent_inode.set_dirent_inode(off, new_node.inode, fs)?; // TODO update file type
+				if new_is_dir {
+					let (_, off) = new_inode
+						.get_dirent(b"..", fs)?
+						.ok_or_else(|| errno!(EUCLEAN))?;
+					new_inode.set_dirent_inode(off, old_parent_node.inode, fs)?;
+					new_inode.mark_dirty();
+				}
+			} else {
+				// Decrement reference counter to the previous inode
+				new_inode.i_links_count = new_inode.i_links_count.saturating_sub(1);
+				new_node.stat.lock().nlink = new_inode.i_links_count;
+				if new_is_dir {
+					let (_, off) = new_inode
+						.get_dirent(b"..", fs)?
+						.ok_or_else(|| errno!(EUCLEAN))?;
+					new_inode.set_dirent_inode(off, 0, fs)?;
+					// Update links count
+					old_parent_inode.i_links_count =
+						old_parent_inode.i_links_count.saturating_sub(1);
+				}
+				new_inode.mark_dirty();
+				// Remove old entry
+				let (_, off) = old_parent_inode
+					.get_dirent(&old_entry.name, fs)?
+					.ok_or_else(|| errno!(EUCLEAN))?;
+				old_parent_inode.set_dirent_inode(off, 0, fs)?;
+			}
+		} else {
+			if old_is_dir && unlikely(new_parent_inode.i_links_count == u16::MAX) {
+				return Err(errno!(EMFILE));
+			}
+			new_parent_inode.add_dirent(
+				fs,
+				old_node.inode as _,
+				&new_entry.name,
+				old_node.stat().get_type(),
+			)?;
+			if old_is_dir {
+				// Update `..` entry
+				let (_, off) = old_inode
+					.get_dirent(b"..", fs)?
+					.ok_or_else(|| errno!(EUCLEAN))?;
+				old_inode.set_dirent_inode(off, new_parent_node.inode, fs)?;
+				old_inode.mark_dirty();
+				// Update links counts
+				new_parent_inode.i_links_count += 1;
+			}
+		}
+		old_parent_inode.mark_dirty();
+		new_parent_inode.mark_dirty();
+		// Update links counts
+		new_parent.node().stat.lock().nlink = new_parent_inode.i_links_count;
+		old_parent_node.stat.lock().nlink = old_parent_inode.i_links_count;
+		Ok(())
+	}
+
+	#[inline]
+	fn set_stat(&self, node: &Node, stat: &Stat) -> EResult<()> {
+		do_set_stat(node, stat)
+	}
+}
+
+#[derive(Debug)]
+struct LinkOps;
+
+impl NodeOps for LinkOps {
+	fn readlink(&self, node: &Node, buf: UserSlice<u8>) -> EResult<usize> {
+		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
+		let inode = Ext2INode::lock(node, fs)?;
+		let size = inode.i_size;
+		if unlikely(size > SYMLINK_MAX as u32) {
+			return Err(errno!(EUCLEAN));
+		}
+		if size <= SYMLINK_INLINE_LIMIT as u32 {
+			// The target is stored inline in the inode
+			let src = bytes::as_bytes(&inode.i_block);
+			let len = buf.copy_to_user(0, &src[..size as usize])?;
+			Ok(len)
+		} else {
+			// The target is stored like in regular files
+			let blk =
+				inode::check_blk_off(inode.i_block[0], &fs.sp)?.ok_or_else(|| errno!(EUCLEAN))?;
+			let blk = read_block(fs, blk.get() as _)?;
+			let len = buf.copy_to_user(0, &blk.slice()[..size as usize])?;
+			Ok(len)
+		}
+	}
+
+	#[inline]
+	fn set_stat(&self, node: &Node, stat: &Stat) -> EResult<()> {
+		do_set_stat(node, stat)
 	}
 }
 
@@ -690,8 +804,6 @@ struct Ext2Fs {
 	dev: Arc<BlkDev>,
 	/// The filesystem's superblock
 	sp: RcFrameVal<Superblock>,
-	/// Tells whether the filesystem is mounted as read-only
-	readonly: bool,
 }
 
 impl Ext2Fs {
@@ -732,12 +844,7 @@ impl Ext2Fs {
 		Ok(prev & (1 << bitmap_bit_index) != 0)
 	}
 
-	/// Allocates an inode and returns its ID.
-	///
-	/// `directory` tells whether the inode is allocated for a directory.
-	///
-	/// If no free inode can be found, the function returns an error.
-	pub fn alloc_inode(&self, directory: bool) -> EResult<u32> {
+	fn alloc_inode_impl(&self, directory: bool) -> EResult<u32> {
 		if unlikely(self.sp.s_free_inodes_count.load(Acquire) == 0) {
 			return Err(errno!(ENOSPC));
 		}
@@ -758,6 +865,63 @@ impl Ext2Fs {
 			}
 		}
 		Err(errno!(ENOSPC))
+	}
+
+	/// Allocates an inode and returns its associated [`Node`].
+	///
+	/// `stat` is the status of the newly created inode. Some fields are modified by this function.
+	///
+	/// If no free inode can be found, the function returns [`errno::ENOSPC`].
+	pub fn alloc_inode(&self, parent: &Node, stat: &Stat) -> EResult<Node> {
+		let is_dir = stat.get_type() == Some(FileType::Directory);
+		let inode_index = self.alloc_inode_impl(is_dir)?;
+		let (uid, gid) = create_file_ids(&parent.stat());
+		let ts = current_time_sec(Clock::Realtime);
+		let stat = Stat {
+			mode: stat.mode,
+			nlink: 1,
+			uid,
+			gid,
+			size: 0,
+			blocks: 0,
+			dev_major: stat.dev_major,
+			dev_minor: stat.dev_minor,
+			ctime: ts,
+			mtime: ts,
+			atime: ts,
+		};
+		let (node_ops, file_ops) = type_to_ops(stat.get_type())?;
+		// Safe because no one else can access this node yet
+		unsafe {
+			let inode = Ext2INode::get(inode_index as _, self)?;
+			*inode.as_mut() = Ext2INode {
+				i_mode: stat.mode as _,
+				i_uid: stat.uid,
+				i_size: 0,
+				i_ctime: stat.ctime as _,
+				i_mtime: stat.mtime as _,
+				i_atime: stat.atime as _,
+				i_dtime: 0,
+				i_gid: stat.gid,
+				i_links_count: stat.nlink,
+				i_blocks: 0,
+				i_flags: 0,
+				i_osd1: 0,
+				i_block: [0; DIRECT_BLOCKS_COUNT + 3],
+				i_generation: 0,
+				i_file_acl: 0,
+				i_dir_acl: 0,
+				i_faddr: 0,
+				i_osd2: [0; 12],
+			};
+		}
+		Ok(Node::new(
+			inode_index as _,
+			parent.fs.clone(),
+			stat.clone(),
+			node_ops,
+			file_ops,
+		))
 	}
 
 	/// Marks the inode `inode` available on the filesystem.
@@ -851,8 +1015,8 @@ impl FilesystemOps for Ext2Fs {
 		b"ext2"
 	}
 
-	fn cache_entries(&self) -> bool {
-		true
+	fn cache_policy(&self) -> CachePolicy {
+		CachePolicy::MayFree
 	}
 
 	fn get_stat(&self) -> EResult<Statfs> {
@@ -878,79 +1042,17 @@ impl FilesystemOps for Ext2Fs {
 				ROOT_DIRECTORY_INODE as _,
 				fs.clone(),
 				Default::default(),
-				Box::new(Ext2NodeOps)?,
-				Box::new(Ext2FileOps)?,
+				Box::new(DirOps)?,
+				Box::new(DummyOps)?,
 			);
-			let stat = Ext2INode::get(&node, self)?.stat(&self.sp);
+			let stat = Ext2INode::lock(&node, self)?.stat(&self.sp);
 			node.stat = Spin::new(stat);
 			Ok(Arc::new(node)?)
 		})
 	}
 
-	fn create_node(&self, fs: &Arc<Filesystem>, stat: Stat) -> EResult<Arc<Node>> {
-		if unlikely(self.readonly) {
-			return Err(errno!(EROFS));
-		}
-		let file_type = stat.get_type().ok_or_else(|| errno!(EINVAL))?;
-		// Allocate an inode
-		let inode_index = self.alloc_inode(file_type == FileType::Directory)?;
-		// Create inode
-		let mut node = Node::new(
-			inode_index as _,
-			fs.clone(),
-			Default::default(),
-			Box::new(Ext2NodeOps)?,
-			Box::new(Ext2FileOps)?,
-		);
-		let mut inode = Ext2INode::get(&node, self)?;
-		*inode = Ext2INode {
-			i_mode: stat.mode as _,
-			i_uid: stat.uid,
-			i_size: 0,
-			i_ctime: stat.ctime as _,
-			i_mtime: stat.mtime as _,
-			i_atime: stat.atime as _,
-			i_dtime: 0,
-			i_gid: stat.gid,
-			i_links_count: 0,
-			i_blocks: 0,
-			i_flags: 0,
-			i_osd1: 0,
-			i_block: [0; inode::DIRECT_BLOCKS_COUNT + 3],
-			i_generation: 0,
-			i_file_acl: 0,
-			i_dir_acl: 0,
-			i_faddr: 0,
-			i_osd2: [0; 12],
-		};
-		// If device, set major/minor
-		match file_type {
-			FileType::Directory => {
-				// Create the `.` entry
-				inode.add_dirent(self, inode_index, b".", FileType::Directory)?;
-				inode.i_links_count += 1;
-			}
-			FileType::BlockDevice | FileType::CharDevice => {
-				inode.set_device(stat.dev_major as u8, stat.dev_minor as u8);
-			}
-			_ => {}
-		}
-		inode.mark_dirty();
-		// Update stat on `node` and return it
-		let stat = inode.stat(&self.sp);
-		drop(inode);
-		node.stat = Spin::new(stat);
-		// Insert in cache
-		let node = Arc::new(node)?;
-		fs.node_insert(node.clone())?;
-		Ok(node)
-	}
-
 	fn destroy_node(&self, node: &Node) -> EResult<()> {
-		if unlikely(self.readonly) {
-			return Err(errno!(EROFS));
-		}
-		let mut inode = Ext2INode::get(node, self)?;
+		let mut inode = Ext2INode::lock(node, self)?;
 		// Remove the inode
 		inode.i_links_count = 0;
 		let ts = current_time_sec(Clock::Monotonic);
@@ -983,7 +1085,7 @@ impl FilesystemType for Ext2FsType {
 		&self,
 		dev: Option<Arc<BlkDev>>,
 		_mountpath: PathBuf,
-		readonly: bool,
+		mount_flags: u32,
 	) -> EResult<Arc<Filesystem>> {
 		let dev = dev.ok_or_else(|| errno!(ENODEV))?;
 		let sp = Superblock::read(&dev)?;
@@ -1009,9 +1111,11 @@ impl FilesystemType for Ext2FsType {
 				return Err(errno!(EINVAL));
 			}
 			let unsupported_write_features = WRITE_REQUIRED_DIRECTORY_BINARY_TREE;
-			if !readonly && sp.s_feature_ro_compat & unsupported_write_features != 0 {
+			if mount_flags & mountpoint::FLAG_RDONLY == 0
+				&& sp.s_feature_ro_compat & unsupported_write_features != 0
+			{
 				// TODO Log?
-				return Err(errno!(EROFS));
+				return Err(errno!(EACCES));
 			}
 		}
 		let ts = current_time_sec(Clock::Monotonic);
@@ -1036,8 +1140,8 @@ impl FilesystemType for Ext2FsType {
 			Box::new(Ext2Fs {
 				dev,
 				sp,
-				readonly,
 			})?,
+			mount_flags,
 		)?)
 	}
 }

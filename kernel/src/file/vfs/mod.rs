@@ -34,7 +34,7 @@ pub mod mountpoint;
 pub mod node;
 
 use super::{
-	FileType, Stat, perm,
+	FileType, Stat,
 	perm::{AccessProfile, S_ISVTX},
 };
 use crate::{
@@ -42,16 +42,20 @@ use crate::{
 		fs::StatSet,
 		perm::{can_search_directory, can_set_file_permissions, can_write_directory},
 	},
+	memory::user::UserString,
 	process::Process,
 	sync::{mutex::Mutex, once::OnceInit, spin::Spin},
 };
 use core::{
 	borrow::Borrow,
+	ffi::c_int,
 	hash::{Hash, Hasher},
 	hint::unlikely,
+	ptr,
 };
 use node::Node;
 use utils::{
+	TryClone,
 	collections::{
 		hashset::HashSet,
 		list::ListNode,
@@ -66,11 +70,36 @@ use utils::{
 	ptr::arc::Arc,
 };
 
+/// [`rename`] flag: Don't replace new file if it exists, return an error instead
+pub const RENAME_NOREPLACE: c_int = 1;
+/// [`rename`] flag: Exchanges old and new file atomically
+pub const RENAME_EXCHANGE: c_int = 2;
+
+/// Cache policy of a filesystem
+#[derive(Eq, PartialEq)]
+pub enum CachePolicy {
+	/// Non-negative entries may get freed only by the filesystem implementation, not by shrinking
+	/// the cache
+	Keep,
+	/// Entries may get freed under memory pressure
+	MayFree,
+	/// Do not cache entries
+	Never,
+}
+
 /// A child of a VFS entry.
 ///
 /// The [`Hash`] and [`PartialEq`] traits are forwarded to the entry's name.
 #[derive(Debug)]
-struct EntryChild(Arc<Entry>);
+pub struct EntryChild(Arc<Entry>);
+
+impl EntryChild {
+	/// Returns the inner value
+	#[inline]
+	pub fn inner(&self) -> &Arc<Entry> {
+		&self.0
+	}
+}
 
 impl Borrow<[u8]> for EntryChild {
 	fn borrow(&self) -> &[u8] {
@@ -106,7 +135,7 @@ pub struct Entry {
 	/// The list of cached file entries.
 	///
 	/// This is not an exhaustive list of the file's entries. Only those that are loaded.
-	children: Mutex<HashSet<EntryChild>, false>,
+	pub children: Mutex<HashSet<EntryChild>, false>,
 	/// The node associated with the entry.
 	///
 	/// If `None`, the entry is negative.
@@ -145,6 +174,11 @@ impl Entry {
 			.expect("trying to access a non-existent node")
 	}
 
+	/// Tells whether the file's filesystem is read only.
+	pub fn is_fs_readonly(&self) -> bool {
+		self.node().fs.flags & mountpoint::FLAG_RDONLY != 0
+	}
+
 	/// Helper returning the status of the underlying node.
 	///
 	/// If the entry represents a non-existent file, the function panics.
@@ -179,6 +213,27 @@ impl Entry {
 		buf.rotate_left(off);
 		buf.truncate(buf.len() - off);
 		Ok(PathBuf::new_unchecked(String::from(buf)))
+	}
+
+	/// Recursively checks whether `self` is contained in `e`, stopping at the filesystem's root.
+	pub fn is_child_of(&self, e: &Self) -> bool {
+		let mut cur = self;
+		while let Some(parent) = &cur.parent {
+			if ptr::eq(Arc::as_ptr(parent), e) {
+				return true;
+			}
+			cur = parent;
+		}
+		false
+	}
+
+	/// Tells whether the entry has a non-negative child entry named `name`.
+	pub fn has_child(&self, name: &[u8]) -> bool {
+		self.children
+			.lock()
+			.get(name)
+			.map(|ent| !ent.0.is_negative())
+			.unwrap_or(false)
 	}
 
 	/// Makes `self` a child of its parent, if any. The entry is also inserted in the LRU.
@@ -235,6 +290,12 @@ pub fn shrink_entries() -> bool {
 	let mut lru = LRU.lock();
 	for cursor in lru.iter().rev() {
 		let entry = cursor.arc();
+		// If the entry is on a filesystem whose nodes cannot be freed, skip
+		if let Some(node) = &entry.node
+			&& node.fs.ops.cache_policy() == CachePolicy::Keep
+		{
+			continue;
+		}
 		// The following is the same as the implementation of `Entry::release`. We don't call
 		// directly to reuse the lock on `LRU`
 		let Some(parent) = entry.parent.clone() else {
@@ -261,6 +322,8 @@ pub fn shrink_entries() -> bool {
 
 /// The root entry of the VFS
 pub static ROOT: OnceInit<Arc<Entry>> = unsafe { OnceInit::new() };
+/// Global rename lock, to avoid concurrency issues while checking for cycles
+pub static RENAME_LOCK: Mutex<()> = Mutex::new(());
 
 /// Settings for a path resolution operation.
 #[derive(Clone, Debug)]
@@ -341,7 +404,7 @@ fn resolve_entry(lookup_dir: &Arc<Entry>, name: &[u8]) -> EResult<Arc<Entry>> {
 		.node_ops
 		.lookup_entry(lookup_dir_node, &mut entry)?;
 	let entry = Arc::new(entry)?;
-	if lookup_dir_node.fs.ops.cache_entries() {
+	if lookup_dir_node.fs.ops.cache_policy() != CachePolicy::Never {
 		// Insert in cache. Do not use `link_parent` to keep `children` locked
 		children.insert(EntryChild(entry.clone()))?;
 		drop(children);
@@ -523,7 +586,11 @@ pub fn get_file_from_path(path: &Path, follow_link: bool) -> EResult<Arc<Entry>>
 }
 
 /// Updates status of a node.
-pub fn set_stat(node: &Node, set: &StatSet) -> EResult<()> {
+pub fn set_stat(ent: &Entry, set: &StatSet) -> EResult<()> {
+	if unlikely(ent.is_fs_readonly()) {
+		return Err(errno!(EROFS));
+	}
+	let node = ent.node();
 	let mut stat = node.stat.lock();
 	// Check permissions
 	if !can_set_file_permissions(&stat) {
@@ -567,31 +634,24 @@ pub fn set_stat(node: &Node, set: &StatSet) -> EResult<()> {
 /// - The file already exists: [`errno::EEXIST`]
 ///
 /// Other errors can be returned depending on the underlying filesystem.
-pub fn create_file(parent: Arc<Entry>, name: &[u8], mut stat: Stat) -> EResult<Arc<Entry>> {
+pub fn create_file(parent: Arc<Entry>, name: &[u8], stat: Stat) -> EResult<Arc<Entry>> {
+	if unlikely(parent.is_fs_readonly()) {
+		return Err(errno!(EROFS));
+	}
 	let parent_stat = parent.stat();
-	// Validation
 	if parent_stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
 	}
 	if !can_write_directory(&parent_stat) {
 		return Err(errno!(EACCES));
 	}
-	let ap = AccessProfile::current();
-	stat.nlink = 0;
-	stat.uid = ap.euid;
-	stat.gid = if parent_stat.mode & perm::S_ISGID != 0 {
-		// If SGID is set, the newly created file shall inherit the group ID of the
-		// parent directory
-		parent_stat.gid
-	} else {
-		ap.egid
-	};
-	// Add file to filesystem
-	let parent_node = parent.node();
-	let node = parent_node.fs.ops.create_node(&parent_node.fs, stat)?;
+	if parent.has_child(name) {
+		return Err(errno!(EEXIST));
+	}
 	// Add link to filesystem
-	let ent = Entry::new(String::try_from(name)?, Some(parent.clone()), Some(node));
-	parent_node.node_ops.link(parent_node.clone(), &ent)?;
+	let mut ent = Entry::new(String::try_from(name)?, Some(parent.clone()), None);
+	let parent_node = parent.node();
+	parent_node.node_ops.create(parent_node, &mut ent, stat)?;
 	Ok(ent.link_parent()?)
 }
 
@@ -611,10 +671,21 @@ pub fn create_file(parent: Arc<Entry>, name: &[u8], mut stat: Stat) -> EResult<A
 ///
 /// Other errors can be returned depending on the underlying filesystem.
 pub fn link(parent: &Arc<Entry>, name: String, target: Arc<Node>) -> EResult<()> {
+	if unlikely(parent.is_fs_readonly()) {
+		return Err(errno!(EROFS));
+	}
 	let parent_stat = parent.stat();
-	// Validation
 	if parent_stat.get_type() != Some(FileType::Directory) {
 		return Err(errno!(ENOTDIR));
+	}
+	if !can_write_directory(&parent_stat) {
+		return Err(errno!(EACCES));
+	}
+	if !parent.node().is_same_fs(&target) {
+		return Err(errno!(EXDEV));
+	}
+	if parent.has_child(&name) {
+		return Err(errno!(EEXIST));
 	}
 	let target_stat = target.stat();
 	if target_stat.get_type() == Some(FileType::Directory) {
@@ -622,12 +693,6 @@ pub fn link(parent: &Arc<Entry>, name: String, target: Arc<Node>) -> EResult<()>
 	}
 	if target_stat.nlink >= LINK_MAX as u16 {
 		return Err(errno!(EMLINK));
-	}
-	if !can_write_directory(&parent_stat) {
-		return Err(errno!(EACCES));
-	}
-	if !parent.node().is_same_fs(&target) {
-		return Err(errno!(EXDEV));
 	}
 	// Add link to the filesystem
 	let ent = Entry::new(name, Some(parent.clone()), Some(target));
@@ -647,6 +712,9 @@ pub fn link(parent: &Arc<Entry>, name: String, target: Arc<Node>) -> EResult<()>
 ///
 /// Other errors can be returned depending on the underlying filesystem.
 pub fn unlink(entry: Arc<Entry>) -> EResult<()> {
+	if unlikely(entry.is_fs_readonly()) {
+		return Err(errno!(EROFS));
+	}
 	// Get parent
 	let Some(parent) = &entry.parent else {
 		// Cannot unlink root of the VFS
@@ -654,9 +722,6 @@ pub fn unlink(entry: Arc<Entry>) -> EResult<()> {
 	};
 	// Validation
 	let parent_stat = parent.stat();
-	if parent_stat.get_type() != Some(FileType::Directory) {
-		return Err(errno!(ENOTDIR));
-	}
 	if !can_write_directory(&parent_stat) {
 		return Err(errno!(EACCES));
 	}
@@ -696,7 +761,10 @@ pub fn unlink(entry: Arc<Entry>) -> EResult<()> {
 /// TODO: detail errors
 ///
 /// Other errors can be returned depending on the underlying filesystem.
-pub fn symlink(parent: &Arc<Entry>, name: &[u8], target: &[u8], mut stat: Stat) -> EResult<()> {
+pub fn symlink(parent: &Arc<Entry>, name: &[u8], target: UserString) -> EResult<()> {
+	if unlikely(parent.is_fs_readonly()) {
+		return Err(errno!(EROFS));
+	}
 	let parent_stat = parent.stat();
 	// Validation
 	if parent_stat.get_type() != Some(FileType::Directory) {
@@ -705,24 +773,15 @@ pub fn symlink(parent: &Arc<Entry>, name: &[u8], target: &[u8], mut stat: Stat) 
 	if !can_write_directory(&parent_stat) {
 		return Err(errno!(EACCES));
 	}
-	let ap = AccessProfile::current();
-	stat.mode = FileType::Link.to_mode() | 0o777;
-	stat.nlink = 0;
-	stat.uid = ap.euid;
-	stat.gid = if parent_stat.mode & perm::S_ISGID != 0 {
-		// If SGID is set, the newly created file shall inherit the group ID of the
-		// parent directory
-		parent_stat.gid
-	} else {
-		ap.egid
-	};
-	// Create node
+	if parent.has_child(name) {
+		return Err(errno!(EEXIST));
+	}
+	// Create symlink
+	let mut ent = Entry::new(String::try_from(name)?, Some(parent.clone()), None);
 	let parent_node = parent.node();
-	let node = parent_node.fs.ops.create_node(&parent_node.fs, stat)?;
-	node.node_ops.writelink(&node, target)?;
-	// Add link to the filesystem
-	let ent = Entry::new(String::try_from(name)?, Some(parent.clone()), Some(node));
-	parent_node.node_ops.link(parent_node.clone(), &ent)?;
+	parent_node
+		.node_ops
+		.symlink(parent_node, &mut ent, target)?;
 	ent.link_parent()?;
 	Ok(())
 }
@@ -735,21 +794,36 @@ pub fn symlink(parent: &Arc<Entry>, name: &[u8], target: &[u8], mut stat: Stat) 
 /// - `old` is the file to move
 /// - `new_parent` is the new parent directory for the file
 /// - `new_name` is new name of the file
+/// - `flags` rename-specific flags
 ///
 /// TODO: detail errors
 ///
 /// Other errors can be returned depending on the underlying filesystem.
-pub fn rename(old: Arc<Entry>, new_parent: Arc<Entry>, new_name: &[u8]) -> EResult<()> {
+pub fn rename(
+	old: Arc<Entry>,
+	new_parent: Arc<Entry>,
+	new_name: &[u8],
+	flags: c_int,
+) -> EResult<()> {
+	if unlikely(flags & (RENAME_NOREPLACE | RENAME_EXCHANGE) == RENAME_NOREPLACE | RENAME_EXCHANGE)
+	{
+		return Err(errno!(EINVAL));
+	}
+	let exchange = flags & RENAME_EXCHANGE != 0;
 	// If `old` has no parent, it's the root, so it's a mountpoint
 	let old_parent = old.parent.as_ref().ok_or_else(|| errno!(EBUSY))?;
-	// Parents validation
-	if !new_parent.node().is_same_fs(old.node()) {
-		return Err(errno!(EXDEV));
-	}
-	if mountpoint::from_entry(&old).is_some() {
+	// Cannot rename a mountpoint
+	if unlikely(mountpoint::from_entry(&old).is_some()) {
 		return Err(errno!(EBUSY));
 	}
-	// Check permissions on `old`
+	// If the source and destination are not on the same mountpoint, return an error
+	if unlikely(!old_parent.node().is_same_fs(new_parent.node())) {
+		return Err(errno!(EXDEV));
+	}
+	if unlikely(old_parent.is_fs_readonly()) {
+		return Err(errno!(EROFS));
+	}
+	// Check permissions on `old_parent`
 	let old_parent_stat = old_parent.stat();
 	if !can_write_directory(&old_parent_stat) {
 		return Err(errno!(EACCES));
@@ -759,29 +833,101 @@ pub fn rename(old: Arc<Entry>, new_parent: Arc<Entry>, new_name: &[u8]) -> EResu
 	if old_stat.mode & S_ISVTX != 0 && ap.euid != old_stat.uid && ap.euid != old_parent_stat.uid {
 		return Err(errno!(EACCES));
 	}
-	// Check permissions on `new`
 	let new_parent_stat = new_parent.stat();
 	if !can_write_directory(&new_parent_stat) {
 		return Err(errno!(EACCES));
 	}
-	let new = resolve_entry(&new_parent, new_name)?;
-	// Validation
-	if !new.is_negative() {
-		if mountpoint::from_entry(&new).is_some() {
+	let new_entry = resolve_entry(&new_parent, new_name)?;
+	if let Some(new_node) = &new_entry.node {
+		// Validation
+		if flags & RENAME_NOREPLACE != 0 {
+			return Err(errno!(EEXIST));
+		}
+		if mountpoint::from_entry(&new_entry).is_some() {
 			return Err(errno!(EBUSY));
 		}
-		let new_stat = new.stat();
+		// If the source and destination are the same, do nothing
+		if new_node.inode == old.node().inode {
+			return Ok(());
+		}
+		let new_stat = new_entry.stat();
 		if new_stat.mode & S_ISVTX != 0
 			&& ap.euid != new_stat.uid
 			&& ap.euid != new_parent_stat.uid
 		{
 			return Err(errno!(EACCES));
 		}
+		if old_stat.get_type() == Some(FileType::Directory) {
+			if unlikely(new_stat.get_type() != Some(FileType::Directory)) {
+				return Err(errno!(EISDIR));
+			}
+			// Look for overflow (entry + `..`)
+			if unlikely(new_parent_stat.nlink >= u16::MAX - 1) {
+				return Err(errno!(EMFILE));
+			}
+		} else {
+			// Lock for overflow
+			if unlikely(new_parent_stat.nlink == u16::MAX) {
+				return Err(errno!(EMFILE));
+			}
+		}
+	} else if exchange {
+		// The destination must exist
+		return Err(errno!(ENOENT));
 	}
-	// Perform rename
-	old.node().node_ops.rename(&old, &new_parent, new_name)?;
-	// Invalidate cache
-	old_parent.children.lock().remove(&*old.name);
-	new_parent.children.lock().remove(new_name);
+	let _guard = RENAME_LOCK.lock();
+	// Cannot make a directory a child of itself
+	if unlikely(new_entry.is_child_of(&old)) {
+		return Err(errno!(EINVAL));
+	}
+	old_parent
+		.node()
+		.node_ops
+		.rename(old_parent, &old, &new_parent, &new_entry, flags)?;
+	// In the following code, we create new entries, dropping the previous ones. We do this instead
+	// of atomically swapping nodes because open file descriptions point toward VFS entries and not
+	// toward inodes
+	let new_entry = Arc::new(Entry::new(
+		new_entry.name.try_clone()?,
+		Some(new_parent.clone()),
+		Some(old.node().clone()),
+	))?;
+	// If the source and destination directory is the same, we must lock it only once
+	let same_dir = ptr::eq(Arc::as_ptr(old_parent), Arc::as_ptr(&new_parent));
+	if !exchange {
+		let prev = if same_dir {
+			let mut parent_children = old_parent.children.lock();
+			let prev = parent_children.insert(EntryChild(new_entry))?;
+			parent_children.remove(old.name.as_bytes());
+			prev
+		} else {
+			let (mut old_parent_children, mut new_parent_children) =
+				Mutex::lock_two(&old_parent.children, &new_parent.children);
+			let prev = new_parent_children.insert(EntryChild(new_entry))?;
+			old_parent_children.remove(old.name.as_bytes());
+			prev
+		};
+		// Release the destination node if this was the last reference to it
+		if let Some(ent) = prev {
+			Entry::release(ent.0)?;
+		}
+	} else {
+		let old_entry = Arc::new(Entry::new(
+			old.name.try_clone()?,
+			Some(old_parent.clone()),
+			Some(new_entry.node().clone()),
+		))?;
+		// No need to release the underlying nodes because we know they are still referenced
+		if same_dir {
+			let mut parent_children = old_parent.children.lock();
+			parent_children.insert(EntryChild(old_entry))?;
+			parent_children.insert(EntryChild(new_entry))?;
+		} else {
+			let (mut old_parent_children, mut new_parent_children) =
+				Mutex::lock_two(&old_parent.children, &new_parent.children);
+			old_parent_children.insert(EntryChild(old_entry))?;
+			new_parent_children.insert(EntryChild(new_entry))?;
+		}
+	}
 	Ok(())
 }

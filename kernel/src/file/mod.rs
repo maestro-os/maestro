@@ -62,7 +62,7 @@ use vfs::{mountpoint, mountpoint::MountSource};
 ///
 /// An inode is a number representing a node in a filesystem. The kernel doesn't interpret this
 /// value in any ways, but it must fulfill one condition: the value must represent a **unique**
-/// node in the filesystem, and that exact node **must** be accessible using this value.
+/// node in the filesystem.
 pub type INode = u64;
 /// A file mode, which is a pair of values representing respectively:
 /// - UNIX permissions (read, write, execute, etc...), represented by the 12 least significant
@@ -411,6 +411,7 @@ impl File {
 	}
 
 	/// Returns a reference to the file's node.
+	#[inline]
 	pub fn node(&self) -> &Arc<Node> {
 		self.vfs_entry.node()
 	}

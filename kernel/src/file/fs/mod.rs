@@ -33,8 +33,14 @@ use super::{
 };
 use crate::{
 	device::BlkDev,
-	file::vfs::node::Node,
-	memory::{cache::RcFrame, user::UserSlice},
+	file::{
+		perm::{AccessProfile, S_ISGID},
+		vfs::{CachePolicy, node::Node},
+	},
+	memory::{
+		cache::RcFrame,
+		user::{UserSlice, UserString},
+	},
 	sync::{mutex::Mutex, spin::Spin},
 	syscall::ioctl,
 	time::unit::Timestamp,
@@ -133,8 +139,18 @@ pub trait NodeOps: Any + Debug {
 	/// If the node is not a directory, the function returns [`errno::ENOTDIR`].
 	///
 	/// The default implementation of this function returns an error.
-	fn iter_entries(&self, dir: &Node, ctx: &mut DirContext) -> EResult<()> {
+	fn iter_entries(&self, dir: &vfs::Entry, ctx: &mut DirContext) -> EResult<()> {
 		let _ = (dir, ctx);
+		Err(errno!(ENOTDIR))
+	}
+
+	/// Creates a new file in `parent`.
+	///
+	/// If the node is not a directory, the function returns [`errno::ENOTDIR`].
+	///
+	/// The default implementation of this function returns an error.
+	fn create(&self, parent: &Node, ent: &mut vfs::Entry, stat: Stat) -> EResult<()> {
+		let _ = (parent, ent, stat);
 		Err(errno!(ENOTDIR))
 	}
 
@@ -150,6 +166,21 @@ pub trait NodeOps: Any + Debug {
 	/// The default implementation of this function returns an error.
 	fn link(&self, parent: Arc<Node>, ent: &vfs::Entry) -> EResult<()> {
 		let _ = (parent, ent);
+		Err(errno!(ENOTDIR))
+	}
+
+	/// Creates a new symbolic link in `parent`.
+	///
+	/// If the node is not a directory, the function returns [`errno::ENOTDIR`].
+	///
+	/// The default implementation of this function returns an error.
+	fn symlink(
+		&self,
+		parent: &Arc<Node>,
+		ent: &mut vfs::Entry,
+		target: UserString,
+	) -> EResult<()> {
+		let _ = (parent, ent, target);
 		Err(errno!(ENOTDIR))
 	}
 
@@ -190,22 +221,6 @@ pub trait NodeOps: Any + Debug {
 		Err(errno!(EINVAL))
 	}
 
-	/// Writes the path the symbolic link points to and writes it into `buf`.
-	///
-	/// If the node is not a symbolic link, the function returns [`errno::EINVAL`].
-	///
-	/// **Note**: this function must be called **only** for the creation of the symbolic link.
-	/// After being created, the content is immutable.
-	///
-	/// If this feature is not supported by the filesystem, the function returns
-	/// an error.
-	///
-	/// The default implementation of this function returns an error.
-	fn writelink(&self, node: &Node, buf: &[u8]) -> EResult<()> {
-		let _ = (node, buf);
-		Err(errno!(EINVAL))
-	}
-
 	/// Renames or moves a file on the filesystem.
 	///
 	/// If this feature is not supported by the filesystem, the function returns
@@ -214,11 +229,13 @@ pub trait NodeOps: Any + Debug {
 	/// The default implementation of this function returns an error.
 	fn rename(
 		&self,
+		old_parent: &vfs::Entry,
 		old_entry: &vfs::Entry,
 		new_parent: &vfs::Entry,
-		new_name: &[u8],
+		new_entry: &vfs::Entry,
+		flags: c_int,
 	) -> EResult<()> {
-		let _ = (old_entry, new_parent, new_name);
+		let _ = (old_parent, old_entry, new_parent, new_entry, flags);
 		Err(errno!(EINVAL))
 	}
 
@@ -398,8 +415,8 @@ impl FileOps for DummyOps {}
 pub trait FilesystemOps: Any + Debug {
 	/// Returns the name of the filesystem.
 	fn get_name(&self) -> &[u8];
-	/// Tells whether the directory of this filesystem can be cached.
-	fn cache_entries(&self) -> bool;
+	/// Returns the filesystem's cache policy
+	fn cache_policy(&self) -> CachePolicy;
 
 	/// Returns statistics about the filesystem.
 	fn get_stat(&self) -> EResult<Statfs>;
@@ -408,9 +425,6 @@ pub trait FilesystemOps: Any + Debug {
 	///
 	/// If the node does not exist, the function returns [`errno::ENOENT`].
 	fn root(&self, fs: &Arc<Filesystem>) -> EResult<Arc<Node>>;
-
-	/// Creates a node on the filesystem.
-	fn create_node(&self, fs: &Arc<Filesystem>, stat: Stat) -> EResult<Arc<Node>>;
 
 	/// Removes `node` from the filesystem.
 	///
@@ -454,7 +468,7 @@ impl Hash for NodeWrapper {
 	}
 }
 
-impl fmt::Debug for NodeWrapper {
+impl Debug for NodeWrapper {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		fmt::Debug::fmt(&self.0, f)
 	}
@@ -467,6 +481,8 @@ pub struct Filesystem {
 	pub dev: u64,
 	/// Filesystem operations
 	pub ops: Box<dyn FilesystemOps>,
+	/// Mounted filesystem flags
+	pub flags: u32,
 
 	/// Cached [`Node`]s, to avoid duplications when several entries point to the same node
 	nodes: Mutex<HashSet<NodeWrapper>, false>,
@@ -480,10 +496,12 @@ impl Filesystem {
 	/// Arguments:
 	/// - `dev` is the device number
 	/// - `ops` is the handle for operations on the filesystem
-	pub fn new(dev: u64, ops: Box<dyn FilesystemOps>) -> AllocResult<Arc<Self>> {
+	/// - `flags` is the flags of the mounted filesystem
+	pub fn new(dev: u64, ops: Box<dyn FilesystemOps>, flags: u32) -> AllocResult<Arc<Self>> {
 		Arc::new(Self {
 			dev,
 			ops,
+			flags,
 
 			nodes: Default::default(),
 			buffers: Default::default(),
@@ -571,12 +589,12 @@ pub trait FilesystemType {
 	/// Arguments:
 	/// - `dev` is the mounted device
 	/// - `mountpath` is the path on which the filesystem is mounted
-	/// - `readonly` tells whether the filesystem is mounted in read-only
+	/// - `mount_flags` are mount flags
 	fn load_filesystem(
 		&self,
 		dev: Option<Arc<BlkDev>>,
 		mountpath: PathBuf,
-		readonly: bool,
+		mount_flags: u32,
 	) -> EResult<Arc<Filesystem>>;
 }
 
@@ -622,4 +640,18 @@ pub(crate) fn register_defaults() -> EResult<()> {
 	register(proc::ProcFsType)?;
 	// TODO sysfs
 	Ok(())
+}
+
+/// Helper for use in filesystem implementations, returning the UID and GID of a newly created
+/// file.
+pub fn create_file_ids(parent_stat: &Stat) -> (Uid, Gid) {
+	let ap = AccessProfile::current();
+	let gid = if parent_stat.mode & S_ISGID != 0 {
+		// If SGID is set, the newly created file shall inherit the group ID of the
+		// parent directory
+		parent_stat.gid
+	} else {
+		ap.egid
+	};
+	(ap.euid, gid)
 }
