@@ -1048,7 +1048,11 @@ pub fn set_state(new_state: State) {
 		}
 		let valid = matches!(
 			(old_state, new_state),
-			(State::Running, _) | (State::IntSleeping | State::Sleeping | State::Stopped, State::Running)
+			(State::Running, _)
+				| (
+					State::IntSleeping | State::Sleeping | State::Stopped,
+					State::Running
+				)
 		);
 		if !valid {
 			return;
