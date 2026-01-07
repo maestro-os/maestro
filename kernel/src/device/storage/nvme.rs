@@ -23,7 +23,8 @@
 use crate::{
 	device::{bar::Bar, manager::PhysicalDevice},
 	memory::{VirtAddr, buddy},
-	println,
+	println, process,
+	process::{State, scheduler::schedule},
 };
 use core::{
 	hint, mem,
@@ -477,7 +478,9 @@ impl Controller {
 				asq_tail as _,
 			);
 		}
-		// TODO wait for completion (sleep)
+		// Wait for completion interrupt
+		process::set_state(State::Sleeping);
+		schedule();
 	}
 
 	/// Detect drives.
