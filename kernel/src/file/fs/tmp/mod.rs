@@ -33,7 +33,7 @@ use crate::{
 		},
 		perm::{ROOT_GID, ROOT_UID},
 		vfs,
-		vfs::node::Node,
+		vfs::{RENAME_EXCHANGE, node::Node},
 	},
 	memory::{
 		cache::{FrameOwner, RcFrame},
@@ -41,7 +41,7 @@ use crate::{
 	},
 	sync::{mutex::Mutex, spin::Spin},
 };
-use core::{any::Any, hint::unlikely};
+use core::{any::Any, ffi::c_int, hint::unlikely, mem};
 use utils::{
 	TryClone, TryToOwned,
 	boxed::Box,
@@ -74,21 +74,32 @@ impl DirInner {
 	fn find(&self, name: &[u8]) -> Option<&Arc<Node>> {
 		self.entries
 			.iter()
-			.filter_map(|e| e.as_ref())
+			.filter_map(Option::as_ref)
 			.find(|e| e.name.as_ref() == name)
 			.map(|e| &e.node)
 	}
 
+	/// Same as [`Self::find`], but mutable.
+	fn find_entry_mut(&mut self, name: &[u8]) -> Option<&mut TmpfsDirEntry> {
+		self.entries
+			.iter_mut()
+			.filter_map(Option::as_mut)
+			.find(|e| e.name.as_ref() == name)
+	}
+
 	/// Inserts a new entry.
-	fn insert(&mut self, ent: TmpfsDirEntry) -> AllocResult<()> {
-		if self.used_slots == self.entries.len() {
+	///
+	/// The function returns a reference to the inserted entry.
+	fn insert(&mut self, ent: TmpfsDirEntry) -> AllocResult<&mut TmpfsDirEntry> {
+		let slot = if self.used_slots == self.entries.len() {
 			self.entries.push(Some(ent))?;
+			self.entries.last_mut().unwrap().as_mut().unwrap()
 		} else {
 			let slot = self.entries.iter_mut().find(|e| e.is_none()).unwrap();
-			*slot = Some(ent);
-		}
+			slot.insert(ent)
+		};
 		self.used_slots += 1;
-		Ok(())
+		Ok(slot)
 	}
 
 	/// Changes the node the entry with name `name` points to.
@@ -275,27 +286,67 @@ impl NodeOps for NodeContent {
 		Ok(())
 	}
 
-	fn rename(&self, entry: &vfs::Entry, new_parent: &vfs::Entry, new_name: &[u8]) -> EResult<()> {
-		let old_parent = entry.parent.as_ref().unwrap();
+	fn rename(
+		&self,
+		old_parent: &vfs::Entry,
+		old_entry: &vfs::Entry,
+		new_parent: &vfs::Entry,
+		new_entry: &vfs::Entry,
+		flags: c_int,
+	) -> EResult<()> {
+		let old_node = old_entry.node();
 		let old_parent_node = old_parent.node();
+		let new_parent_node = new_parent.node();
+		let fs = downcast_fs::<TmpFS>(&*old_parent_node.fs.ops);
+		if unlikely(fs.readonly) {
+			return Err(errno!(EROFS));
+		}
 		let old_parent_ops = NodeContent::from_ops(&*old_parent_node.node_ops);
 		let NodeContent::Directory(old_parent_inner) = old_parent_ops else {
-			return Err(errno!(ENOTDIR));
+			unreachable!();
 		};
-		let new_parent_node = new_parent.node();
 		let new_parent_ops = NodeContent::from_ops(&*new_parent_node.node_ops);
 		let NodeContent::Directory(new_parent_inner) = new_parent_ops else {
 			return Err(errno!(ENOTDIR));
 		};
-		// Create new entry
-		let entry_node = entry.node();
-		new_parent_inner.lock().insert(TmpfsDirEntry {
-			name: Cow::Owned(new_name.try_to_owned()?),
-			node: entry_node.clone(),
-		})?;
-		// Update the `..` entry
-		let node_ops = NodeContent::from_ops(&*entry_node.node_ops);
-		if let NodeContent::Directory(inner) = node_ops {
+		// If source and destination parent are the same
+		if old_parent_node.inode == new_parent_node.inode {
+			// No need to check for cycles, hence no need to lock the rename mutex
+			// TODO rename entry and return
+		}
+		// Prevent concurrent renames to safeguard cycle checking
+		let _rename_guard = fs.rename_lock.lock();
+		// Cannot make a directory a child of itself
+		if unlikely(new_entry.is_child_of(old_entry)) {
+			return Err(errno!(EINVAL));
+		}
+		let (mut old_parent_inner, mut new_parent_inner) =
+			Mutex::lock_two(old_parent_inner, new_parent_inner);
+		let old_node_ops = NodeContent::from_ops(&*old_node.node_ops);
+		if let Some(new_ent) = new_parent_inner.find_entry_mut(&new_entry.name) {
+			// Update entry
+			let prev = mem::replace(&mut new_ent.node, old_node.clone());
+			if flags & RENAME_EXCHANGE != 0 {
+				// Set entry in the old directory. We are guaranteed that the entry already exists
+				let old_ent = old_parent_inner
+					.find_entry_mut(&old_entry.name)
+					.ok_or_else(|| errno!(EUCLEAN))?;
+				old_ent.node = prev;
+				// TODO if the new file is a directory, update its `..`
+			} else {
+				// Decrement reference counter to the previous inode
+				let mut stat = prev.stat.lock();
+				stat.nlink = stat.nlink.saturating_sub(1);
+			}
+		} else {
+			// Insert entry
+			new_parent_inner.insert(TmpfsDirEntry {
+				name: Cow::Owned(new_entry.name.try_to_owned()?),
+				node: old_node.clone(),
+			})?;
+		}
+		if let NodeContent::Directory(inner) = old_node_ops {
+			// Update the `..` entry
 			inner.lock().set_inode(b"..", new_parent_node.clone());
 			// Update links count
 			let mut new_parent_stat = new_parent_node.stat.lock();
@@ -303,13 +354,6 @@ impl NodeOps for NodeContent {
 				return Err(errno!(EMFILE));
 			}
 			new_parent_stat.nlink += 1;
-		}
-		// Remove old entry
-		old_parent_inner.lock().remove(&entry.name);
-		// Update links count
-		if let NodeContent::Directory(_) = node_ops {
-			let mut old_parent_stat = old_parent_node.stat.lock();
-			old_parent_stat.nlink = old_parent_stat.nlink.saturating_sub(1);
 		}
 		Ok(())
 	}
@@ -389,6 +433,9 @@ pub struct TmpFS {
 	readonly: bool,
 	/// The inner kernfs.
 	nodes: Mutex<NodeStorage, false>,
+
+	/// Lock when renaming a file, to avoid concurrency issues when looking for cycles.
+	rename_lock: Mutex<()>,
 }
 
 impl FilesystemOps for TmpFS {
@@ -478,6 +525,8 @@ impl FilesystemType for TmpFsType {
 			Box::new(TmpFS {
 				readonly,
 				nodes: Mutex::new(NodeStorage::new()?),
+
+				rename_lock: Mutex::new(()),
 			})?,
 		)?;
 		let root = Arc::new(Node::new(

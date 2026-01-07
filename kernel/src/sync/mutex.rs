@@ -31,6 +31,7 @@ use core::{
 	fmt,
 	fmt::Formatter,
 	ops::{Deref, DerefMut},
+	ptr,
 };
 use utils::{errno, errno::EResult, list, list_type};
 
@@ -181,6 +182,24 @@ impl<T: ?Sized> Mutex<T, false> {
 		let _ = lock::<false>(&self.queue);
 		MutexGuard {
 			mutex: self,
+		}
+	}
+
+	/// Locks two mutexes at the same time, in a way to avoid deadlocks.
+	/// This property holds only if the mutexes are locked together **only** by using this
+	/// function.
+	pub fn lock_two<'a, 'b>(
+		m0: &'a Self,
+		m1: &'b Self,
+	) -> (MutexGuard<'a, T, false>, MutexGuard<'b, T, false>) {
+		if ptr::from_ref(m0).cast::<()>() < ptr::from_ref(m1).cast::<()>() {
+			let m0 = m0.lock();
+			let m1 = m1.lock();
+			(m0, m1)
+		} else {
+			let m1 = m1.lock();
+			let m0 = m0.lock();
+			(m0, m1)
 		}
 	}
 }
