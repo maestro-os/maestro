@@ -20,7 +20,7 @@
 
 use core::{cmp::min, hint::unlikely, mem::size_of, num::NonZeroUsize, ptr, slice};
 use kernel::{
-	device::{bar::BAR, manager::PhysicalDevice},
+	device::{bar::Bar, manager::PhysicalDevice},
 	int,
 	int::CallbackHook,
 	memory::{PhysAddr, VirtAddr, buddy},
@@ -220,7 +220,7 @@ pub struct Nic {
 	command_reg: u16,
 
 	/// The BAR0 of the device.
-	bar0: BAR,
+	bar0: Bar,
 	/// The hook of the interrupt handler.
 	int_hook: CallbackHook,
 
@@ -299,12 +299,14 @@ impl Nic {
 
 	/// Sends a command to read at address `addr` in the NIC memory.
 	fn read_command(&self, addr: u16) -> u32 {
-		self.bar0.read::<u32>(addr as _) as _
+		unsafe { self.bar0.read::<u32>(addr as _) as _ }
 	}
 
 	/// Sends a command to write the value `val` at address `addr` in the NIC memory.
 	fn write_command(&self, addr: u16, val: u32) {
-		self.bar0.write::<u32>(addr as _, val as _);
+		unsafe {
+			self.bar0.write::<u32>(addr as _, val as _);
+		}
 	}
 
 	/// Detects whether the EEPROM exists.
