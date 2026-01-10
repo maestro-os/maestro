@@ -21,8 +21,7 @@
 
 use crate::device::{
 	BlockDeviceOps,
-	bar::BAR,
-	bus::pci,
+	bar::Bar,
 	storage::{PhysicalDevice, pata::PATAInterface},
 };
 use utils::{boxed::Box, errno::AllocResult};
@@ -52,9 +51,9 @@ const SECONDARY_ALTERNATE_STATUS_PORT: u16 = 0x376;
 #[derive(Debug)]
 pub struct Channel {
 	/// The BAR for ATA ports.
-	pub ata_bar: BAR,
+	pub ata_bar: Bar,
 	/// The BAR for control port.
-	pub control_bar: BAR,
+	pub control_bar: Bar,
 }
 
 impl Channel {
@@ -64,27 +63,23 @@ impl Channel {
 	pub fn new_compatibility(secondary: bool) -> Self {
 		if secondary {
 			Self {
-				ata_bar: BAR::IOSpace {
+				ata_bar: Bar::IOSpace {
 					address: SECONDARY_ATA_BUS_PORT_BEGIN as _,
-
 					size: 8,
 				},
-				control_bar: BAR::IOSpace {
+				control_bar: Bar::IOSpace {
 					address: SECONDARY_DEVICE_CONTROL_PORT as _,
-
 					size: 4,
 				},
 			}
 		} else {
 			Self {
-				ata_bar: BAR::IOSpace {
+				ata_bar: Bar::IOSpace {
 					address: PRIMARY_ATA_BUS_PORT_BEGIN as _,
-
 					size: 8,
 				},
-				control_bar: BAR::IOSpace {
+				control_bar: Bar::IOSpace {
 					address: PRIMARY_DEVICE_CONTROL_PORT as _,
-
 					size: 4,
 				},
 			}
@@ -92,27 +87,21 @@ impl Channel {
 	}
 }
 
-/// Structure representing an IDE controller.
+/// An IDE controller.
 #[derive(Debug)]
 pub struct Controller {
 	/// Programming Interface Byte
 	prog_if: u8,
 
 	/// IDE controller's BARs.
-	bars: [Option<BAR>; 5],
+	bars: [Option<Bar>; 5],
 }
 
 impl Controller {
-	/// Creates a new instance from the given `PhysicalDevice`.
-	///
-	/// If the given device is not an IDE controller, the function returns `None`.
-	pub fn new(dev: &dyn PhysicalDevice) -> Option<Self> {
-		if dev.get_class() != pci::CLASS_MASS_STORAGE_CONTROLLER || dev.get_subclass() != 0x01 {
-			return None;
-		}
-
+	/// Creates a new instance.
+	pub fn new(dev: &dyn PhysicalDevice) -> Self {
 		let bars = dev.get_bars();
-		Some(Self {
+		Self {
 			prog_if: dev.get_prog_if(),
 
 			bars: [
@@ -122,7 +111,7 @@ impl Controller {
 				bars[3].clone(),
 				bars[4].clone(),
 			],
-		})
+		}
 	}
 
 	/// Tells whether the primary bus of the controller is in PCI mode.

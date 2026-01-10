@@ -32,7 +32,6 @@ use core::arch::asm;
 pub unsafe fn inb(port: u16) -> u8 {
 	let ret: i8;
 	asm!("in al, dx", out("al") ret, in("dx") port);
-
 	ret as _
 }
 
@@ -47,7 +46,6 @@ pub unsafe fn inb(port: u16) -> u8 {
 pub unsafe fn inw(port: u16) -> u16 {
 	let ret: i16;
 	asm!("in ax, dx", out("ax") ret, in("dx") port);
-
 	ret as _
 }
 
@@ -62,7 +60,6 @@ pub unsafe fn inw(port: u16) -> u16 {
 pub unsafe fn inl(port: u16) -> u32 {
 	let ret: i32;
 	asm!("in eax, dx", out("eax") ret, in("dx") port);
-
 	ret as _
 }
 

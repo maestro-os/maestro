@@ -20,24 +20,24 @@
 //! Direct Access Memory (DMA).
 
 use crate::arch::x86::io::{inb, inl, inw, outb, outl, outw};
-use core::{mem::size_of, num::NonZeroUsize, ptr};
+use core::{mem, mem::size_of, num::NonZeroUsize};
 
-/// Enumeration of Memory Space BAR types.
+/// Position in physical memory where a BAR can be mapped
 #[derive(Clone, Debug)]
-pub enum BARType {
-	/// The base register is 32 bits wide.
-	Size32,
-	/// The base register is 64 bits wide.
-	Size64,
+pub enum BarType {
+	/// Can be mapped in the 32 bit range
+	Bit32,
+	/// Can be mapped in the 64 bit range
+	Bit64,
 }
 
-/// Structure representing a Base Address Register.
+/// A Base Address Register
 #[derive(Clone, Debug)]
-pub enum BAR {
+pub enum Bar {
 	/// A memory mapped register.
 	MemorySpace {
 		/// The type of the BAR, specifying the size of the register.
-		type_: BARType,
+		type_: BarType,
 		/// If `true`, read accesses do not have any side effects.
 		prefetchable: bool,
 
@@ -55,7 +55,7 @@ pub enum BAR {
 	},
 }
 
-impl BAR {
+impl Bar {
 	/// Returns the amount of memory.
 	pub fn get_size(&self) -> usize {
 		match self {
@@ -81,68 +81,50 @@ impl BAR {
 	}
 
 	/// Reads a value from the register at offset `off`.
+	///
+	/// # Safety
+	///
+	/// An invalid `off` results in an undefined behaviour.
 	#[inline(always)]
-	pub fn read<T>(&self, off: usize) -> u64 {
+	pub unsafe fn read<T>(&self, off: usize) -> T {
 		match self {
 			Self::MemorySpace {
-				type_,
-				address,
-				..
-			} => match type_ {
-				BARType::Size32 => unsafe {
-					let addr = address.add(off) as *const u32;
-					ptr::read_volatile(addr).into()
-				},
-				BARType::Size64 => unsafe {
-					let addr = address.add(off) as *const u64;
-					ptr::read_volatile(addr)
-				},
-			},
+				address, ..
+			} => address.byte_add(off).cast::<T>().read_volatile(),
 			Self::IOSpace {
 				address, ..
 			} => {
 				let off = address.wrapping_add(off as u32) as u16;
-				unsafe {
-					match size_of::<T>() {
-						1 => inb(off).into(),
-						2 => inw(off).into(),
-						4 => inl(off).into(),
-						_ => 0u32.into(),
-					}
+				match size_of::<T>() {
+					1 => mem::transmute_copy(&inb(off)),
+					2 => mem::transmute_copy(&inw(off)),
+					4 => mem::transmute_copy(&inl(off)),
+					_ => mem::zeroed(),
 				}
 			}
 		}
 	}
 
 	/// Writes a value to the register at offset `off`.
+	///
+	/// # Safety
+	///
+	/// An invalid `off` results in an undefined behaviour.
 	#[inline(always)]
-	pub fn write<T>(&self, off: usize, val: u64) {
+	pub unsafe fn write<T>(&self, off: usize, val: T) {
 		match self {
 			Self::MemorySpace {
-				type_,
-				address,
-				..
-			} => match type_ {
-				BARType::Size32 => unsafe {
-					let addr = address.add(off) as *mut u32;
-					ptr::write_volatile(addr, val as _);
-				},
-				BARType::Size64 => unsafe {
-					let addr = address.add(off) as *mut u64;
-					ptr::write_volatile(addr, val);
-				},
-			},
+				address, ..
+			} => address.byte_add(off).cast::<T>().write_volatile(val),
 			Self::IOSpace {
 				address, ..
 			} => {
 				let off = address.wrapping_add(off as u32) as u16;
-				unsafe {
-					match size_of::<T>() {
-						1 => outb(off, val as _),
-						2 => outw(off, val as _),
-						4 => outl(off, val as _),
-						_ => {}
-					}
+				match size_of::<T>() {
+					1 => outb(off, mem::transmute_copy(&val)),
+					2 => outw(off, mem::transmute_copy(&val)),
+					4 => outl(off, mem::transmute_copy(&val)),
+					_ => {}
 				}
 			}
 		}

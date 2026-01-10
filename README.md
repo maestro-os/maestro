@@ -46,36 +46,43 @@ CPU architectures support
 > - 📅 **Planned** (not currently supported)
 
 The following features are currently implemented (non-exhaustive):
-- Terminal
-    - [VGA text mode](https://en.wikipedia.org/wiki/VGA_text_mode)
+- Linux's system calls (roughly 30% are currently implemented)
+- Kernel modules
+- Drivers
     - [PS/2](https://en.wikipedia.org/wiki/PS/2_port) keyboard (includes forward compatibility with USB keyboards)
-    - Partial support of [ANSI escape codes](https://en.wikipedia.org/wiki/ANSI_escape_code)
+    - [IDE/PATA](https://en.wikipedia.org/wiki/Parallel_ATA)
+    - [NVMe](https://en.wikipedia.org/wiki/NVM_Express)
+- [PCI](https://en.wikipedia.org/wiki/Peripheral_Component_Interconnect) devices enumeration
+- Basic [ACPI](https://en.wikipedia.org/wiki/ACPI) support
 - Memory management
     - [Buddy allocator](https://en.wikipedia.org/wiki/Buddy_memory_allocation)
     - Internal memory allocator, with similarities with **dlmalloc**'s implementation
     - Per-process virtual memory
-- Processes and [scheduler](https://en.wikipedia.org/wiki/Scheduling_(computing))
-    - Symmetric MultiProcessing (SMP)
-    - POSIX signals
-- [PCI](https://en.wikipedia.org/wiki/Peripheral_Component_Interconnect) devices enumeration
-- Unix files
-    - VFS/Mountpoints
-    - [IDE/PATA](https://en.wikipedia.org/wiki/Parallel_ATA)
+    - Over committing
+    - Copy-on-Write
     - Page cache
-    - Filesystem ([ext2](https://en.wikipedia.org/wiki/Extended_file_system) only for now)
+- Unix processes
+    - CPU topology enumeration
+    - Preemptible scheduler (inspired by FreeBSD’s [ULE scheduler](https://en.wikipedia.org/wiki/ULE_scheduler))
+    - [Symmetric MultiProcessing](https://en.wikipedia.org/wiki/Symmetric_multiprocessing) (SMP)
+    - POSIX signals
+- Unix files
+    - Virtual FileSystem (VFS) with mountpoints
+    - Filesystem ([ext2](https://en.wikipedia.org/wiki/Extended_file_system) only)
     - Disk partitions ([MBR](https://en.wikipedia.org/wiki/Master_boot_record) and [GPT](https://en.wikipedia.org/wiki/GUID_Partition_Table))
     - Virtual filesystems (`/tmp` and `/proc`)
-    - initramfs
+    - initramfs (cpio)
     - Unix pipes and sockets
     - Device files
-- Time
+- [ELF](https://en.wikipedia.org/wiki/Executable_and_Linkable_Format) programs
+- Terminal
+    - [VGA text mode](https://en.wikipedia.org/wiki/VGA_text_mode)
+    - Partial support of [ANSI escape codes](https://en.wikipedia.org/wiki/ANSI_escape_code)
+- Clocks
     - [PIT](https://en.wikipedia.org/wiki/Programmable_interval_timer)
     - [RTC](https://en.wikipedia.org/wiki/Real-time_clock)
     - APIC Timer
     - [HPET](https://en.wikipedia.org/wiki/High_Precision_Event_Timer)
-- Linux's system calls (roughly 30% are currently implemented)
-- Kernel modules
-- [ELF](https://en.wikipedia.org/wiki/Executable_and_Linkable_Format) programs
 
 
 
