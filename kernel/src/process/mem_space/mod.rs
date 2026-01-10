@@ -299,6 +299,14 @@ impl MemSpace {
 		if unlikely(!addr.is_aligned_to(PAGE_SIZE)) {
 			return Err(errno!(EINVAL));
 		}
+		if size
+			.get()
+			.checked_mul(PAGE_SIZE)
+			.and_then(|l| addr.checked_add(l))
+			.is_none_or(|end| end > COPY_BUFFER.0)
+		{
+			return Err(errno!(EINVAL));
+		};
 		if unlikely(flags & (MAP_PRIVATE | MAP_SHARED) == 0) {
 			return Err(errno!(EINVAL));
 		}
@@ -657,10 +665,6 @@ impl MemSpace {
 		let mut transaction = MemSpaceTransaction::new(self);
 		let old = transaction.state.brk;
 		if addr >= old {
-			// Check the pointer is valid
-			if unlikely(addr > COPY_BUFFER) {
-				return old;
-			}
 			// Allocate memory
 			let begin = old.align_to(PAGE_SIZE);
 			let pages = (addr.0 - begin.0).div_ceil(PAGE_SIZE);
