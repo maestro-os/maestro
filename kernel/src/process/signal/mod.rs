@@ -24,19 +24,20 @@ use super::{Process, REDZONE_SIZE, State};
 use crate::{
 	arch::x86::idt::IntFrame,
 	file::perm::Uid,
-	memory::VirtAddr,
+	memory::{VirtAddr, user::UserPtr},
 	process,
 	process::{mem_space::MemSpace, pid::Pid},
-	syscall::wait::{WCONTINUED, WEXITED, WUNTRACED},
+	syscall::{
+		FromSyscallArg,
+		wait::{WCONTINUED, WEXITED, WUNTRACED},
+	},
 	time::unit::ClockIdT,
 };
 use core::{
 	ffi::{c_int, c_void},
-	hint::likely,
+	hint::{likely, unlikely},
 	mem::{size_of, transmute},
-	ptr,
 	ptr::NonNull,
-	slice,
 };
 use ucontext::UContext32;
 #[cfg(target_pointer_width = "64")]
@@ -166,7 +167,7 @@ pub enum SignalAction {
 }
 
 impl SignalAction {
-	/// Executes the signal action for the given process.
+	/// Executes the signal action for the current process.
 	pub fn exec(self, sig: Signal) {
 		let proc = Process::current();
 		match self {
@@ -447,7 +448,6 @@ impl SignalHandler {
 				return;
 			}
 		};
-		// TODO trigger EFAULT if SA_RESTORER is not set
 		// TODO handle SA_SIGINFO
 		// Prepare the signal handler stack
 		let (stack_addr, altstack, sigmask) = {
@@ -463,52 +463,58 @@ impl SignalHandler {
 				}
 				VirtAddr(altstack.ss_sp as _)
 			} else {
-				VirtAddr(frame.get_stack_address()) - REDZONE_SIZE
+				VirtAddr(frame.get_stack_address().saturating_sub(REDZONE_SIZE))
 			};
 			(stack_addr, altstack, sig.sigmask)
 		};
 		// Size of the `ucontext_t` struct and arguments *on the stack*
-		let (ctx_size, ctx_align, arg_len) = if frame.is_compat() {
-			(
-				size_of::<UContext32>(),
-				align_of::<UContext32>(),
-				size_of::<u32>() * 2,
-			)
+		let (ctx_size, ctx_align) = if frame.is_compat() {
+			(size_of::<UContext32>(), align_of::<UContext32>())
 		} else {
 			#[cfg(target_pointer_width = "32")]
 			unreachable!();
 			#[cfg(target_pointer_width = "64")]
-			(
-				size_of::<UContext64>(),
-				align_of::<UContext64>(),
-				size_of::<u64>(),
-			)
+			(size_of::<UContext64>(), align_of::<UContext64>())
 		};
-		let ctx_addr = (stack_addr - ctx_size).down_align_to(ctx_align);
-		let signal_sp = ctx_addr - arg_len;
+		let ctx_addr = VirtAddr(stack_addr.saturating_sub(ctx_size)).down_align_to(ctx_align);
+		let signal_sp = VirtAddr(ctx_addr.saturating_sub(size_of::<u64>()));
 		// Bind virtual memory
 		let mem_space = proc.mem_space.as_ref().unwrap();
 		MemSpace::bind(mem_space);
 		// Write data on stack
 		if frame.is_compat() {
-			let args = unsafe {
-				ptr::write_volatile(
-					ctx_addr.as_ptr(),
-					UContext32::new(altstack.into(), sigmask, frame),
-				);
-				// Arguments slice
-				slice::from_raw_parts_mut(signal_sp.as_ptr::<u32>(), 2)
-			};
-			// Argument
-			args[1] = signal as _;
-			// Return pointer
-			args[0] = action.sa_restorer as _;
+			let ctx = UContext32::new(altstack.into(), sigmask, frame);
+			let res = UserPtr::<UContext32>::from_ptr(ctx_addr.0).copy_to_user(&ctx);
+			if unlikely(res.is_err()) {
+				Signal::SIGSEGV.get_default_action().exec(Signal::SIGSEGV);
+				return;
+			}
+			let res = UserPtr::<[u32; 2]>::from_ptr(signal_sp.0).copy_to_user(&[
+				// Return pointer
+				action.sa_restorer as _,
+				// Argument
+				signal as _,
+			]);
+			if unlikely(res.is_err()) {
+				Signal::SIGSEGV.get_default_action().exec(Signal::SIGSEGV);
+				return;
+			}
 		} else {
 			#[cfg(target_pointer_width = "64")]
-			unsafe {
-				ptr::write_volatile(ctx_addr.as_ptr(), UContext64::new(altstack, sigmask, frame));
+			{
+				let ctx = UContext64::new(altstack, sigmask, frame);
+				let res = UserPtr::<UContext64>::from_ptr(ctx_addr.0).copy_to_user(&ctx);
+				if unlikely(res.is_err()) {
+					Signal::SIGSEGV.get_default_action().exec(Signal::SIGSEGV);
+					return;
+				}
 				// Return pointer
-				ptr::write_volatile(signal_sp.as_ptr::<u64>(), action.sa_restorer as _);
+				let res =
+					UserPtr::<u64>::from_ptr(signal_sp.0).copy_to_user(&(action.sa_restorer as _));
+				if unlikely(res.is_err()) {
+					Signal::SIGSEGV.get_default_action().exec(Signal::SIGSEGV);
+					return;
+				}
 			}
 		}
 		// Block signal from `sa_mask`
