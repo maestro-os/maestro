@@ -26,7 +26,7 @@ use utils::errno::EResult;
 /// Detects internal buses and registers them.
 pub fn detect() -> EResult<()> {
 	// PCI
-	let mut pci_manager = pci::PCIManager::new();
+	let mut pci_manager = pci::PciManager::new();
 	pci_manager.scan()?;
 	manager::register(pci_manager)?;
 

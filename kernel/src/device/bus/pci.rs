@@ -29,7 +29,10 @@
 //! communications through DMA (Direct Memory Access).
 
 use crate::{
-	arch::x86::io::{inl, outl},
+	arch::{
+		x86,
+		x86::io::{inl, outl},
+	},
 	device::{
 		DeviceManager,
 		bar::{Bar, BarType},
@@ -38,7 +41,13 @@ use crate::{
 	},
 	memory::{PhysAddr, mmio::Mmio},
 };
-use core::{cmp::min, mem::size_of, num::NonZeroUsize};
+use core::{
+	cmp::min,
+	hint::unlikely,
+	iter,
+	mem::size_of,
+	num::{NonZero, NonZeroU16, NonZeroUsize},
+};
 use utils::{
 	collections::vec::Vec,
 	errno::{CollectResult, EResult},
@@ -95,20 +104,29 @@ pub const CLASS_CO_PROCESSOR: u16 = 0x40;
 /// Device class: Unassigned
 pub const CLASS_UNASSIGNED: u16 = 0xff;
 
-/// Reads 32 bits from the PCI register specified by `bus`, `device`, `func` and
-/// `reg_off`.
-fn read_long(bus: u8, device: u8, func: u8, reg_off: u8) -> u32 {
-	// The PCI address
-	let addr = ((bus as u32) << 16)
+/// Device status: has capabilities pointer
+pub static STATUS_CAP: u16 = 1 << 4;
+
+/// Device capability ID: Message Signaled Interrupt
+pub static CAP_MSI: u8 = 5;
+/// Device capability ID: Message Signaled Interrupt X
+pub static CAP_MSI_X: u8 = 11;
+
+/// Returns the address of a PCI register
+fn reg_addr(bus: u8, device: u8, func: u8, reg_off: u8) -> u32 {
+	((bus as u32) << 16)
 		| ((device as u32) << 11)
 		| ((func as u32) << 8)
 		| ((reg_off as u32 * size_of::<u32>() as u32) & 0xff)
-		| 0x80000000;
+		| 0x80000000
+}
 
+/// Reads 32 bits from the PCI register specified by `bus`, `device`, `func` and
+/// `reg_off`.
+fn read_long(bus: u8, device: u8, func: u8, reg_off: u8) -> u32 {
+	let addr = reg_addr(bus, device, func, reg_off);
 	unsafe {
-		// Set the address
 		outl(CONFIG_ADDRESS_PORT, addr);
-		// Read the value
 		inl(CONFIG_DATA_PORT)
 	}
 }
@@ -116,17 +134,9 @@ fn read_long(bus: u8, device: u8, func: u8, reg_off: u8) -> u32 {
 /// Writes 32 bits from `value` into the PCI register specified by `bus`,
 /// `device`, `func` and `reg_off`.
 fn write_long(bus: u8, device: u8, func: u8, reg_off: u8, value: u32) {
-	// The PCI address
-	let addr = ((bus as u32) << 16)
-		| ((device as u32) << 11)
-		| ((func as u32) << 8)
-		| ((reg_off as u32 * size_of::<u32>() as u32) & 0xff)
-		| 0x80000000;
-
+	let addr = reg_addr(bus, device, func, reg_off);
 	unsafe {
-		// Set the address
 		outl(CONFIG_ADDRESS_PORT, addr);
-		// Write the value
 		outl(CONFIG_DATA_PORT, value);
 	}
 }
@@ -161,8 +171,25 @@ fn write_data(bus: u8, device: u8, func: u8, off: usize, buf: &[u32]) {
 	}
 }
 
-/// Structure representing a device attached to the PCI bus.
-pub struct PCIDevice {
+/// PCI device capability
+pub struct PciDevCap<'d> {
+	dev: &'d PciDev,
+	id: u8,
+	off: u8,
+}
+
+/// MSI-X information
+pub struct MsiXInfo {
+	/// Number of entries
+	entries: NonZeroU16,
+	/// Message table location
+	message_table: u32,
+	/// Pending bit location
+	pending_table: u32,
+}
+
+/// Device attached to the PCI bus.
+pub struct PciDev {
 	/// The PCI bus of the device.
 	bus: u8,
 	/// The offset of the device on the bus.
@@ -182,16 +209,16 @@ pub struct PCIDevice {
 
 	/// The device's class code, telling what the device is.
 	class: u8,
-	/// The device's subclass code, giving more informations on the device.
+	/// The device's subclass code, giving more information on the device.
 	subclass: u8,
-	/// Value giving more informations on the device's compatibilities.
+	/// Value giving more information on the device's compatibilities.
 	prog_if: u8,
 	/// The device's revision ID.
 	revision_id: u8,
 
 	/// Built-In Self Test status.
 	bist: u8,
-	/// Defines the header type of the device, to determine what informations
+	/// Defines the header type of the device, to determine what information
 	/// follow.
 	header_type: u8,
 	/// Specifies the latency timer in units of PCI bus clocks.
@@ -208,13 +235,12 @@ pub struct PCIDevice {
 	mmios: Vec<Mmio>,
 }
 
-impl PCIDevice {
+impl PciDev {
 	/// Returns the maximum number of BARs for the current device.
 	fn get_max_bars_count(&self) -> u8 {
 		match self.header_type {
 			0x00 => 6,
 			0x01 => 2,
-
 			_ => 0,
 		}
 	}
@@ -358,17 +384,16 @@ impl PCIDevice {
 			bars: Vec::new(),
 			mmios: Vec::new(),
 		};
-
 		// Load BARs
 		let mut i = 0;
 		while i < dev.get_max_bars_count() {
 			let bar = if let Some((bar, mmio)) = dev.load_bar(i)? {
-				// Skip the next BAR if necessary
 				if let Bar::MemorySpace {
 					type_: BarType::Bit64,
 					..
 				} = &bar
 				{
+					// Skip next BAR
 					i += 1;
 				}
 				if let Some(mmio) = mmio {
@@ -379,10 +404,8 @@ impl PCIDevice {
 				None
 			};
 			dev.bars.push(bar)?;
-
 			i += 1;
 		}
-
 		Ok(dev)
 	}
 
@@ -410,9 +433,117 @@ impl PCIDevice {
 		// Clear the Multi-Function flag
 		self.header_type & 0b01111111
 	}
+
+	/// Returns an iterator over the device's capabilities
+	pub fn capabilities(&self) -> impl Iterator<Item = PciDevCap> {
+		let mut first = true;
+		let mut off = 0;
+		iter::from_fn(move || {
+			if unlikely(self.status & STATUS_CAP == 0) {
+				return None;
+			}
+			if unlikely(first) {
+				let reg_off = match self.header_type {
+					0x00 | 0x01 => 0xd,
+					0x02 => 0x5,
+					_ => return None,
+				};
+				off = read_long(self.bus, self.device, self.function, reg_off) as u8;
+				first = false;
+			}
+			// If the last capability has been reached, stop
+			if unlikely(off == 0) {
+				return None;
+			}
+			const STRIDE: u8 = size_of::<u32>() as u8;
+			let val = read_long(self.bus, self.device, self.function, off / STRIDE);
+			let cap = PciDevCap {
+				dev: self,
+				id: val as u8,
+				off: off / STRIDE,
+			};
+			off = (val >> 8) as u8;
+			Some(cap)
+		})
+	}
+
+	/// Enables MSI.
+	///
+	/// Arguments:
+	/// - `core_id` is the ID of the core receiving the interrupt
+	/// - `edge_trigger` tells whether the interrupt is edge-triggered
+	/// - `deassert` tells whether the interrupt is active-low
+	/// - `vector` is the vector to send the interrupt on
+	///
+	/// If MSI is not available, the function returns `false`.
+	pub fn enable_msi(
+		&self,
+		core_id: u8,
+		edge_trigger: bool,
+		deassert: bool,
+		vector: u32,
+	) -> bool {
+		let Some(cap) = self.capabilities().find(|cap| cap.id == CAP_MSI) else {
+			return false;
+		};
+		// Enable
+		let val = read_long(cap.dev.bus, cap.dev.device, cap.dev.function, cap.off);
+		let val = (val & !0x70) | 0x10000; // Enable with only one message
+		let bit64 = val & (1 << 23) != 0;
+		write_long(cap.dev.bus, cap.dev.device, cap.dev.function, cap.off, val);
+		// Write base address
+		let addr = x86::msi_message_address(core_id);
+		write_long(
+			cap.dev.bus,
+			cap.dev.device,
+			cap.dev.function,
+			cap.off + 1,
+			addr as u32,
+		);
+		if bit64 {
+			write_long(
+				cap.dev.bus,
+				cap.dev.device,
+				cap.dev.function,
+				cap.off + 2,
+				(addr >> 32) as u32,
+			);
+		}
+		// Write data
+		let off = cap.off + 2 + bit64 as u8;
+		let data = x86::msi_message_data(edge_trigger, deassert, vector);
+		write_long(cap.dev.bus, cap.dev.device, cap.dev.function, off, data);
+		true
+	}
+
+	/// Enables MSI-X.
+	///
+	/// If MSI-X is not available, the function returns `None`.
+	pub fn enable_msi_x(&self) -> Option<MsiXInfo> {
+		let cap = self.capabilities().find(|cap| cap.id == CAP_MSI_X)?;
+		// Enable
+		let val = read_long(cap.dev.bus, cap.dev.device, cap.dev.function, cap.off);
+		write_long(
+			cap.dev.bus,
+			cap.dev.device,
+			cap.dev.function,
+			cap.off,
+			val | 0xc000,
+		);
+		let msg_ctrl = (val >> 16) as u16;
+		let entries = (msg_ctrl & 0x7ff) + 1;
+		// Read tables locations
+		let message_table = read_long(cap.dev.bus, cap.dev.device, cap.dev.function, cap.off + 1);
+		let pending_table = read_long(cap.dev.bus, cap.dev.device, cap.dev.function, cap.off + 2);
+		Some(MsiXInfo {
+			entries: NonZero::new(entries).unwrap(),
+			message_table,
+			pending_table,
+		})
+	}
 }
 
-impl PhysicalDevice for PCIDevice {
+impl PhysicalDevice for PciDev {
 	fn get_device_id(&self) -> u16 {
 		self.device_id
 	}
@@ -460,15 +591,15 @@ impl PhysicalDevice for PCIDevice {
 	}
 }
 
-/// This manager handles every devices connected to the PCI bus.
+/// This manager handles every device connected to the PCI bus.
 ///
 /// Since the PCI bus is not a hotplug bus, calling `on_unplug` on this structure has no effect.
-pub struct PCIManager {
+pub struct PciManager {
 	/// The list of PCI devices.
-	devices: Vec<PCIDevice>,
+	devices: Vec<PciDev>,
 }
 
-impl PCIManager {
+impl PciManager {
 	/// Creates a new instance.
 	#[allow(clippy::new_without_default)]
 	pub fn new() -> Self {
@@ -530,7 +661,7 @@ impl PCIManager {
 				write_long(bus, device, func, 0x1, data[1]);
 
 				// Register the device
-				let dev = PCIDevice::new(bus, device, func, &data)?;
+				let dev = PciDev::new(bus, device, func, &data)?;
 				manager::on_plug(&dev)?;
 				Ok(dev)
 			})
@@ -543,12 +674,12 @@ impl PCIManager {
 	///
 	/// If the PCI hasn't been scanned, the function returns an empty vector.
 	#[inline(always)]
-	pub fn get_devices(&self) -> &Vec<PCIDevice> {
+	pub fn get_devices(&self) -> &Vec<PciDev> {
 		&self.devices
 	}
 }
 
-impl DeviceManager for PCIManager {
+impl DeviceManager for PciManager {
 	fn on_plug(&mut self, _dev: &dyn PhysicalDevice) -> EResult<()> {
 		Ok(())
 	}
