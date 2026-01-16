@@ -50,6 +50,7 @@ use core::{
 };
 use utils::{
 	collections::vec::Vec,
+	errno,
 	errno::{CollectResult, EResult},
 	limits::PAGE_SIZE,
 };
@@ -104,13 +105,10 @@ pub const CLASS_CO_PROCESSOR: u16 = 0x40;
 /// Device class: Unassigned
 pub const CLASS_UNASSIGNED: u16 = 0xff;
 
-/// Device status: has capabilities pointer
-pub static STATUS_CAP: u16 = 1 << 4;
-
 /// Device capability ID: Message Signaled Interrupt
-pub static CAP_MSI: u8 = 5;
+pub static CAP_MSI: u8 = 0x5;
 /// Device capability ID: Message Signaled Interrupt X
-pub static CAP_MSI_X: u8 = 11;
+pub static CAP_MSI_X: u8 = 0x11;
 
 /// Returns the address of a PCI register
 fn reg_addr(bus: u8, device: u8, func: u8, reg_off: u8) -> u32 {
@@ -175,17 +173,71 @@ fn write_data(bus: u8, device: u8, func: u8, off: usize, buf: &[u32]) {
 pub struct PciDevCap<'d> {
 	dev: &'d PciDev,
 	id: u8,
-	off: u8,
+	reg_off: u8,
 }
 
-/// MSI-X information
-pub struct MsiXInfo {
+#[repr(C)]
+struct MsiXMessage {
+	addr_low: u32,
+	addr_high: u32,
+	data: u32,
+	ctrl: u32,
+}
+
+/// MSI-X handle
+pub struct MsiX<'d> {
+	dev: &'d PciDev,
+
 	/// Number of entries
 	entries: NonZeroU16,
 	/// Message table location
 	message_table: u32,
 	/// Pending bit location
 	pending_table: u32,
+}
+
+impl MsiX<'_> {
+	/// Sets the `n`'s entry of the message table.
+	///
+	/// Arguments:
+	/// - `core_id` is the ID of the core receiving the interrupt
+	/// - `edge_trigger` tells whether the interrupt is edge-triggered
+	/// - `deassert` tells whether the interrupt is active-low
+	/// - `vector` is the vector to send the interrupt on
+	pub fn set(
+		&self,
+		n: u16,
+		core_id: u8,
+		edge_trigger: bool,
+		deassert: bool,
+		vector: u32,
+	) -> EResult<()> {
+		if unlikely(n >= self.entries.get()) {
+			return Err(errno!(EINVAL));
+		}
+		let bir = self.message_table & 0o11;
+		let off = self.message_table & !0o11;
+		let bir = self
+			.dev
+			.get_bars()
+			.get(bir as usize)
+			.and_then(Option::as_ref)
+			.ok_or_else(|| errno!(EINVAL))?;
+		let addr = x86::apic::msi_message_address(core_id);
+		let data = x86::apic::msi_message_data(edge_trigger, deassert, vector);
+		unsafe {
+			bir.write(
+				off as usize,
+				MsiXMessage {
+					addr_low: addr as u32,
+					addr_high: (addr >> 32) as u32,
+					data,
+					ctrl: 0,
+				},
+			);
+		}
+		Ok(())
+	}
 }
 
 /// Device attached to the PCI bus.
@@ -201,11 +253,6 @@ pub struct PciDev {
 	device_id: u16,
 	/// The device's vendor ID.
 	vendor_id: u16,
-
-	/// The command register.
-	command: u16,
-	/// The status register.
-	status: u16,
 
 	/// The device's class code, telling what the device is.
 	class: u8,
@@ -292,8 +339,8 @@ impl PciDev {
 
 		// The BAR's value
 		let value = read_long(self.bus, self.device, self.function, bar_off as _);
-		// Tells whether the BAR is in IO space.
-		let io = (value & 0b1) != 0;
+		// Tells whether the BAR is in IO space
+		let io = value & 0b1 != 0;
 		// The address space's size
 		let size = self.get_bar_size(n, io).unwrap();
 
@@ -328,8 +375,6 @@ impl PciDev {
 			Ok(Some((
 				Bar::MemorySpace {
 					type_,
-					prefetchable,
-
 					address: mmio.as_ptr(),
 					size,
 				},
@@ -362,9 +407,6 @@ impl PciDev {
 
 			vendor_id: (data[0] & 0xffff) as _,
 			device_id: ((data[0] >> 16) & 0xffff) as _,
-
-			command: (data[1] & 0xffff) as _,
-			status: ((data[1] >> 16) & 0xffff) as _,
 
 			class: ((data[2] >> 24) & 0xff) as _,
 			subclass: ((data[2] >> 16) & 0xff) as _,
@@ -427,6 +469,18 @@ impl PciDev {
 		self.function
 	}
 
+	/// Reads the dword containing the status and command fields.
+	#[inline]
+	pub fn read_status_command(&self) -> u32 {
+		read_long(self.bus, self.device, self.function, 1)
+	}
+
+	/// Writes the dword containing the status and command fields.
+	#[inline]
+	pub fn write_status_command(&self, val: u32) {
+		write_long(self.bus, self.device, self.function, 1, val);
+	}
+
 	/// Returns the header type of the device.
 	#[inline(always)]
 	pub fn get_header_type(&self) -> u8 {
@@ -436,10 +490,11 @@ impl PciDev {
 
 	/// Returns an iterator over the device's capabilities
 	pub fn capabilities(&self) -> impl Iterator<Item = PciDevCap> {
+		let no_cap = self.read_status_command() & (1 << 20) == 0;
 		let mut first = true;
 		let mut off = 0;
 		iter::from_fn(move || {
-			if unlikely(self.status & STATUS_CAP == 0) {
+			if unlikely(no_cap) {
 				return None;
 			}
 			if unlikely(first) {
@@ -460,7 +515,7 @@ impl PciDev {
 			let cap = PciDevCap {
 				dev: self,
 				id: val as u8,
-				off: off / STRIDE,
+				reg_off: off / STRIDE,
 			};
 			off = (val >> 8) as u8;
 			Some(cap)
@@ -487,17 +542,23 @@ impl PciDev {
 			return false;
 		};
 		// Enable
-		let val = read_long(cap.dev.bus, cap.dev.device, cap.dev.function, cap.off);
+		let val = read_long(cap.dev.bus, cap.dev.device, cap.dev.function, cap.reg_off);
 		let val = (val & !0x70) | 0x10000; // Enable with only one message
 		let bit64 = val & (1 << 23) != 0;
-		write_long(cap.dev.bus, cap.dev.device, cap.dev.function, cap.off, val);
-		// Write base address
-		let addr = x86::msi_message_address(core_id);
 		write_long(
 			cap.dev.bus,
 			cap.dev.device,
 			cap.dev.function,
-			cap.off + 1,
+			cap.reg_off,
+			val,
+		);
+		// Write base address
+		let addr = x86::apic::msi_message_address(core_id);
+		write_long(
+			cap.dev.bus,
+			cap.dev.device,
+			cap.dev.function,
+			cap.reg_off + 1,
 			addr as u32,
 		);
 		if bit64 {
@@ -505,13 +566,13 @@ impl PciDev {
 				cap.dev.bus,
 				cap.dev.device,
 				cap.dev.function,
-				cap.off + 2,
+				cap.reg_off + 2,
 				(addr >> 32) as u32,
 			);
 		}
 		// Write data
-		let off = cap.off + 2 + bit64 as u8;
-		let data = x86::msi_message_data(edge_trigger, deassert, vector);
+		let off = cap.reg_off + 2 + bit64 as u8;
+		let data = x86::apic::msi_message_data(edge_trigger, deassert, vector);
 		write_long(cap.dev.bus, cap.dev.device, cap.dev.function, off, data);
 		true
 	}
@@ -519,23 +580,35 @@ impl PciDev {
 	/// Enables MSI-X.
 	///
 	/// If MSI-X is not available, the function returns `None`.
-	pub fn enable_msi_x(&self) -> Option<MsiXInfo> {
+	pub fn enable_msi_x(&self) -> Option<MsiX> {
 		let cap = self.capabilities().find(|cap| cap.id == CAP_MSI_X)?;
 		// Enable
-		let val = read_long(cap.dev.bus, cap.dev.device, cap.dev.function, cap.off);
+		let val = read_long(cap.dev.bus, cap.dev.device, cap.dev.function, cap.reg_off);
 		write_long(
 			cap.dev.bus,
 			cap.dev.device,
 			cap.dev.function,
-			cap.off,
-			val | 0xc000,
+			cap.reg_off,
+			val | 0xc0000000,
 		);
 		let msg_ctrl = (val >> 16) as u16;
 		let entries = (msg_ctrl & 0x7ff) + 1;
 		// Read tables locations
-		let message_table = read_long(cap.dev.bus, cap.dev.device, cap.dev.function, cap.off + 1);
-		let pending_table = read_long(cap.dev.bus, cap.dev.device, cap.dev.function, cap.off + 2);
-		Some(MsiXInfo {
+		let message_table = read_long(
+			cap.dev.bus,
+			cap.dev.device,
+			cap.dev.function,
+			cap.reg_off + 1,
+		);
+		let pending_table = read_long(
+			cap.dev.bus,
+			cap.dev.device,
+			cap.dev.function,
+			cap.reg_off + 2,
+		);
+		Some(MsiX {
+			dev: self,
+
 			entries: NonZero::new(entries).unwrap(),
 			message_table,
 			pending_table,
@@ -550,14 +623,6 @@ impl PhysicalDevice for PciDev {
 
 	fn get_vendor_id(&self) -> u16 {
 		self.vendor_id
-	}
-
-	fn get_command_reg(&self) -> Option<u16> {
-		Some(self.command)
-	}
-
-	fn get_status_reg(&self) -> Option<u16> {
-		Some(self.status)
 	}
 
 	fn get_class(&self) -> u16 {

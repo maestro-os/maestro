@@ -21,13 +21,18 @@
 //! [NVMe specification](https://nvmexpress.org/wp-content/uploads/NVM-Express-Base-Specification-Revision-2.3-2025.08.01-Ratified.pdf)
 
 use crate::{
-	device::{bar::Bar, manager::PhysicalDevice},
+	arch::core_id,
+	device::{bar::Bar, bus::pci::PciDev, manager::PhysicalDevice},
+	int,
+	int::CallbackHook,
 	memory::{VirtAddr, buddy},
 	println, process,
 	process::{State, scheduler::schedule},
 };
 use core::{
-	hint, mem,
+	any::Any,
+	hint,
+	mem::MaybeUninit,
 	ptr::NonNull,
 	sync::atomic::{AtomicUsize, Ordering::Release},
 };
@@ -63,6 +68,9 @@ const CNS_NAMESPACE_LIST: u32 = 1;
 
 const ASQ_LEN: usize = (PAGE_SIZE << 2) / size_of::<SubmissionQueueEntry>();
 const ACQ_LEN: usize = PAGE_SIZE / size_of::<CompletionQueueEntry>();
+
+/// Interrupt vector
+const INT: u32 = 0x22;
 
 /// Returns the register offset for the doorbell property of the given `queue`.
 ///
@@ -400,11 +408,11 @@ struct QueuePair {
 pub struct Controller {
 	/// Base Address Register
 	bar: Bar,
-
 	/// Doorbell Stride
 	dstrd: usize,
-
 	admin_queues: QueuePair,
+
+	int_handle: CallbackHook,
 }
 
 impl Controller {
@@ -412,11 +420,28 @@ impl Controller {
 	///
 	/// If the device is invalid, the function returns `None`.
 	pub fn new(dev: &dyn PhysicalDevice) -> EResult<Self> {
+		// A NVMe can only be connected to a PCI bus
+		let dev: &PciDev = (dev as &dyn Any).downcast_ref().unwrap();
 		let bar = dev.get_bars().first().cloned().flatten();
 		let Some(bar) = bar else {
-			println!("NVMe controller does not have a BAR");
+			println!("nvme: no BAR found");
 			return Err(errno!(EINVAL));
 		};
+		// Enable interrupts, bus mastering and memory access
+		dev.write_status_command((dev.read_status_command() & !(1 << 10)) | 0o110);
+		// Setup MSI
+		let msi_x = dev.enable_msi_x();
+		if let Some(msi_x) = msi_x {
+			msi_x
+				.set(0, core_id() as _, true, false, INT)
+				.inspect_err(|_| println!("nvme: failed to initialize MSI-x"))?;
+			println!("nvme: using MSI-X");
+		} else if !dev.enable_msi(core_id() as _, true, false, INT) {
+			println!("nvme: MSI initialization failed");
+			return Err(errno!(EINVAL));
+		}
+		// Setup interrupt handler
+		let int_handle = int::register_callback(INT, move |_, _, _, _| todo!())?.unwrap();
 		// Initialize ASQ and ACQ. A SQE (64 bytes) is four times larger than a CQE (16 bytes)
 		let asq = buddy::alloc_kernel(2, 0)?;
 		let acq = buddy::alloc_kernel(0, 0)?;
@@ -434,9 +459,7 @@ impl Controller {
 		wait_rdy(&bar);
 		let controller = Self {
 			bar,
-
 			dstrd: ((cap >> 32) & 0xf) as usize,
-
 			admin_queues: QueuePair {
 				id: 0,
 
@@ -446,9 +469,11 @@ impl Controller {
 				sq_tail: AtomicUsize::new(0),
 				cq_head: AtomicUsize::new(0),
 			},
+
+			int_handle,
 		};
 		// Identify controller
-		let mut data: IdentifyController = unsafe { mem::zeroed() };
+		let mut data: MaybeUninit<IdentifyController> = MaybeUninit::uninit();
 		let dptr = VirtAddr::from(&mut data).kernel_to_physical().unwrap();
 		controller.submit_cmd_sync(
 			&controller.admin_queues,

@@ -392,16 +392,16 @@ impl DeviceManager for StorageManager {
 		if dev.get_class() != pci::CLASS_MASS_STORAGE_CONTROLLER {
 			return Ok(());
 		}
-		match dev.get_subclass() {
+		match (dev.get_subclass(), dev.get_prog_if()) {
 			// IDE
-			0x01 => {
+			(0x01, _) => {
 				let ide = ide::Controller::new(dev);
 				for iface in ide.detect() {
 					self.add(iface?)?;
 				}
 			}
 			// NVM
-			0x08 => {
+			(0x08, 0x02) => {
 				let _nvm = match nvme::Controller::new(dev) {
 					Ok(n) => n,
 					Err(e) if e.as_int() == ENOMEM => return Err(e),

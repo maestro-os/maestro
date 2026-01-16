@@ -309,6 +309,16 @@ pub fn ipi(apic_id: u32, delivery_mode: IpiDeliveryMode, int: u8) {
 	}
 }
 
+/// Returns the Message Signaled Interrupt address for the with ID `core_id`
+pub fn msi_message_address(core_id: u8) -> u64 {
+	0xfee00000 | ((core_id as u64) << 12)
+}
+
+/// Returns an MSI message data for the given information
+pub fn msi_message_data(edge_trigger: bool, deassert: bool, vector: u32) -> u32 {
+	((!edge_trigger as u32) << 15) | ((!deassert as u32) << 14) | vector
+}
+
 /// Sends an end of interrupt message to the APIC.
 #[inline]
 pub fn end_of_interrupt() {

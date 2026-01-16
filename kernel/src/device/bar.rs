@@ -38,9 +38,6 @@ pub enum Bar {
 	MemorySpace {
 		/// The type of the BAR, specifying the size of the register.
 		type_: BarType,
-		/// If `true`, read accesses do not have any side effects.
-		prefetchable: bool,
-
 		/// Pointer to the registers.
 		address: *mut u8,
 		/// The size of the address space in bytes.
@@ -65,18 +62,6 @@ impl Bar {
 			Self::IOSpace {
 				size, ..
 			} => *size,
-		}
-	}
-
-	/// Tells whether the memory is prefetchable.
-	pub fn is_prefetchable(&self) -> bool {
-		match self {
-			Self::MemorySpace {
-				prefetchable, ..
-			} => *prefetchable,
-			Self::IOSpace {
-				..
-			} => false,
 		}
 	}
 

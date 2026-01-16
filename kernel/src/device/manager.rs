@@ -24,16 +24,11 @@ use core::any::{Any, TypeId};
 use utils::{collections::hashmap::HashMap, errno::EResult, ptr::arc::Arc};
 
 /// Trait representing a physical device.
-pub trait PhysicalDevice {
+pub trait PhysicalDevice: Any {
 	/// Returns the device ID of the device.
 	fn get_device_id(&self) -> u16;
 	/// Returns the vendor ID of the device.
 	fn get_vendor_id(&self) -> u16;
-
-	/// Returns the command register if present.
-	fn get_command_reg(&self) -> Option<u16>;
-	/// Returns the status register if present.
-	fn get_status_reg(&self) -> Option<u16>;
 
 	/// Returns the class of the device.
 	fn get_class(&self) -> u16;

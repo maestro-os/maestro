@@ -16,7 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module implements internal buses, including PCI and USB.
+//! Internal buses implementation
 
 pub mod pci;
 
@@ -29,8 +29,6 @@ pub fn detect() -> EResult<()> {
 	let mut pci_manager = pci::PciManager::new();
 	pci_manager.scan()?;
 	manager::register(pci_manager)?;
-
 	// TODO USB
-
 	Ok(())
 }
