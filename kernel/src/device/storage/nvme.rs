@@ -32,14 +32,17 @@ use crate::{
 use core::{
 	any::Any,
 	hint,
+	hint::unlikely,
 	mem::MaybeUninit,
 	ptr::NonNull,
 	sync::atomic::{AtomicUsize, Ordering::Release},
 };
-use utils::{errno, errno::EResult, limits::PAGE_SIZE};
+use utils::{errno, errno::EResult, limits::PAGE_SIZE, math};
 
 /// Register: Controller capabilities
 const REG_CAP: usize = 0x00;
+/// Register: Version
+const REG_VS: usize = 0x08;
 /// Register: Controller Configuration
 const REG_CC: usize = 0x14;
 /// Register: Controller Status
@@ -55,6 +58,8 @@ const REG_ACQ: usize = 0x30;
 const FLAG_CC_EN: u32 = 0b1;
 /// Flag (CSTS): Ready
 const FLAG_CSTS_RDY: u32 = 0b1;
+/// Flag (CSTS): Controller Fatal Status
+const FLAG_CSTS_CFS: u32 = 0b10;
 
 /// Command opcode: Identify
 const CMD_IDENTIFY: u32 = 0x6;
@@ -380,10 +385,13 @@ struct IdentifyController {
 	vs: [u8; 1024],
 }
 
-fn wait_rdy(bar: &Bar) {
+fn wait_rdy(bar: &Bar, r: bool) {
 	loop {
-		let sts = unsafe { bar.read::<u32>(REG_CSTS) };
-		if sts & FLAG_CSTS_RDY != 0 {
+		let sts: u32 = unsafe { bar.read(REG_CSTS) };
+		if (sts & FLAG_CSTS_RDY != 0) == r {
+			break;
+		}
+		if unlikely(sts & FLAG_CSTS_CFS != 0) {
 			break;
 		}
 		hint::spin_loop();
@@ -424,11 +432,26 @@ impl Controller {
 		let dev: &PciDev = (dev as &dyn Any).downcast_ref().unwrap();
 		let bar = dev.get_bars().first().cloned().flatten();
 		let Some(bar) = bar else {
-			println!("nvme: no BAR found");
+			println!("nvme: BAR not found");
 			return Err(errno!(EINVAL));
 		};
+		// Get version
+		let version: u32 = unsafe { bar.read(REG_VS) };
+		let major = (version >> 16) & 0xffff;
+		let minor = (version >> 8) & 0xff;
+		let patch = version & 0xff;
+		println!("nvme: controller version {major}.{minor}.{patch}");
 		// Enable interrupts, bus mastering and memory access
 		dev.write_status_command((dev.read_status_command() & !(1 << 10)) | 0o110);
+		// Check page size
+		let cap: u64 = unsafe { bar.read(REG_CAP) };
+		let min_page_size = math::pow2(((cap as usize >> 48) & 0xf) + 12);
+		let max_page_size = math::pow2(((cap as usize >> 52) & 0xf) + 12);
+		if unlikely(!(min_page_size..=max_page_size).contains(&PAGE_SIZE)) {
+			println!(
+				"nvme: unsupported page size (min: {min_page_size} max: {max_page_size}, page size: {PAGE_SIZE})"
+			);
+		}
 		// Setup MSI
 		let msi_x = dev.enable_msi_x();
 		if let Some(msi_x) = msi_x {
@@ -440,23 +463,46 @@ impl Controller {
 			println!("nvme: MSI initialization failed");
 			return Err(errno!(EINVAL));
 		}
-		// Setup interrupt handler
-		let int_handle = int::register_callback(INT, move |_, _, _, _| todo!())?.unwrap();
+		// Disable controller
+		unsafe {
+			bar.write(REG_CC, bar.read::<u32>(REG_CC) & !FLAG_CC_EN);
+		}
+		wait_rdy(&bar, false);
+		// Set capabilities
+		unsafe {
+			let cc = bar.read::<u32>(REG_CC);
+			bar.write(REG_CC, (cc & !0x3ff0) | (PAGE_SIZE.ilog2() << 7));
+		}
 		// Initialize ASQ and ACQ. A SQE (64 bytes) is four times larger than a CQE (16 bytes)
 		let asq = buddy::alloc_kernel(2, 0)?;
 		let acq = buddy::alloc_kernel(0, 0)?;
 		let aqa = (ACQ_LEN << 16) | ASQ_LEN;
-		let cap = unsafe {
-			bar.write(REG_ASQ, asq.as_ptr() as u64);
-			bar.write(REG_ACQ, acq.as_ptr() as u64);
+		unsafe {
+			bar.write(
+				REG_ASQ,
+				VirtAddr::from(asq).kernel_to_physical().unwrap().0 as u64,
+			);
+			bar.write(
+				REG_ACQ,
+				VirtAddr::from(acq).kernel_to_physical().unwrap().0 as u64,
+			);
 			bar.write(REG_AQA, aqa as u32);
-			// Read controller capabilities
-			let cap: u64 = bar.read(REG_CAP);
 			// Enable controller
 			bar.write(REG_CC, bar.read::<u32>(REG_CC) | FLAG_CC_EN);
-			cap
-		};
-		wait_rdy(&bar);
+		}
+		wait_rdy(&bar, true);
+		// Check for fatal error
+		let status = unsafe { bar.read::<u32>(REG_CSTS) };
+		if unlikely(status & FLAG_CSTS_CFS != 0) {
+			println!("nvme: fatal error during initialization");
+			unsafe {
+				buddy::free_kernel(asq.as_ptr(), 2);
+				buddy::free_kernel(acq.as_ptr(), 0);
+			}
+			return Err(errno!(EINVAL));
+		}
+		// Setup interrupt handler
+		let int_handle = int::register_callback(INT, move |_, _, _, _| todo!())?.unwrap();
 		let controller = Self {
 			bar,
 			dstrd: ((cap >> 32) & 0xf) as usize,
@@ -494,6 +540,7 @@ impl Controller {
 
 	/// Submits a command, returning when completed
 	fn submit_cmd_sync(&self, queue: &QueuePair, cmd: SubmissionQueueEntry) {
+		// TODO wait for space in the submission queue
 		// Overflow is fine because ASQ_LEN is a power of 2
 		let asq_tail = queue.sq_tail.fetch_add(1, Release) % ASQ_LEN;
 		unsafe {
@@ -506,11 +553,5 @@ impl Controller {
 		// Wait for completion interrupt
 		process::set_state(State::Sleeping);
 		schedule();
-	}
-
-	/// Detect drives.
-	pub fn detect(&self) {
-		// use the identify command to detect namespaces
-		todo!()
 	}
 }
