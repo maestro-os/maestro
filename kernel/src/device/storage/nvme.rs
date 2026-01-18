@@ -451,6 +451,7 @@ impl Controller {
 			println!(
 				"nvme: unsupported page size (min: {min_page_size} max: {max_page_size}, page size: {PAGE_SIZE})"
 			);
+			return Err(errno!(EINVAL))
 		}
 		// Setup MSI
 		let msi_x = dev.enable_msi_x();
@@ -471,7 +472,7 @@ impl Controller {
 		// Set capabilities
 		unsafe {
 			let cc = bar.read::<u32>(REG_CC);
-			bar.write(REG_CC, (cc & !0x3ff0) | (PAGE_SIZE.ilog2() << 7));
+			bar.write(REG_CC, (cc & !0x3ff0) | ((PAGE_SIZE.ilog2() - 12) << 7));
 		}
 		// Initialize ASQ and ACQ. A SQE (64 bytes) is four times larger than a CQE (16 bytes)
 		let asq = buddy::alloc_kernel(2, 0)?;
