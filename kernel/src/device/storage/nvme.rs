@@ -21,7 +21,7 @@
 //! [NVMe specification](https://nvmexpress.org/wp-content/uploads/NVM-Express-Base-Specification-Revision-2.3-2025.08.01-Ratified.pdf)
 
 use crate::{
-	arch::core_id,
+	arch::{core_id, x86::idt},
 	device::{bar::Bar, bus::pci::PciDev, manager::PhysicalDevice},
 	int,
 	int::CallbackHook,
@@ -451,7 +451,7 @@ impl Controller {
 			println!(
 				"nvme: unsupported page size (min: {min_page_size} max: {max_page_size}, page size: {PAGE_SIZE})"
 			);
-			return Err(errno!(EINVAL))
+			return Err(errno!(EINVAL));
 		}
 		// Setup MSI
 		let msi_x = dev.enable_msi_x();
@@ -460,8 +460,8 @@ impl Controller {
 				.set(0, core_id() as _, true, false, INT)
 				.inspect_err(|_| println!("nvme: failed to initialize MSI-x"))?;
 			println!("nvme: using MSI-X");
-		} else if !dev.enable_msi(core_id() as _, true, false, INT) {
-			println!("nvme: MSI initialization failed");
+		} else {
+			println!("nvme: no MSI-X, driver does not support MSI");
 			return Err(errno!(EINVAL));
 		}
 		// Disable controller
@@ -542,17 +542,20 @@ impl Controller {
 	/// Submits a command, returning when completed
 	fn submit_cmd_sync(&self, queue: &QueuePair, cmd: SubmissionQueueEntry) {
 		// TODO wait for space in the submission queue
-		// Overflow is fine because ASQ_LEN is a power of 2
-		let asq_tail = queue.sq_tail.fetch_add(1, Release) % ASQ_LEN;
-		unsafe {
-			queue.sq.add(asq_tail).write_volatile(cmd);
-			self.bar.write::<u32>(
-				queue_doorbell_off(queue.id, false, self.dstrd),
-				asq_tail as _,
-			);
-		}
-		// Wait for completion interrupt
-		process::set_state(State::Sleeping);
-		schedule();
+		// Prevent the completion interrupt from being caught before sleeping
+		idt::disable_int(|| {
+			// Overflow is fine because ASQ_LEN is a power of 2
+			let asq_tail = queue.sq_tail.fetch_add(1, Release) % ASQ_LEN;
+			unsafe {
+				queue.sq.add(asq_tail).write_volatile(cmd);
+				self.bar.write::<u32>(
+					queue_doorbell_off(queue.id, false, self.dstrd),
+					(asq_tail + 1) as _,
+				);
+			}
+			// Wait for completion interrupt
+			process::set_state(State::Sleeping);
+			schedule();
+		});
 	}
 }

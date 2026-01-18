@@ -215,8 +215,8 @@ impl MsiX<'_> {
 		if unlikely(n >= self.entries.get()) {
 			return Err(errno!(EINVAL));
 		}
-		let bir = self.message_table & 0o11;
-		let off = self.message_table & !0o11;
+		let bir = self.message_table & 0o111;
+		let off = self.message_table & !0o111;
 		let bir = self
 			.dev
 			.get_bars()
@@ -589,7 +589,7 @@ impl PciDev {
 			cap.dev.device,
 			cap.dev.function,
 			cap.reg_off,
-			val | 0xc0000000,
+			val | 0x80000000,
 		);
 		let msg_ctrl = (val >> 16) as u16;
 		let entries = (msg_ctrl & 0x7ff) + 1;
