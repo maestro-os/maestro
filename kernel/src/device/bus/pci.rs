@@ -215,8 +215,8 @@ impl MsiX<'_> {
 		if unlikely(n >= self.entries.get()) {
 			return Err(errno!(EINVAL));
 		}
-		let bir = self.message_table & 0o111;
-		let off = self.message_table & !0o111;
+		let bir = self.message_table & 0b111;
+		let off = self.message_table & !0b111;
 		let bir = self
 			.dev
 			.get_bars()

@@ -33,9 +33,7 @@ use crate::{
 		core_id,
 		x86::{apic, timer::rtc},
 	},
-	int,
-	int::CallbackResult,
-	process,
+	int, process,
 	process::{Process, State, scheduler::schedule},
 	time::{
 		clock::{Clock, current_time_ns},
@@ -90,7 +88,6 @@ pub(crate) fn init() -> EResult<()> {
 		// FIXME: we are loosing precision here
 		clock::update((1_000_000_000 / FREQUENCY) as _);
 		timer::tick();
-		CallbackResult::Continue
 	})?;
 	let _ = ManuallyDrop::new(hook);
 	rtc::set_enabled(true);

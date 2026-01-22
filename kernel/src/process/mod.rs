@@ -40,8 +40,8 @@ use crate::{
 		vfs,
 	},
 	int,
-	int::CallbackResult,
 	memory::{VirtAddr, buddy, buddy::FrameOrder, oom, user, user::UserPtr},
+	panic,
 	process::{
 		pid::{IDLE_PID, INIT_PID, PidHandle},
 		rusage::Rusage,
@@ -370,12 +370,12 @@ pub(crate) fn init() -> EResult<()> {
 	// Register interruption callbacks
 	let callback = |id: u32, _code: u32, frame: &mut IntFrame, ring: u8| {
 		if ring < 3 {
-			return CallbackResult::Panic;
+			panic::with_frame(frame);
 		}
 		// Get process
 		let proc = Process::current();
 		if unlikely(proc.is_idle_task()) {
-			return CallbackResult::Panic;
+			panic::with_frame(frame);
 		}
 		match id {
 			// Divide-by-zero
@@ -402,7 +402,6 @@ pub(crate) fn init() -> EResult<()> {
 			0x11 => Process::kill(&proc, Signal::SIGBUS),
 			_ => {}
 		}
-		CallbackResult::Continue
 	};
 	mem::forget(int::register_callback(0x00, callback)?);
 	mem::forget(int::register_callback(0x03, callback)?);
@@ -417,7 +416,7 @@ pub(crate) fn init() -> EResult<()> {
 			let accessed_addr = VirtAddr(register_get!("cr2"));
 			let pc = frame.get_program_counter();
 			let Some(mem_space) = per_cpu().mem_space.get() else {
-				return CallbackResult::Panic;
+				panic::with_frame(frame);
 			};
 			// Check access
 			let sig = mem_space.handle_page_fault(accessed_addr, code);
@@ -430,7 +429,7 @@ pub(crate) fn init() -> EResult<()> {
 							// Jump to `raw_fault`
 							frame.set_program_counter(user::raw_fault as usize);
 						} else {
-							return CallbackResult::Panic;
+							panic::with_frame(frame);
 						}
 					} else {
 						Process::kill(&Process::current(), Signal::SIGSEGV);
@@ -438,12 +437,10 @@ pub(crate) fn init() -> EResult<()> {
 				}
 				Err(_) => Process::kill(&Process::current(), Signal::SIGBUS),
 			}
-			CallbackResult::Continue
 		},
 	)?);
 	mem::forget(int::register_callback(0x20, |_, _, _, _| {
 		per_cpu().preempt_counter.fetch_and(!(1 << 31), Relaxed);
-		CallbackResult::Continue
 	})?);
 	// Re-enable timer since it has been disabled by delay functions
 	timer::apic::periodic(100_000_000);

@@ -37,7 +37,7 @@ use core::{
 	ptr::NonNull,
 	sync::atomic::{AtomicUsize, Ordering::Release},
 };
-use utils::{errno, errno::EResult, limits::PAGE_SIZE, math};
+use utils::{errno, errno::EResult, limits::PAGE_SIZE, math, ptr::arc::Arc};
 
 /// Register: Controller capabilities
 const REG_CAP: usize = 0x00;
@@ -412,14 +412,39 @@ struct QueuePair {
 	cq_head: AtomicUsize,
 }
 
-/// A NVMe controller.
-pub struct Controller {
+struct ControllerInner {
 	/// Base Address Register
 	bar: Bar,
 	/// Doorbell Stride
 	dstrd: usize,
 	admin_queues: QueuePair,
+}
 
+impl ControllerInner {
+	/// Submits a command, returning when completed
+	fn submit_cmd_sync(&self, queue: &QueuePair, cmd: SubmissionQueueEntry) {
+		// TODO wait for space in the submission queue
+		// Prevent the completion interrupt from being caught before sleeping
+		idt::disable_int(|| {
+			// Overflow is fine because ASQ_LEN is a power of 2
+			let asq_tail = queue.sq_tail.fetch_add(1, Release) % ASQ_LEN;
+			unsafe {
+				queue.sq.add(asq_tail).write_volatile(cmd);
+				self.bar.write::<u32>(
+					queue_doorbell_off(queue.id, false, self.dstrd),
+					(asq_tail + 1) as _,
+				);
+			}
+			// Wait for completion interrupt
+			process::set_state(State::Sleeping);
+			schedule();
+		});
+	}
+}
+
+/// A NVMe controller.
+pub struct Controller {
+	inner: Arc<ControllerInner>,
 	int_handle: CallbackHook,
 }
 
@@ -503,8 +528,7 @@ impl Controller {
 			return Err(errno!(EINVAL));
 		}
 		// Setup interrupt handler
-		let int_handle = int::register_callback(INT, move |_, _, _, _| todo!())?.unwrap();
-		let controller = Self {
+		let inner = Arc::new(ControllerInner {
 			bar,
 			dstrd: ((cap >> 32) & 0xf) as usize,
 			admin_queues: QueuePair {
@@ -516,14 +540,33 @@ impl Controller {
 				sq_tail: AtomicUsize::new(0),
 				cq_head: AtomicUsize::new(0),
 			},
-
+		})?;
+		let inner_ = inner.clone();
+		let int_handle = int::register_callback(INT, move |_int, _, _, _| {
+			let inner = inner_.clone();
+			// TODO use the interrupt ID to determine the queue
+			// Overflow is fine because ACQ_LEN is a power of 2
+			let acq_head = inner.admin_queues.cq_head.fetch_add(1, Release) % ACQ_LEN;
+			let cqe = unsafe {
+				let cqe = inner.admin_queues.cq.add(acq_head).read_volatile();
+				inner.bar.write::<u32>(
+					queue_doorbell_off(inner.admin_queues.id, true, inner.dstrd),
+					(acq_head + 1) as _,
+				);
+				cqe
+			};
+			// TODO
+		})?
+		.unwrap();
+		let controller = Self {
+			inner,
 			int_handle,
 		};
 		// Identify controller
 		let mut data: MaybeUninit<IdentifyController> = MaybeUninit::uninit();
 		let dptr = VirtAddr::from(&mut data).kernel_to_physical().unwrap();
-		controller.submit_cmd_sync(
-			&controller.admin_queues,
+		controller.inner.submit_cmd_sync(
+			&controller.inner.admin_queues,
 			SubmissionQueueEntry {
 				cdw0: CMD_IDENTIFY,
 				nsid: 0,
@@ -537,25 +580,5 @@ impl Controller {
 		// TODO list namespaces and identify them
 		// TODO allocate I/O queues
 		Ok(controller)
-	}
-
-	/// Submits a command, returning when completed
-	fn submit_cmd_sync(&self, queue: &QueuePair, cmd: SubmissionQueueEntry) {
-		// TODO wait for space in the submission queue
-		// Prevent the completion interrupt from being caught before sleeping
-		idt::disable_int(|| {
-			// Overflow is fine because ASQ_LEN is a power of 2
-			let asq_tail = queue.sq_tail.fetch_add(1, Release) % ASQ_LEN;
-			unsafe {
-				queue.sq.add(asq_tail).write_volatile(cmd);
-				self.bar.write::<u32>(
-					queue_doorbell_off(queue.id, false, self.dstrd),
-					(asq_tail + 1) as _,
-				);
-			}
-			// Wait for completion interrupt
-			process::set_state(State::Sleeping);
-			schedule();
-		});
 	}
 }

@@ -24,46 +24,26 @@ use crate::{
 		x86::{idt, idt::IntFrame},
 	},
 	memory::user::UserSlice,
-	panic,
 	power::{halt, halting},
 	process::scheduler::{alter_flow, preempt_check_resched},
 	rand,
 	sync::spin::IntSpin,
 };
-use core::{hint::unlikely, ptr};
-use utils::{bytes::as_bytes, collections::vec::Vec, errno::AllocResult};
+use core::{hint::unlikely, ptr, ptr::NonNull};
+use utils::{boxed::Box, bytes::as_bytes, collections::vec::Vec, errno::AllocResult};
 
-/// The action to execute after the interrupt handler has returned.
-#[derive(Eq, PartialEq)]
-pub enum CallbackResult {
-	/// Executes remaining callbacks for the interrupt.
-	///
-	/// If this is the last callback to be executed, the current context is yielded.
-	Continue,
-	/// Makes the kernel panic with a message corresponding to the interruption.
-	Panic,
-}
-
-/// A callback to handle an interruption.
-///
-/// Arguments:
-/// - `id` is the id of the interrupt.
-/// - `code` is an optional code associated with the interrupt. If no code is given, the value is
-///   `0`.
-/// - `regs` the values of the registers when the interruption was triggered.
-/// - `ring` tells the ring at which the code was running.
-///
-/// The return value tells which action to perform next.
-pub type Callback = fn(u32, u32, &mut IntFrame, u8) -> CallbackResult;
+type CallbackInner = dyn FnMut(u32, u32, &mut IntFrame, u8);
+/// A callback to handle an interruption
+pub type Callback = Box<CallbackInner>;
 
 /// Structure used to detect whenever the object owning the callback is
 /// destroyed, allowing to unregister it automatically.
 #[must_use]
 pub struct CallbackHook {
-	/// The id of the interrupt the callback is bound to.
+	/// The id of the interrupt the callback is bound to
 	id: u32,
-	/// The pointer of the callback.
-	callback: Callback,
+	/// Pointer to the callback, used for removal
+	callback: NonNull<CallbackInner>,
 }
 
 impl Drop for CallbackHook {
@@ -72,9 +52,7 @@ impl Drop for CallbackHook {
 		let mut vec = CALLBACKS[self.id as usize].lock();
 		let i = vec
 			.iter()
-			.enumerate()
-			.find(|(_, c)| ptr::fn_addr_eq(**c, self.callback))
-			.map(|(i, _)| i);
+			.position(|c| ptr::addr_eq(Box::as_ptr(c), self.callback.as_ptr()));
 		if let Some(i) = i {
 			vec.remove(i);
 		}
@@ -88,27 +66,36 @@ const CALLBACKS_INIT: IntSpin<Vec<Callback>> = IntSpin::new(Vec::new());
 static CALLBACKS: [IntSpin<Vec<Callback>>; idt::ENTRIES_COUNT as _] =
 	[CALLBACKS_INIT; idt::ENTRIES_COUNT as _];
 
-/// Registers the given callback and returns a reference to it.
+/// Registers a callback for the interrupt ID `id`.
 ///
-/// The latest registered callback is executed last. Thus, callback that are registered first can
-/// prevent next callbacks from being executed.
+/// The latest registered callback is executed last.
 ///
-/// Arguments:
-/// - `id` is the id of the interrupt to watch.
-/// - `callback` is the callback to register.
+/// `callback` arguments:
+/// - `id` is the id of the interrupt.
+/// - `code` is an optional code associated with the interrupt. If no code is given, the value is
+///   `0`.
+/// - `regs` the values of the registers when the interruption was triggered.
+/// - `ring` tells the ring at which the code was running.
 ///
 /// If an allocation fails, the function shall return an error.
 ///
 /// If the provided ID is invalid, the function returns `None`.
-pub fn register_callback(id: u32, callback: Callback) -> AllocResult<Option<CallbackHook>> {
+///
+/// On success, the function returns a hook that unregisters the callback on drop.
+pub fn register_callback<F: 'static + FnMut(u32, u32, &mut IntFrame, u8)>(
+	id: u32,
+	callback: F,
+) -> AllocResult<Option<CallbackHook>> {
 	let Some(callbacks) = CALLBACKS.get(id as usize) else {
 		return Ok(None);
 	};
+	let callback = Box::new(callback)?;
+	let ptr = NonNull::from(Box::as_ref(&callback));
 	let mut vec = callbacks.lock();
 	vec.push(callback)?;
 	Ok(Some(CallbackHook {
 		id,
-		callback,
+		callback: ptr,
 	}))
 }
 
@@ -134,18 +121,9 @@ extern "C" fn interrupt_handler(frame: &mut IntFrame) {
 	let ring = (frame.cs & 0b11) as u8;
 	let code = frame.code as u32;
 	// Call corresponding callbacks
-	let callbacks = &CALLBACKS[id as usize];
-	let mut i = 0;
-	loop {
-		// Not putting this in a loop's condition to ensure it is dropped at each turn
-		let Some(callback) = callbacks.lock().get(i).cloned() else {
-			break;
-		};
-		i += 1;
-		let res = callback(id, code, frame, ring);
-		if unlikely(res == CallbackResult::Panic) {
-			panic::with_frame(frame);
-		}
+	let mut callbacks = CALLBACKS[id as usize].lock();
+	for c in callbacks.iter_mut() {
+		c(id, code, frame, ring);
 	}
 	// If not a hardware exception, send EOI
 	if let Some(irq) = id.checked_sub(32) {
