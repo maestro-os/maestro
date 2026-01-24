@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 Luc Lenôtre
+ * Copyright 2026 Luc Lenôtre
  *
  * This file is part of Maestro.
  *
@@ -21,22 +21,16 @@
 //! [NVMe specification](https://nvmexpress.org/wp-content/uploads/NVM-Express-Base-Specification-Revision-2.3-2025.08.01-Ratified.pdf)
 
 use crate::{
-	arch::{core_id, x86::idt},
+	arch::core_id,
 	device::{bar::Bar, bus::pci::PciDev, manager::PhysicalDevice},
 	int,
 	int::CallbackHook,
 	memory::{VirtAddr, buddy},
 	println, process,
-	process::{State, scheduler::schedule},
+	process::{Process, State, scheduler::schedule},
+	sync::{mutex::Mutex, semaphore::Semaphore},
 };
-use core::{
-	any::Any,
-	hint,
-	hint::unlikely,
-	mem::MaybeUninit,
-	ptr::NonNull,
-	sync::atomic::{AtomicUsize, Ordering::Release},
-};
+use core::{any::Any, array, hint, hint::unlikely, mem::MaybeUninit, ptr::NonNull};
 use utils::{errno, errno::EResult, limits::PAGE_SIZE, math, ptr::arc::Arc};
 
 /// Register: Controller capabilities
@@ -398,6 +392,29 @@ fn wait_rdy(bar: &Bar, r: bool) {
 	}
 }
 
+struct QueuePairInner {
+	/// Submission queues tail
+	sq_tail: u32,
+	/// Completion queues head
+	cq_head: u32,
+
+	completion_phase: bool,
+	/// Associated process for each submission entry
+	waiting_processes: [Option<Arc<Process>>; ASQ_LEN],
+}
+
+impl Default for QueuePairInner {
+	fn default() -> Self {
+		Self {
+			sq_tail: 0,
+			cq_head: 0,
+
+			completion_phase: true,
+			waiting_processes: array::from_fn::<_, ASQ_LEN, _>(|_| None),
+		}
+	}
+}
+
 struct QueuePair {
 	id: usize,
 
@@ -406,10 +423,9 @@ struct QueuePair {
 	/// Completion queue
 	cq: NonNull<CompletionQueueEntry>,
 
-	/// Submission queues tail
-	sq_tail: AtomicUsize,
-	/// Completion queues head
-	cq_head: AtomicUsize,
+	/// Limits concurrent users of the queues pair
+	sem: Semaphore<false>,
+	inner: Mutex<QueuePairInner, false>,
 }
 
 struct ControllerInner {
@@ -417,28 +433,34 @@ struct ControllerInner {
 	bar: Bar,
 	/// Doorbell Stride
 	dstrd: usize,
-	admin_queues: QueuePair,
+	admin_qp: QueuePair,
 }
 
 impl ControllerInner {
 	/// Submits a command, returning when completed
-	fn submit_cmd_sync(&self, queue: &QueuePair, cmd: SubmissionQueueEntry) {
-		// TODO wait for space in the submission queue
-		// Prevent the completion interrupt from being caught before sleeping
-		idt::disable_int(|| {
-			// Overflow is fine because ASQ_LEN is a power of 2
-			let asq_tail = queue.sq_tail.fetch_add(1, Release) % ASQ_LEN;
-			unsafe {
-				queue.sq.add(asq_tail).write_volatile(cmd);
-				self.bar.write::<u32>(
-					queue_doorbell_off(queue.id, false, self.dstrd),
-					(asq_tail + 1) as _,
-				);
-			}
-			// Wait for completion interrupt
-			process::set_state(State::Sleeping);
-			schedule();
-		});
+	fn submit_cmd_sync(&self, qp: &QueuePair, mut cmd: SubmissionQueueEntry) {
+		// Wait for space in the submission queue
+		let _permit = qp.sem.acquire();
+		let mut qp_inner = qp.inner.lock();
+		let sq_tail = qp_inner.sq_tail;
+		// Add command identifier
+		cmd.cdw0 = (cmd.cdw0 & !0xffff0000) | ((sq_tail & 0xffff) << 16);
+		// Insert in submission queue
+		unsafe {
+			qp.sq.add(sq_tail as usize).write_volatile(cmd);
+		}
+		qp_inner.waiting_processes[sq_tail as usize] = Some(Process::current());
+		// Update queue tail
+		qp_inner.sq_tail = (sq_tail + 1) % (ASQ_LEN as u32);
+		unsafe {
+			self.bar.write::<u32>(
+				queue_doorbell_off(qp.id, false, self.dstrd),
+				qp_inner.sq_tail,
+			);
+		}
+		// Wait for completion
+		process::set_state(State::Sleeping);
+		schedule();
 	}
 }
 
@@ -502,6 +524,15 @@ impl Controller {
 		// Initialize ASQ and ACQ. A SQE (64 bytes) is four times larger than a CQE (16 bytes)
 		let asq = buddy::alloc_kernel(2, 0)?;
 		let acq = buddy::alloc_kernel(0, 0)?;
+		// Zero-initialize queues
+		unsafe {
+			NonNull::slice_from_raw_parts(asq, PAGE_SIZE << 2)
+				.as_mut()
+				.fill(0);
+			NonNull::slice_from_raw_parts(acq, PAGE_SIZE)
+				.as_mut()
+				.fill(0);
+		}
 		let aqa = (ACQ_LEN << 16) | ASQ_LEN;
 		unsafe {
 			bar.write(
@@ -531,31 +562,48 @@ impl Controller {
 		let inner = Arc::new(ControllerInner {
 			bar,
 			dstrd: ((cap >> 32) & 0xf) as usize,
-			admin_queues: QueuePair {
+			admin_qp: QueuePair {
 				id: 0,
 
 				sq: asq.cast(),
 				cq: acq.cast(),
 
-				sq_tail: AtomicUsize::new(0),
-				cq_head: AtomicUsize::new(0),
+				sem: Semaphore::new(ASQ_LEN),
+				inner: Default::default(),
 			},
 		})?;
 		let inner_ = inner.clone();
 		let int_handle = int::register_callback(INT, move |_int, _, _, _| {
 			let inner = inner_.clone();
 			// TODO use the interrupt ID to determine the queue
-			// Overflow is fine because ACQ_LEN is a power of 2
-			let acq_head = inner.admin_queues.cq_head.fetch_add(1, Release) % ACQ_LEN;
-			let cqe = unsafe {
-				let cqe = inner.admin_queues.cq.add(acq_head).read_volatile();
-				inner.bar.write::<u32>(
-					queue_doorbell_off(inner.admin_queues.id, true, inner.dstrd),
-					(acq_head + 1) as _,
-				);
-				cqe
-			};
-			// TODO
+			let qp = &inner.admin_qp;
+			let mut qp_inner = qp.inner.lock();
+			let mut any = false;
+			loop {
+				let cqe = unsafe { qp.cq.add(qp_inner.cq_head as usize).read_volatile() };
+				// Check phase bit
+				if (cqe.status & 1 != 0) != qp_inner.completion_phase {
+					break;
+				}
+				// Wake up process
+				let proc = qp_inner.waiting_processes[cqe.cid as usize].take();
+				if let Some(proc) = proc {
+					Process::wake_from(&proc, State::Sleeping as _);
+				}
+				qp_inner.cq_head = (qp_inner.cq_head + 1) % (ACQ_LEN as u32);
+				if qp_inner.cq_head == 0 {
+					qp_inner.completion_phase = !qp_inner.completion_phase;
+				}
+				any = true;
+			}
+			if any {
+				unsafe {
+					inner.bar.write::<u32>(
+						queue_doorbell_off(qp.id, true, inner.dstrd),
+						qp_inner.cq_head,
+					);
+				}
+			}
 		})?
 		.unwrap();
 		let controller = Self {
@@ -566,7 +614,7 @@ impl Controller {
 		let mut data: MaybeUninit<IdentifyController> = MaybeUninit::uninit();
 		let dptr = VirtAddr::from(&mut data).kernel_to_physical().unwrap();
 		controller.inner.submit_cmd_sync(
-			&controller.inner.admin_queues,
+			&controller.inner.admin_qp,
 			SubmissionQueueEntry {
 				cdw0: CMD_IDENTIFY,
 				nsid: 0,
@@ -576,7 +624,7 @@ impl Controller {
 				cdw: [CNS_CONTROLLER, 0, 0, 0, 0, 0],
 			},
 		);
-		println!("-> {:?}", data);
+		println!("-> {:?}", unsafe { data.assume_init() });
 		// TODO list namespaces and identify them
 		// TODO allocate I/O queues
 		Ok(controller)

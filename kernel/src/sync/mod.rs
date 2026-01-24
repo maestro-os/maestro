@@ -23,5 +23,6 @@ pub mod mutex;
 pub mod once;
 pub mod rcu;
 pub mod rwlock;
+pub mod semaphore;
 pub mod spin;
 pub mod wait_queue;

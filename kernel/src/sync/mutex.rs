@@ -55,12 +55,15 @@ fn lock<const INT: bool>(queue: &IntSpin<Queue>) -> EResult<()> {
 	}
 	schedule();
 	let proc = Process::current();
+	let mut q = queue.lock();
 	// Make sure the process is dequeued
 	unsafe {
-		queue.lock().wait_queue.remove(&proc);
+		q.wait_queue.remove(&proc);
 	}
 	// If woken up by a signal
 	if INT && proc.has_pending_signal() {
+		// Release
+		q.acquired -= 1;
 		return Err(errno!(EINTR));
 	}
 	Ok(())
