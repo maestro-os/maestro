@@ -63,7 +63,7 @@ const CNS_NAMESPACE: u32 = 0;
 /// Controller or Namespace Structure: Controller
 const CNS_CONTROLLER: u32 = 1;
 /// Controller or Namespace Structure: Active Namespace ID List
-const CNS_NAMESPACE_LIST: u32 = 1;
+const CNS_NAMESPACE_LIST: u32 = 2;
 
 const ASQ_LEN: usize = (PAGE_SIZE << 2) / size_of::<SubmissionQueueEntry>();
 const ACQ_LEN: usize = PAGE_SIZE / size_of::<CompletionQueueEntry>();
@@ -116,6 +116,96 @@ struct CompletionQueueEntry {
 	cid: u16,
 	/// Status
 	status: u16,
+}
+
+#[derive(Debug)]
+#[repr(C, align(4096))]
+struct IdentifyNamespace {
+	/// Namespace Size
+	nsze: u64,
+	/// Namespace Capacity
+	ncap: u64,
+	/// Namespace Utilization
+	nuse: u64,
+	/// Namespace Features
+	nsfeat: u8,
+	/// Number of LBA Formats
+	nlbaf: u8,
+	/// Formatted LBA Size
+	flbas: u8,
+	/// Metadata Capabilities
+	mc: u8,
+	/// End-to-end Data Protection Capabilities
+	dpc: u8,
+	/// End-to-end Data Protection Type Settings
+	dps: u8,
+	/// Namespace Multi-path I/O and Namespace Sharing Capabilities
+	nmic: u8,
+	/// Reservation Capabilities
+	rescap: u8,
+	/// Format Progress Indicator
+	fpi: u8,
+	/// Deallocate Logical Block Features
+	dlfeat: u8,
+	/// Namespace Atomic Write Unit Normal
+	nawun: u16,
+	/// Namespace Atomic Write Unit Power Fail
+	nawupf: u16,
+	/// Namespace Atomic Compare & Write Unit
+	nacwu: u16,
+	/// Namespace Atomic Boundary Size Normal
+	nabsn: u16,
+	/// Namespace Atomic Boundary Offset
+	nabo: u16,
+	/// Namespace Atomic Boundary Size Power Fail
+	nabspf: u16,
+	/// Namespace Optimal I/O Boundary
+	noiob: u16,
+	/// NVM Capacity
+	nvmcap: [u64; 2],
+	/// Namespace Preferred Write Granularity
+	npwg: u16,
+	/// Namespace Preferred Write Alignment
+	npwa: u16,
+	/// Namespace Preferred Deallocate Granularity
+	npdg: u16,
+	/// Namespace Preferred Deallocate Alignment
+	npda: u16,
+	/// Namespace Optimal Write Size
+	nows: u16,
+	/// Maximum Single Source Range Length
+	mssrl: u16,
+	/// Maximum Copy Length
+	mcl: u32,
+	/// Maximum Source Range Count
+	msrc: u8,
+	/// Key Per I/O Status
+	kpios: u8,
+	/// Number of Unique Attribute LBA Formats
+	nulbaf: u8,
+	_reserved0: u8,
+	/// Key Per I/O Data Access Alignment and Granularity
+	kpiodaag: u32,
+	_reserved1: u8,
+	/// ANA Group Identifier
+	anagrpid: u32,
+	_reserved2: [u8; 3],
+	/// Namespace Attributes
+	nsattr: u8,
+	/// NVM Set Identifier
+	nvmsetid: u16,
+	/// Endurance Group Identifier
+	endgid: u16,
+	/// Namespace Globally Unique Identifier
+	nguid: [u8; 16],
+	/// IEEE Extended Unique Identifier
+	eui64: u64,
+
+	/// LBA Format Support
+	lbaf: [u32; 64],
+
+	/// Vendor Specific
+	vs: [u8; 3712],
 }
 
 /// Controller identification response
@@ -624,9 +714,44 @@ impl Controller {
 				cdw: [CNS_CONTROLLER, 0, 0, 0, 0, 0],
 			},
 		);
-		println!("-> {:?}", unsafe { data.assume_init() });
-		// TODO list namespaces and identify them
+		//println!("-> {:?}", unsafe { data.assume_init() });
+		// List namespaces
+		let mut ns_ids: MaybeUninit<[u32; 1024]> = MaybeUninit::uninit();
+		let dptr = VirtAddr::from(&mut ns_ids).kernel_to_physical().unwrap();
+		controller.inner.submit_cmd_sync(
+			&controller.inner.admin_qp,
+			SubmissionQueueEntry {
+				cdw0: CMD_IDENTIFY,
+				nsid: 0,
+				cdw12: [0; 2],
+				mptr: [0; 2],
+				dptr: [dptr.0 as _, 0],
+				cdw: [CNS_NAMESPACE_LIST, 0, 0, 0, 0, 0],
+			},
+		);
+		let ns_ids = unsafe { ns_ids.assume_init() };
+		for i in ns_ids {
+			if i == 0 {
+				break;
+			}
+			let mut ns_id: MaybeUninit<IdentifyNamespace> = MaybeUninit::uninit();
+			let dptr = VirtAddr::from(&mut ns_id).kernel_to_physical().unwrap();
+			controller.inner.submit_cmd_sync(
+				&controller.inner.admin_qp,
+				SubmissionQueueEntry {
+					cdw0: CMD_IDENTIFY,
+					nsid: i,
+					cdw12: [0; 2],
+					mptr: [0; 2],
+					dptr: [dptr.0 as _, 0],
+					cdw: [CNS_NAMESPACE, 0, 0, 0, 0, 0],
+				},
+			);
+			println!("-> {:?}", unsafe { ns_id.assume_init() });
+		}
 		// TODO allocate I/O queues
 		Ok(controller)
 	}
 }
+
+// TODO implement shutdown
