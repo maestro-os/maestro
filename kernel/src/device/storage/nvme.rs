@@ -22,16 +22,29 @@
 
 use crate::{
 	arch::core_id,
-	device::{bar::Bar, bus::pci::PciDev, manager::PhysicalDevice},
+	device::{
+		BlkDev, BlockDeviceOps, DeviceID, bar::Bar, bus::pci::PciDev, manager::PhysicalDevice,
+		register_blk,
+	},
 	int,
 	int::CallbackHook,
-	memory::{VirtAddr, buddy},
+	memory::{
+		VirtAddr, buddy,
+		buddy::{FrameOrder, ZONE_KERNEL},
+		cache::{FrameOwner, RcFrame},
+	},
 	println, process,
 	process::{Process, State, scheduler::schedule},
 	sync::{mutex::Mutex, semaphore::Semaphore},
 };
-use core::{any::Any, array, hint, hint::unlikely, mem::MaybeUninit, ptr::NonNull};
-use utils::{errno, errno::EResult, limits::PAGE_SIZE, math, ptr::arc::Arc};
+use core::{
+	any::Any, array, fmt, fmt::Formatter, hint, hint::unlikely, mem::MaybeUninit, num::NonZeroU64,
+	ptr::NonNull,
+};
+use utils::{
+	boxed::Box, collections::path::PathBuf, errno, errno::EResult, limits::PAGE_SIZE, math,
+	ptr::arc::Arc,
+};
 
 /// Register: Controller capabilities
 const REG_CAP: usize = 0x00;
@@ -118,7 +131,16 @@ struct CompletionQueueEntry {
 	status: u16,
 }
 
-#[derive(Debug)]
+#[repr(C)]
+struct LbaFormat {
+	/// Metadata Size
+	ms: u16,
+	/// LBA Data Size
+	lbads: u8,
+	/// Relative Performance
+	rp: u8,
+}
+
 #[repr(C, align(4096))]
 struct IdentifyNamespace {
 	/// Namespace Size
@@ -202,14 +224,13 @@ struct IdentifyNamespace {
 	eui64: u64,
 
 	/// LBA Format Support
-	lbaf: [u32; 64],
+	lbaf: [LbaFormat; 64],
 
 	/// Vendor Specific
 	vs: [u8; 3712],
 }
 
 /// Controller identification response
-#[derive(Debug)]
 #[repr(C, align(4096))]
 struct IdentifyController {
 	// Controller Capabilities and Features
@@ -482,6 +503,41 @@ fn wait_rdy(bar: &Bar, r: bool) {
 	}
 }
 
+struct NamespaceOps {
+	ctrlr: Arc<ControllerInner>,
+
+	blk_size: NonZeroU64,
+	blk_count: u64,
+}
+
+impl BlockDeviceOps for NamespaceOps {
+	fn block_size(&self) -> NonZeroU64 {
+		self.blk_size
+	}
+
+	fn blocks_count(&self) -> u64 {
+		self.blk_count
+	}
+
+	fn read_frame(&self, off: u64, order: FrameOrder, owner: FrameOwner) -> EResult<RcFrame> {
+		let frame = RcFrame::new(order, ZONE_KERNEL, owner, off)?;
+		todo!()
+	}
+
+	fn write_pages(&self, off: u64, buf: &[u8]) -> EResult<()> {
+		todo!()
+	}
+}
+
+impl fmt::Debug for NamespaceOps {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		f.debug_struct("NamespaceOps")
+			.field("blk_size", &self.blk_size)
+			.field("blk_count", &self.blk_count)
+			.finish()
+	}
+}
+
 struct QueuePairInner {
 	/// Submission queues tail
 	sq_tail: u32,
@@ -714,7 +770,6 @@ impl Controller {
 				cdw: [CNS_CONTROLLER, 0, 0, 0, 0, 0],
 			},
 		);
-		//println!("-> {:?}", unsafe { data.assume_init() });
 		// List namespaces
 		let mut ns_ids: MaybeUninit<[u32; 1024]> = MaybeUninit::uninit();
 		let dptr = VirtAddr::from(&mut ns_ids).kernel_to_physical().unwrap();
@@ -729,28 +784,51 @@ impl Controller {
 				cdw: [CNS_NAMESPACE_LIST, 0, 0, 0, 0, 0],
 			},
 		);
+		// TODO allocate I/O queues
 		let ns_ids = unsafe { ns_ids.assume_init() };
 		for i in ns_ids {
 			if i == 0 {
 				break;
 			}
-			let mut ns_id: MaybeUninit<IdentifyNamespace> = MaybeUninit::uninit();
-			let dptr = VirtAddr::from(&mut ns_id).kernel_to_physical().unwrap();
-			controller.inner.submit_cmd_sync(
-				&controller.inner.admin_qp,
-				SubmissionQueueEntry {
-					cdw0: CMD_IDENTIFY,
-					nsid: i,
-					cdw12: [0; 2],
-					mptr: [0; 2],
-					dptr: [dptr.0 as _, 0],
-					cdw: [CNS_NAMESPACE, 0, 0, 0, 0, 0],
-				},
-			);
-			println!("-> {:?}", unsafe { ns_id.assume_init() });
+			controller.init_ns(i)?;
 		}
-		// TODO allocate I/O queues
 		Ok(controller)
+	}
+
+	fn init_ns(&self, id: u32) -> EResult<()> {
+		let mut ns_id: MaybeUninit<IdentifyNamespace> = MaybeUninit::uninit();
+		let dptr = VirtAddr::from(&mut ns_id).kernel_to_physical().unwrap();
+		self.inner.submit_cmd_sync(
+			&self.inner.admin_qp,
+			SubmissionQueueEntry {
+				cdw0: CMD_IDENTIFY,
+				nsid: id,
+				cdw12: [0; 2],
+				mptr: [0; 2],
+				dptr: [dptr.0 as _, 0],
+				cdw: [CNS_NAMESPACE, 0, 0, 0, 0, 0],
+			},
+		);
+		let ns_id = unsafe { ns_id.assume_init() };
+		let fidxl = (ns_id.flbas & 0xf) as usize;
+		let blk_size = math::pow2(ns_id.lbaf[fidxl].lbads as u64);
+		let path = PathBuf::try_from(b"/dev/TODO")?; // TODO
+		let blkdev = BlkDev::new(
+			DeviceID {
+				major: 259, // TODO
+				minor: 0,   // TODO
+			},
+			path,
+			0o660,
+			Box::new(NamespaceOps {
+				ctrlr: self.inner.clone(),
+
+				blk_size: NonZeroU64::new(blk_size).unwrap(),
+				blk_count: ns_id.ncap,
+			})?,
+		)?;
+		register_blk(blkdev)?;
+		Ok(())
 	}
 }
 
