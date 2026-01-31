@@ -93,12 +93,6 @@ pub struct Semaphore<const INT: bool = true> {
 	queue: IntSpin<Queue>,
 }
 
-impl<const INT: bool> Default for Semaphore<INT> {
-	fn default() -> Self {
-		Self::new(Default::default())
-	}
-}
-
 impl<const INT: bool> Semaphore<INT> {
 	/// Creates a new instance with the given amount of permits.
 	pub const fn new(permits: usize) -> Self {

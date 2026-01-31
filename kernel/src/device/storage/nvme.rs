@@ -42,7 +42,12 @@ use core::{
 	ptr::NonNull,
 };
 use utils::{
-	boxed::Box, collections::path::PathBuf, errno, errno::EResult, limits::PAGE_SIZE, math,
+	boxed::Box,
+	collections::path::PathBuf,
+	errno,
+	errno::{AllocResult, EResult},
+	limits::PAGE_SIZE,
+	math,
 	ptr::arc::Arc,
 };
 
@@ -68,7 +73,11 @@ const FLAG_CSTS_RDY: u32 = 0b1;
 /// Flag (CSTS): Controller Fatal Status
 const FLAG_CSTS_CFS: u32 = 0b10;
 
-/// Command opcode: Identify
+/// Admin command opcode: Create I/O Submission Queue
+const CMD_CREATE_IO_SUBMISSION_QUEUE: u32 = 0x1;
+/// Admin command opcode: Create I/O Completion Queue
+const CMD_CREATE_IO_COMPLETION_QUEUE: u32 = 0x5;
+/// Admin command opcode: Identify
 const CMD_IDENTIFY: u32 = 0x6;
 
 /// Controller or Namespace Structure: Namespace
@@ -78,11 +87,13 @@ const CNS_CONTROLLER: u32 = 1;
 /// Controller or Namespace Structure: Active Namespace ID List
 const CNS_NAMESPACE_LIST: u32 = 2;
 
-const ASQ_LEN: usize = (PAGE_SIZE << 2) / size_of::<SubmissionQueueEntry>();
-const ACQ_LEN: usize = PAGE_SIZE / size_of::<CompletionQueueEntry>();
+const SQ_LEN: usize = (PAGE_SIZE << 2) / size_of::<SubmissionQueueEntry>();
+const CQ_LEN: usize = PAGE_SIZE / size_of::<CompletionQueueEntry>();
 
-/// Interrupt vector
-const INT: u32 = 0x22;
+/// Admin interrupt vector
+const ADMIN_INT: u32 = 0x22;
+/// I/O interrupt vector
+const IO_INT: u32 = 0x23;
 
 /// Returns the register offset for the doorbell property of the given `queue`.
 ///
@@ -546,7 +557,7 @@ struct QueuePairInner {
 
 	completion_phase: bool,
 	/// Associated process for each submission entry
-	waiting_processes: [Option<Arc<Process>>; ASQ_LEN],
+	waiting_processes: [Option<Arc<Process>>; SQ_LEN],
 }
 
 impl Default for QueuePairInner {
@@ -556,7 +567,7 @@ impl Default for QueuePairInner {
 			cq_head: 0,
 
 			completion_phase: true,
-			waiting_processes: array::from_fn::<_, ASQ_LEN, _>(|_| None),
+			waiting_processes: array::from_fn::<_, SQ_LEN, _>(|_| None),
 		}
 	}
 }
@@ -572,6 +583,42 @@ struct QueuePair {
 	/// Limits concurrent users of the queues pair
 	sem: Semaphore<false>,
 	inner: Mutex<QueuePairInner, false>,
+}
+
+impl QueuePair {
+	/// Creates a new instance
+	pub fn new(id: usize) -> AllocResult<Self> {
+		// A SQE (64 bytes) is four times larger than a CQE (16 bytes)
+		let sq = buddy::alloc_kernel(2, 0)?;
+		let cq = buddy::alloc_kernel(0, 0)?; // TODO on failure, free previous
+		// Zero-initialize queues
+		unsafe {
+			NonNull::slice_from_raw_parts(sq, PAGE_SIZE << 2)
+				.as_mut()
+				.fill(0);
+			NonNull::slice_from_raw_parts(cq, PAGE_SIZE)
+				.as_mut()
+				.fill(0);
+		}
+		Ok(Self {
+			id,
+
+			sq: sq.cast(),
+			cq: cq.cast(),
+
+			sem: Semaphore::new(SQ_LEN),
+			inner: Default::default(),
+		})
+	}
+}
+
+impl Drop for QueuePair {
+	fn drop(&mut self) {
+		unsafe {
+			buddy::free_kernel(self.sq.cast().as_ptr(), 2);
+			buddy::free_kernel(self.cq.cast().as_ptr(), 0);
+		}
+	}
 }
 
 struct ControllerInner {
@@ -597,7 +644,7 @@ impl ControllerInner {
 		}
 		qp_inner.waiting_processes[sq_tail as usize] = Some(Process::current());
 		// Update queue tail
-		qp_inner.sq_tail = (sq_tail + 1) % (ASQ_LEN as u32);
+		qp_inner.sq_tail = (sq_tail + 1) % (SQ_LEN as u32);
 		unsafe {
 			self.bar.write::<u32>(
 				queue_doorbell_off(qp.id, false, self.dstrd),
@@ -650,7 +697,7 @@ impl Controller {
 		let msi_x = dev.enable_msi_x();
 		if let Some(msi_x) = msi_x {
 			msi_x
-				.set(0, core_id() as _, true, false, INT)
+				.set(0, core_id() as _, true, false, ADMIN_INT)
 				.inspect_err(|_| println!("nvme: failed to initialize MSI-x"))?;
 			println!("nvme: using MSI-X");
 		} else {
@@ -667,27 +714,16 @@ impl Controller {
 			let cc = bar.read::<u32>(REG_CC);
 			bar.write(REG_CC, (cc & !0x3ff0) | ((PAGE_SIZE.ilog2() - 12) << 7));
 		}
-		// Initialize ASQ and ACQ. A SQE (64 bytes) is four times larger than a CQE (16 bytes)
-		let asq = buddy::alloc_kernel(2, 0)?;
-		let acq = buddy::alloc_kernel(0, 0)?;
-		// Zero-initialize queues
-		unsafe {
-			NonNull::slice_from_raw_parts(asq, PAGE_SIZE << 2)
-				.as_mut()
-				.fill(0);
-			NonNull::slice_from_raw_parts(acq, PAGE_SIZE)
-				.as_mut()
-				.fill(0);
-		}
-		let aqa = (ACQ_LEN << 16) | ASQ_LEN;
+		let admin_qp = QueuePair::new(0)?;
+		let aqa = (CQ_LEN << 16) | SQ_LEN;
 		unsafe {
 			bar.write(
 				REG_ASQ,
-				VirtAddr::from(asq).kernel_to_physical().unwrap().0 as u64,
+				VirtAddr::from(admin_qp.sq).kernel_to_physical().unwrap().0 as u64,
 			);
 			bar.write(
 				REG_ACQ,
-				VirtAddr::from(acq).kernel_to_physical().unwrap().0 as u64,
+				VirtAddr::from(admin_qp.cq).kernel_to_physical().unwrap().0 as u64,
 			);
 			bar.write(REG_AQA, aqa as u32);
 			// Enable controller
@@ -698,28 +734,16 @@ impl Controller {
 		let status = unsafe { bar.read::<u32>(REG_CSTS) };
 		if unlikely(status & FLAG_CSTS_CFS != 0) {
 			println!("nvme: fatal error during initialization");
-			unsafe {
-				buddy::free_kernel(asq.as_ptr(), 2);
-				buddy::free_kernel(acq.as_ptr(), 0);
-			}
 			return Err(errno!(EINVAL));
 		}
 		// Setup interrupt handler
 		let inner = Arc::new(ControllerInner {
 			bar,
 			dstrd: ((cap >> 32) & 0xf) as usize,
-			admin_qp: QueuePair {
-				id: 0,
-
-				sq: asq.cast(),
-				cq: acq.cast(),
-
-				sem: Semaphore::new(ASQ_LEN),
-				inner: Default::default(),
-			},
+			admin_qp,
 		})?;
 		let inner_ = inner.clone();
-		let int_handle = int::register_callback(INT, move |_int, _, _, _| {
+		let int_handle = int::register_callback(ADMIN_INT, move |_int, _, _, _| {
 			let inner = inner_.clone();
 			// TODO use the interrupt ID to determine the queue
 			let qp = &inner.admin_qp;
@@ -736,7 +760,7 @@ impl Controller {
 				if let Some(proc) = proc {
 					Process::wake_from(&proc, State::Sleeping as _);
 				}
-				qp_inner.cq_head = (qp_inner.cq_head + 1) % (ACQ_LEN as u32);
+				qp_inner.cq_head = (qp_inner.cq_head + 1) % (CQ_LEN as u32);
 				if qp_inner.cq_head == 0 {
 					qp_inner.completion_phase = !qp_inner.completion_phase;
 				}
@@ -784,7 +808,8 @@ impl Controller {
 				cdw: [CNS_NAMESPACE_LIST, 0, 0, 0, 0, 0],
 			},
 		);
-		// TODO allocate I/O queues
+		let io_queue = controller.init_io_queue(1, IO_INT as _)?;
+		// TODO find a way to put `io_queue` in `controller.inner`?
 		let ns_ids = unsafe { ns_ids.assume_init() };
 		for i in ns_ids {
 			if i == 0 {
@@ -793,6 +818,49 @@ impl Controller {
 			controller.init_ns(i)?;
 		}
 		Ok(controller)
+	}
+
+	fn init_io_queue(&self, id: u16, int: u16) -> AllocResult<QueuePair> {
+		let qp = QueuePair::new(1)?;
+		let dptr = VirtAddr::from(qp.cq).kernel_to_physical().unwrap();
+		self.inner.submit_cmd_sync(
+			&self.inner.admin_qp,
+			SubmissionQueueEntry {
+				cdw0: CMD_CREATE_IO_COMPLETION_QUEUE,
+				nsid: 0,
+				cdw12: [0; 2],
+				mptr: [0; 2],
+				dptr: [dptr.0 as _, 0],
+				cdw: [
+					(id as u32) | (CQ_LEN << 16) as u32,
+					0b11 | ((int as u32) << 16),
+					0,
+					0,
+					0,
+					0,
+				],
+			},
+		);
+		let dptr = VirtAddr::from(qp.sq).kernel_to_physical().unwrap();
+		self.inner.submit_cmd_sync(
+			&self.inner.admin_qp,
+			SubmissionQueueEntry {
+				cdw0: CMD_CREATE_IO_SUBMISSION_QUEUE,
+				nsid: 0,
+				cdw12: [0; 2],
+				mptr: [0; 2],
+				dptr: [dptr.0 as _, 0],
+				cdw: [
+					(id as u32) | (SQ_LEN << 16) as u32,
+					0o1 | ((id as u32) << 16),
+					0,
+					0,
+					0,
+					0,
+				],
+			},
+		);
+		Ok(qp)
 	}
 
 	fn init_ns(&self, id: u32) -> EResult<()> {
