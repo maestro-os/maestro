@@ -18,9 +18,9 @@
 
 //! This module implements default devices.
 
-use super::{CharDev, DeviceType, id, register_char};
+use super::{CharDev, DeviceType, register_char};
 use crate::{
-	device::{DeviceID, tty::TTYDeviceHandle},
+	device::{DeviceID, id::MajorBlock, tty::TTYDeviceHandle},
 	file::{File, fs::FileOps},
 	logger::LOGGER,
 	memory::user::UserSlice,
@@ -122,7 +122,7 @@ impl FileOps for KMsgDeviceHandle {
 
 /// Creates the default devices.
 pub(super) fn create() -> EResult<()> {
-	let _first_major = ManuallyDrop::new(id::alloc_major(DeviceType::Char, Some(1))?);
+	let _first_major = ManuallyDrop::new(MajorBlock::new_fixed(DeviceType::Char, 1)?);
 	register_char(CharDev::new(
 		DeviceID {
 			major: 1,
@@ -169,7 +169,7 @@ pub(super) fn create() -> EResult<()> {
 		KMsgDeviceHandle,
 	)?)?;
 
-	let _fifth_major = ManuallyDrop::new(id::alloc_major(DeviceType::Char, Some(5))?);
+	let _fifth_major = ManuallyDrop::new(MajorBlock::new_fixed(DeviceType::Char, 5)?);
 	register_char(CharDev::new(
 		DeviceID {
 			major: 5,

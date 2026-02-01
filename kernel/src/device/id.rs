@@ -18,14 +18,11 @@
 
 //! This module handles minor/major numbers, including their allocation.
 
-use crate::{device::DeviceType, sync::spin::Spin};
-use core::cell::OnceCell;
+use crate::{
+	device::DeviceType,
+	sync::{once::OnceInit, spin::Spin},
+};
 use utils::{collections::id_allocator::IDAllocator, errno::AllocResult};
-
-/// The number of major numbers.
-const MAJOR_COUNT: u32 = 512;
-/// The number of minor numbers.
-const MINORS_COUNT: u32 = 512;
 
 /// Returns the major number from a device number.
 pub fn major(dev: u64) -> u32 {
@@ -45,8 +42,22 @@ pub const fn makedev(major: u32, minor: u32) -> u64 {
 		| (((major & !0xfff) as u64) << 32)) as _
 }
 
-/// A block of minor numbers associated with a unique major number, and it can allocate every minor
-/// numbers with it.
+/// Major numbers allocator
+static BLOCK_MAJOR_ALLOCATOR: Spin<IDAllocator<[u8; 512 / 8]>> =
+	Spin::new(IDAllocator::new_inplace());
+/// Major numbers allocator
+static CHAR_MAJOR_ALLOCATOR: Spin<IDAllocator<[u8; 512 / 8]>> =
+	Spin::new(IDAllocator::new_inplace());
+
+fn get_allocator(device_type: DeviceType) -> &'static Spin<IDAllocator<[u8; 512 / 8]>> {
+	match device_type {
+		DeviceType::Block => &BLOCK_MAJOR_ALLOCATOR,
+		DeviceType::Char => &CHAR_MAJOR_ALLOCATOR,
+	}
+}
+
+/// A block of minor numbers associated with a unique major number, allowing dynamic allocations of
+/// minor numbers.
 pub struct MajorBlock {
 	/// The device type.
 	device_type: DeviceType,
@@ -58,13 +69,29 @@ pub struct MajorBlock {
 }
 
 impl MajorBlock {
-	/// Creates a new instance with the given major number `major`.
-	fn new(device_type: DeviceType, major: u32) -> AllocResult<Self> {
+	/// Creates a new instance with a dynamically allocated major number
+	pub fn new(device_type: DeviceType) -> AllocResult<Self> {
+		let mut major_allocator = get_allocator(device_type).lock();
+		let major = major_allocator.alloc(None)?;
 		Ok(Self {
 			device_type,
 			major,
 
-			allocator: IDAllocator::new(MINORS_COUNT)?,
+			allocator: IDAllocator::new_allocated(512)?,
+		})
+	}
+
+	/// Creates a new instance with the given major number `major`
+	///
+	/// If `major` is already allocated, the function returns an [`AllocError`].
+	pub fn new_fixed(device_type: DeviceType, major: u32) -> AllocResult<Self> {
+		let mut major_allocator = get_allocator(device_type).lock();
+		major_allocator.alloc(Some(major))?;
+		Ok(Self {
+			device_type,
+			major,
+
+			allocator: IDAllocator::new_allocated(512)?,
 		})
 	}
 
@@ -96,39 +123,20 @@ impl MajorBlock {
 
 impl Drop for MajorBlock {
 	fn drop(&mut self) {
-		let mut major_allocator = match self.device_type {
-			DeviceType::Block => BLOCK_MAJOR_ALLOCATOR.lock(),
-			DeviceType::Char => CHAR_MAJOR_ALLOCATOR.lock(),
-		};
-		if let Some(major_allocator) = major_allocator.get_mut() {
-			major_allocator.free(self.major);
-		}
+		let mut major_allocator = get_allocator(self.device_type).lock();
+		major_allocator.free(self.major);
 	}
 }
 
-/// Major numbers allocator
-static BLOCK_MAJOR_ALLOCATOR: Spin<OnceCell<IDAllocator>> = Spin::new(OnceCell::new());
-/// Major numbers allocator
-static CHAR_MAJOR_ALLOCATOR: Spin<OnceCell<IDAllocator>> = Spin::new(OnceCell::new());
+/// The major number block for additional block device partitions
+pub static BLOCK_EXTENDED_MAJOR: OnceInit<Spin<MajorBlock>> = unsafe { OnceInit::new() };
 
-/// Allocates a major number.
-///
-/// `device_type` is the type of device for the major block to be allocated.
-///
-/// If `major` is not `None`, the function shall allocate the specific given major
-/// number.
-///
-/// If the allocation fails, the function returns an `Err`.
-pub fn alloc_major(device_type: DeviceType, major: Option<u32>) -> AllocResult<MajorBlock> {
-	let mut major_allocator = match device_type {
-		DeviceType::Block => BLOCK_MAJOR_ALLOCATOR.lock(),
-		DeviceType::Char => CHAR_MAJOR_ALLOCATOR.lock(),
-	};
-	major_allocator.get_or_try_init(|| IDAllocator::new(MAJOR_COUNT))?;
-	// FIXME: remove unwrap (wait until `get_mut_or_try_init` or equivalent is available)
-	let major_allocator = major_allocator.get_mut().unwrap();
-	let major = major_allocator.alloc(major)?;
-	MajorBlock::new(device_type, major)
+pub(super) fn init() -> AllocResult<()> {
+	let block_extended_major = MajorBlock::new_fixed(DeviceType::Block, 259)?;
+	unsafe {
+		OnceInit::init(&BLOCK_EXTENDED_MAJOR, Spin::new(block_extended_major));
+	}
+	Ok(())
 }
 
 #[cfg(test)]
@@ -137,8 +145,8 @@ mod test {
 
 	#[test_case]
 	fn device_number() {
-		for maj in 0..256 {
-			for min in 0..MINORS_COUNT {
+		for maj in 0..512 {
+			for min in 0..512 {
 				let dev = makedev(maj, min);
 				assert_eq!(major(dev), maj);
 				assert_eq!(minor(dev), min);

@@ -28,7 +28,6 @@ use crate::{
 	device::{
 		BLK_DEVICES, BlkDev, BlockDeviceOps, DeviceID, DeviceType,
 		bus::pci,
-		id,
 		id::MajorBlock,
 		manager::{DeviceManager, PhysicalDevice},
 	},
@@ -60,11 +59,6 @@ use utils::{
 
 /// The major number for storage devices.
 const SCSI_MAJOR: u32 = 8;
-
-/// NVMe controller major number
-const NVME_CONTROLLER_MAJOR: u32 = 239;
-/// NVME driver major number
-const NVME_MAJOR: u32 = 259;
 
 /// The mode of the device file for a storage device.
 const STORAGE_MODE: Mode = 0o660;
@@ -174,8 +168,6 @@ pub struct StorageManager {
 	scsi_major: MajorBlock,
 	/// Allocated device major number for NVMe controllers
 	nvme_ctrlr_major: MajorBlock,
-	/// Allocated device major number for NVMe drives
-	nvme_major: MajorBlock,
 
 	/// The list of detected interfaces
 	interfaces: Vec<Arc<BlkDev>>,
@@ -185,9 +177,8 @@ impl StorageManager {
 	/// Creates a new instance.
 	pub fn new() -> EResult<Self> {
 		Ok(Self {
-			scsi_major: id::alloc_major(DeviceType::Block, Some(SCSI_MAJOR))?,
-			nvme_ctrlr_major: id::alloc_major(DeviceType::Char, Some(NVME_CONTROLLER_MAJOR))?,
-			nvme_major: id::alloc_major(DeviceType::Block, Some(NVME_MAJOR))?,
+			scsi_major: MajorBlock::new_fixed(DeviceType::Block, SCSI_MAJOR)?,
+			nvme_ctrlr_major: MajorBlock::new(DeviceType::Char)?,
 
 			interfaces: Vec::new(),
 		})

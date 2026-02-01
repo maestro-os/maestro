@@ -21,23 +21,37 @@
 
 use crate::{collections::bitfield::Bitfield, errno::AllocResult};
 use core::alloc::AllocError;
+use crate::collections::vec::Vec;
 
-/// Structure representing an identifier allocator.
-pub struct IDAllocator {
+/// An identifier allocator, based upon a bitfield
+pub struct IDAllocator<C: AsRef<[u8]> + AsMut<[u8]> = Vec<u8>> {
 	/// The bitfield keeping track of used identifiers.
-	used: Bitfield,
+	used: Bitfield<C>,
 }
 
-impl IDAllocator {
-	/// Creates a new instance.
+impl IDAllocator<Vec<u8>> {
+	/// Creates a new allocated, allocated on the heap
 	///
-	/// `max` is the maximum ID.
-	pub fn new(max: u32) -> AllocResult<Self> {
+	/// `max` is the maximum ID
+	pub fn new_allocated(max: u32) -> AllocResult<Self> {
 		Ok(Self {
-			used: Bitfield::new((max + 1) as _)?,
+			used: Bitfield::new_allocated((max + 1) as _)?,
 		})
 	}
+}
 
+impl<const N: usize> IDAllocator<[u8; N]> {
+	/// Creates a new allocated, stored in place
+	///
+	/// The length is `N * 8`
+	pub const fn new_inplace() -> Self {
+		Self {
+			used: Bitfield::new_inplace(),
+		}
+	}
+}
+
+impl<C: AsRef<[u8]> + AsMut<[u8]>> IDAllocator<C> {
 	/// Tells whether `id` is marked as used.
 	///
 	/// If out of bounds, the function returns `true`.
@@ -61,7 +75,6 @@ impl IDAllocator {
 	/// If `id` is not `None`, the function shall allocate the given id.
 	///
 	/// If the allocation fails, the function returns `None`.
-	#[must_use = "not freeing a PID shall cause a leak"]
 	pub fn alloc(&mut self, id: Option<u32>) -> AllocResult<u32> {
 		if let Some(i) = id {
 			if !self.used.is_set(i as _) {

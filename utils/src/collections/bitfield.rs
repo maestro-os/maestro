@@ -16,31 +16,46 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module stores the Bitfield structure.
+//! Bitfield implementation.
 
-use crate::{TryClone, bit_size_of, collections::vec::Vec, errno::AllocResult};
+use core::hint::likely;
+use crate::{TryClone, errno::AllocResult};
+use crate::collections::vec::Vec;
 
 /// A bitfield is a data structure meant to contain only boolean values.
 ///
 /// The size of the bitfield is specified at initialization.
-pub struct Bitfield {
-	/// The bitfield's data.
-	data: Vec<u8>,
-	/// The number of bits in the bitfield.
+pub struct Bitfield<C: AsRef<[u8]> + AsMut<[u8]> = Vec<u8>> {
+	data: C,
+	/// The number of bits in the bitfield
 	len: usize,
 }
 
-impl Bitfield {
-	/// Creates a new bitfield with the given number of bits `len`.
-	pub fn new(len: usize) -> AllocResult<Self> {
-		let size = len.div_ceil(bit_size_of::<u8>());
+impl Bitfield<Vec<u8>> {
+	/// Creates a new bitfield, allocated on the heap, with the given number of bits
+	pub fn new_allocated(len: usize) -> AllocResult<Self> {
+		let size = len.div_ceil(8);
 		let bitfield = Self {
 			data: crate::vec![0; size]?,
 			len,
 		};
 		Ok(bitfield)
 	}
+}
 
+impl<const N: usize> Bitfield<[u8; N]> {
+	/// Creates a new bitfield, stored in place
+	/// 
+	/// The length is `N * 8`
+	pub const fn new_inplace() -> Self {
+		Self {
+			data: [0; N],
+			len: N * 8,
+		}
+	}
+}
+
+impl<C: AsRef<[u8]> + AsMut<[u8]>> Bitfield<C> {
 	/// Returns the number of bit in the bitfield.
 	#[inline]
 	#[allow(clippy::len_without_is_empty)]
@@ -48,37 +63,18 @@ impl Bitfield {
 		self.len
 	}
 
-	/// Returns an immutable reference to a slice containing the bitfield.
-	#[inline]
-	pub fn as_slice(&self) -> &[u8] {
-		self.data.as_slice()
-	}
-
-	/// Returns a mutable reference to a slice containing the bitfield.
-	#[inline]
-	pub fn as_slice_mut(&mut self) -> &mut [u8] {
-		self.data.as_mut_slice()
-	}
-
-	/// Returns the size of the memory region of the bitfield in bytes.
-	#[inline]
-	pub fn mem_size(&self) -> usize {
-		self.len.div_ceil(bit_size_of::<u8>())
-	}
-
 	/// Tells whether bit `index` is set.
 	#[inline]
 	pub fn is_set(&self, index: usize) -> bool {
-		let unit = self.data[index / u8::BITS as usize];
+		let unit = self.data.as_ref()[index / u8::BITS as usize];
 		(unit >> (index % u8::BITS as usize)) & 1 == 1
 	}
 
 	/// Sets bit `index`.
 	pub fn set(&mut self, index: usize) {
 		debug_assert!(index < self.len);
-
 		if !self.is_set(index) {
-			let unit = &mut self.data[index / u8::BITS as usize];
+			let unit = &mut self.data.as_mut()[index / u8::BITS as usize];
 			*unit |= 1 << (index % u8::BITS as usize);
 		}
 	}
@@ -86,9 +82,8 @@ impl Bitfield {
 	/// Clears bit `index`.
 	pub fn clear(&mut self, index: usize) {
 		debug_assert!(index < self.len);
-
 		if self.is_set(index) {
-			let unit = &mut self.data[index / u8::BITS as usize];
+			let unit = &mut self.data.as_mut()[index / u8::BITS as usize];
 			*unit &= !(1 << (index % u8::BITS as usize));
 		}
 	}
@@ -113,18 +108,18 @@ impl Bitfield {
 		(0..self.len).find(|i| !self.is_set(*i))
 	}
 
-	/// Clears every elements in the bitfield.
+	/// Clears every element in the bitfield.
 	pub fn clear_all(&mut self) {
-		self.data.fill(0);
+		self.data.as_mut().fill(0);
 	}
 
-	/// Clears every elements in the bitfield.
+	/// Clears every element in the bitfield.
 	pub fn set_all(&mut self) {
-		self.data.fill(!0);
+		self.data.as_mut().fill(!0);
 	}
 
 	/// Returns an immutable iterator over the bitfield.
-	pub fn iter(&self) -> BitfieldIterator {
+	pub fn iter(&self) -> BitfieldIterator<C> {
 		BitfieldIterator {
 			bitfield: self,
 			cursor: 0,
@@ -142,21 +137,20 @@ impl TryClone for Bitfield {
 }
 
 /// An immutable iterator over a bitfield.
-pub struct BitfieldIterator<'b> {
+pub struct BitfieldIterator<'b, C: AsRef<[u8]> + AsMut<[u8]>> {
 	/// The bitfield.
-	bitfield: &'b Bitfield,
+	bitfield: &'b Bitfield<C>,
 	/// The cursor of the iterator.
 	cursor: usize,
 }
 
-impl Iterator for BitfieldIterator<'_> {
+impl<C: AsRef<[u8]> + AsMut<[u8]>> Iterator for BitfieldIterator<'_, C> {
 	type Item = bool;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if self.cursor < self.bitfield.len() {
+		if likely(self.cursor < self.bitfield.len()) {
 			let val = self.bitfield.is_set(self.cursor);
 			self.cursor += 1;
-
 			Some(val)
 		} else {
 			None

@@ -23,8 +23,8 @@
 use crate::{
 	arch::core_id,
 	device::{
-		BlkDev, BlockDeviceOps, DeviceID, bar::Bar, bus::pci::PciDev, manager::PhysicalDevice,
-		register_blk,
+		BlkDev, BlockDeviceOps, DeviceID, bar::Bar, bus::pci::PciDev, id::BLOCK_EXTENDED_MAJOR,
+		manager::PhysicalDevice, register_blk,
 	},
 	int,
 	int::CallbackHook,
@@ -38,14 +38,22 @@ use crate::{
 	sync::{mutex::Mutex, semaphore::Semaphore},
 };
 use core::{
-	any::Any, array, fmt, fmt::Formatter, hint, hint::unlikely, mem::MaybeUninit, num::NonZeroU64,
+	any::Any,
+	array, fmt,
+	fmt::Formatter,
+	hint,
+	hint::unlikely,
+	mem::MaybeUninit,
+	num::NonZeroU64,
 	ptr::NonNull,
+	sync::atomic::{AtomicU32, Ordering::Relaxed},
 };
 use utils::{
 	boxed::Box,
 	collections::path::PathBuf,
 	errno,
 	errno::{AllocResult, EResult},
+	format,
 	limits::PAGE_SIZE,
 	math,
 	ptr::arc::Arc,
@@ -622,6 +630,8 @@ impl Drop for QueuePair {
 }
 
 struct ControllerInner {
+	/// Controller device ID
+	id: u32,
 	/// Base Address Register
 	bar: Bar,
 	/// Doorbell Stride
@@ -654,6 +664,41 @@ impl ControllerInner {
 		// Wait for completion
 		process::set_state(State::Sleeping);
 		schedule();
+	}
+}
+
+fn handle_int(int: u32, inner: &ControllerInner) {
+	let qp = match int {
+		ADMIN_INT => &inner.admin_qp,
+		IO_INT => todo!(),
+		_ => return,
+	};
+	let mut qp_inner = qp.inner.lock();
+	let mut any = false;
+	loop {
+		let cqe = unsafe { qp.cq.add(qp_inner.cq_head as usize).read_volatile() };
+		// Check phase bit
+		if (cqe.status & 1 != 0) != qp_inner.completion_phase {
+			break;
+		}
+		// Wake up process
+		let proc = qp_inner.waiting_processes[cqe.cid as usize].take();
+		if let Some(proc) = proc {
+			Process::wake_from(&proc, State::Sleeping as _);
+		}
+		qp_inner.cq_head = (qp_inner.cq_head + 1) % (CQ_LEN as u32);
+		if qp_inner.cq_head == 0 {
+			qp_inner.completion_phase = !qp_inner.completion_phase;
+		}
+		any = true;
+	}
+	if any {
+		unsafe {
+			inner.bar.write::<u32>(
+				queue_doorbell_off(qp.id, true, inner.dstrd),
+				qp_inner.cq_head,
+			);
+		}
 	}
 }
 
@@ -737,43 +782,17 @@ impl Controller {
 			return Err(errno!(EINVAL));
 		}
 		// Setup interrupt handler
+		static CTRLR_ID: AtomicU32 = AtomicU32::new(0);
 		let inner = Arc::new(ControllerInner {
+			id: CTRLR_ID.fetch_add(1, Relaxed),
 			bar,
 			dstrd: ((cap >> 32) & 0xf) as usize,
 			admin_qp,
 		})?;
 		let inner_ = inner.clone();
-		let int_handle = int::register_callback(ADMIN_INT, move |_int, _, _, _| {
+		let int_handle = int::register_callback(ADMIN_INT, move |int, _, _, _| {
 			let inner = inner_.clone();
-			// TODO use the interrupt ID to determine the queue
-			let qp = &inner.admin_qp;
-			let mut qp_inner = qp.inner.lock();
-			let mut any = false;
-			loop {
-				let cqe = unsafe { qp.cq.add(qp_inner.cq_head as usize).read_volatile() };
-				// Check phase bit
-				if (cqe.status & 1 != 0) != qp_inner.completion_phase {
-					break;
-				}
-				// Wake up process
-				let proc = qp_inner.waiting_processes[cqe.cid as usize].take();
-				if let Some(proc) = proc {
-					Process::wake_from(&proc, State::Sleeping as _);
-				}
-				qp_inner.cq_head = (qp_inner.cq_head + 1) % (CQ_LEN as u32);
-				if qp_inner.cq_head == 0 {
-					qp_inner.completion_phase = !qp_inner.completion_phase;
-				}
-				any = true;
-			}
-			if any {
-				unsafe {
-					inner.bar.write::<u32>(
-						queue_doorbell_off(qp.id, true, inner.dstrd),
-						qp_inner.cq_head,
-					);
-				}
-			}
+			handle_int(int, &inner);
 		})?
 		.unwrap();
 		let controller = Self {
@@ -815,8 +834,9 @@ impl Controller {
 			if i == 0 {
 				break;
 			}
-			controller.init_ns(i)?;
+			controller.init_ns(controller.inner.id, i)?;
 		}
+		// TODO create char device file for the controller
 		Ok(controller)
 	}
 
@@ -863,14 +883,14 @@ impl Controller {
 		Ok(qp)
 	}
 
-	fn init_ns(&self, id: u32) -> EResult<()> {
+	fn init_ns(&self, ctrlr_id: u32, nsid: u32) -> EResult<()> {
 		let mut ns_id: MaybeUninit<IdentifyNamespace> = MaybeUninit::uninit();
 		let dptr = VirtAddr::from(&mut ns_id).kernel_to_physical().unwrap();
 		self.inner.submit_cmd_sync(
 			&self.inner.admin_qp,
 			SubmissionQueueEntry {
 				cdw0: CMD_IDENTIFY,
-				nsid: id,
+				nsid,
 				cdw12: [0; 2],
 				mptr: [0; 2],
 				dptr: [dptr.0 as _, 0],
@@ -880,11 +900,13 @@ impl Controller {
 		let ns_id = unsafe { ns_id.assume_init() };
 		let fidxl = (ns_id.flbas & 0xf) as usize;
 		let blk_size = math::pow2(ns_id.lbaf[fidxl].lbads as u64);
-		let path = PathBuf::try_from(b"/dev/TODO")?; // TODO
+		let path = PathBuf::new_unchecked(format!("/dev/nvme{ctrlr_id}n{nsid}")?);
+		let mut major = BLOCK_EXTENDED_MAJOR.lock();
+		let minor = major.alloc_minor(None)?;
 		let blkdev = BlkDev::new(
 			DeviceID {
-				major: 259, // TODO
-				minor: 0,   // TODO
+				major: major.get_major(),
+				minor,
 			},
 			path,
 			0o660,
@@ -896,8 +918,9 @@ impl Controller {
 			})?,
 		)?;
 		register_blk(blkdev)?;
+		// TODO create partition devices here?
 		Ok(())
 	}
 }
 
-// TODO implement shutdown
+// TODO implement shutdown (delete device files)

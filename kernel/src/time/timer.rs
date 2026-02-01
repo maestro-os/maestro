@@ -198,7 +198,7 @@ impl TimerManager {
 	/// Creates a new instance.
 	pub(crate) fn new() -> AllocResult<Self> {
 		Ok(Self {
-			id_allocator: IDAllocator::new(TIMER_MAX as _)?,
+			id_allocator: IDAllocator::new_allocated(TIMER_MAX as _)?,
 			timers: HashMap::new(),
 		})
 	}

@@ -390,6 +390,7 @@ impl FileOps for BlkDevFileOps {
 
 /// Initializes devices management.
 pub(crate) fn init() -> EResult<()> {
+	id::init()?;
 	let keyboard_manager = KeyboardManager::new();
 	manager::register(keyboard_manager)?;
 	let storage_manager = StorageManager::new()?;

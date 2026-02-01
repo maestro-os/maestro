@@ -44,7 +44,7 @@ fn allocator_do<F: Fn(&mut IDAllocator) -> AllocResult<T>, T>(f: F) -> AllocResu
 	let mut allocator = ALLOCATOR.lock();
 	let allocator = match &mut *allocator {
 		Some(a) => a,
-		None => allocator.insert(IDAllocator::new(MAX_PID as _)?),
+		None => allocator.insert(IDAllocator::new_allocated(MAX_PID as _)?),
 	};
 	f(allocator)
 }
