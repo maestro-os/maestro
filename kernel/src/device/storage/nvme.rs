@@ -82,11 +82,11 @@ const FLAG_CSTS_RDY: u32 = 0b1;
 const FLAG_CSTS_CFS: u32 = 0b10;
 
 /// Admin command opcode: Create I/O Submission Queue
-const CMD_CREATE_IO_SUBMISSION_QUEUE: u32 = 0x1;
+const ADMIN_CMD_CREATE_IO_SQ: u32 = 0x1;
 /// Admin command opcode: Create I/O Completion Queue
-const CMD_CREATE_IO_COMPLETION_QUEUE: u32 = 0x5;
+const ADMIN_CMD_CREATE_IO_CQ: u32 = 0x5;
 /// Admin command opcode: Identify
-const CMD_IDENTIFY: u32 = 0x6;
+const ADMIN_CMD_IDENTIFY: u32 = 0x6;
 
 /// Controller or Namespace Structure: Namespace
 const CNS_NAMESPACE: u32 = 0;
@@ -98,9 +98,9 @@ const CNS_NAMESPACE_LIST: u32 = 2;
 const SQ_LEN: usize = (PAGE_SIZE << 2) / size_of::<SubmissionQueueEntry>();
 const CQ_LEN: usize = PAGE_SIZE / size_of::<CompletionQueueEntry>();
 
-/// Admin interrupt vector
+/// Admin queue interrupt vector
 const ADMIN_INT: u32 = 0x22;
-/// I/O interrupt vector
+/// I/O queue interrupt vector
 const IO_INT: u32 = 0x23;
 
 /// Returns the register offset for the doorbell property of the given `queue`.
@@ -110,8 +110,8 @@ const IO_INT: u32 = 0x23;
 ///   *submission* queue
 /// - `stride`: the stride defined in the controller's capabilities
 #[inline]
-fn queue_doorbell_off(queue: usize, completion: bool, stride: usize) -> usize {
-	0x1000 + (2 * queue + completion as usize) * (4 << stride)
+fn queue_doorbell_off(queue: u16, completion: bool, stride: usize) -> usize {
+	0x1000 + (2 * queue as usize + completion as usize) * (4 << stride)
 }
 
 #[repr(C)]
@@ -608,7 +608,7 @@ impl Default for QueuePairInner {
 }
 
 struct QueuePair {
-	id: usize,
+	id: u16,
 
 	/// Submission queue
 	sq: NonNull<SubmissionQueueEntry>,
@@ -621,8 +621,8 @@ struct QueuePair {
 }
 
 impl QueuePair {
-	/// Creates a new instance
-	pub fn new(id: usize) -> AllocResult<Self> {
+	/// Allocates space for a queue pair and returns the associated instance
+	pub fn new(id: u16) -> AllocResult<Self> {
 		// A SQE (64 bytes) is four times larger than a CQE (16 bytes)
 		let sq = buddy::alloc_kernel(2, 0)?;
 		let cq = buddy::alloc_kernel(0, 0)?; // TODO on failure, free previous
@@ -670,6 +670,90 @@ struct ControllerInner {
 }
 
 impl ControllerInner {
+	fn init_ns(this: &Arc<Self>, nsid: u32) -> EResult<()> {
+		let mut ns_id: MaybeUninit<IdentifyNamespace> = MaybeUninit::uninit();
+		let dptr = VirtAddr::from(&mut ns_id).kernel_to_physical().unwrap();
+		this.submit_cmd_sync(
+			&this.admin_qp,
+			SubmissionQueueEntry {
+				cdw0: ADMIN_CMD_IDENTIFY,
+				nsid,
+				cdw12: [0; 2],
+				mptr: [0; 2],
+				dptr: [dptr.0 as _, 0],
+				cdw: [CNS_NAMESPACE, 0, 0, 0, 0, 0],
+			},
+		);
+		let ns_id = unsafe { ns_id.assume_init() };
+		let fidxl = (ns_id.flbas & 0xf) as usize;
+		let blk_size = math::pow2(ns_id.lbaf[fidxl].lbads as u64);
+		let path =
+			PathBuf::new_unchecked(format!("/dev/nvme{ctrlr_id}n{nsid}", ctrlr_id = this.id)?);
+		let mut major = BLOCK_EXTENDED_MAJOR.lock();
+		let minor = major.alloc_minor(None)?;
+		let blkdev = BlkDev::new(
+			DeviceID {
+				major: major.get_major(),
+				minor,
+			},
+			path,
+			0o660,
+			Box::new(NamespaceOps {
+				ctrlr: this.clone(),
+				nsid,
+
+				blk_size: NonZeroU64::new(blk_size).unwrap(),
+				blk_count: ns_id.ncap,
+			})?,
+		)?;
+		register_blk(blkdev)?;
+		// TODO create partition devices here?
+		Ok(())
+	}
+
+	fn init_io_queue(&self, id: u16, int: u16) -> AllocResult<()> {
+		let qp = QueuePair::new(id)?;
+		let dptr = VirtAddr::from(qp.cq).kernel_to_physical().unwrap();
+		self.submit_cmd_sync(
+			&self.admin_qp,
+			SubmissionQueueEntry {
+				cdw0: ADMIN_CMD_CREATE_IO_CQ,
+				nsid: 0,
+				cdw12: [0; 2],
+				mptr: [0; 2],
+				dptr: [dptr.0 as _, 0],
+				cdw: [
+					(id as u32) | (CQ_LEN << 16) as u32,
+					0b11 | ((int as u32) << 16),
+					0,
+					0,
+					0,
+					0,
+				],
+			},
+		);
+		let dptr = VirtAddr::from(qp.sq).kernel_to_physical().unwrap();
+		self.submit_cmd_sync(
+			&self.admin_qp,
+			SubmissionQueueEntry {
+				cdw0: ADMIN_CMD_CREATE_IO_SQ,
+				nsid: 0,
+				cdw12: [0; 2],
+				mptr: [0; 2],
+				dptr: [dptr.0 as _, 0],
+				cdw: [
+					(id as u32) | (SQ_LEN << 16) as u32,
+					0o1 | ((id as u32) << 16),
+					0,
+					0,
+					0,
+					0,
+				],
+			},
+		);
+		self.queues.write().push(qp)
+	}
+
 	/// Submits a command, returning when completed
 	fn submit_cmd_sync(&self, qp: &QueuePair, mut cmd: SubmissionQueueEntry) {
 		// Wait for space in the submission queue
@@ -738,7 +822,9 @@ fn handle_int(int: u32, inner: &ControllerInner) {
 /// A NVMe controller.
 pub struct Controller {
 	inner: Arc<ControllerInner>,
-	int_handle: CallbackHook,
+
+	admin_int: CallbackHook,
+	io_int: CallbackHook,
 }
 
 impl Controller {
@@ -776,6 +862,9 @@ impl Controller {
 		if let Some(msi_x) = msi_x {
 			msi_x
 				.set(0, core_id() as _, true, false, ADMIN_INT)
+				.inspect_err(|_| println!("nvme: failed to initialize MSI-x"))?;
+			msi_x
+				.set(1, core_id() as _, true, false, IO_INT)
 				.inspect_err(|_| println!("nvme: failed to initialize MSI-x"))?;
 			println!("nvme: using MSI-X");
 		} else {
@@ -824,22 +913,24 @@ impl Controller {
 			queues: RwLock::new(Vec::new()),
 		})?;
 		let inner_ = inner.clone();
-		let int_handle = int::register_callback(ADMIN_INT, move |int, _, _, _| {
+		let admin_int = int::register_callback(ADMIN_INT, move |int, _, _, _| {
 			let inner = inner_.clone();
 			handle_int(int, &inner);
 		})?
 		.unwrap();
-		let controller = Self {
-			inner,
-			int_handle,
-		};
+		let inner_ = inner.clone();
+		let io_int = int::register_callback(IO_INT, move |int, _, _, _| {
+			let inner = inner_.clone();
+			handle_int(int, &inner);
+		})?
+		.unwrap();
 		// Identify controller
 		let mut data: MaybeUninit<IdentifyController> = MaybeUninit::uninit();
 		let dptr = VirtAddr::from(&mut data).kernel_to_physical().unwrap();
-		controller.inner.submit_cmd_sync(
-			&controller.inner.admin_qp,
+		inner.submit_cmd_sync(
+			&inner.admin_qp,
 			SubmissionQueueEntry {
-				cdw0: CMD_IDENTIFY,
+				cdw0: ADMIN_CMD_IDENTIFY,
 				nsid: 0,
 				cdw12: [0; 2],
 				mptr: [0; 2],
@@ -850,10 +941,10 @@ impl Controller {
 		// List namespaces
 		let mut ns_ids: MaybeUninit<[u32; 1024]> = MaybeUninit::uninit();
 		let dptr = VirtAddr::from(&mut ns_ids).kernel_to_physical().unwrap();
-		controller.inner.submit_cmd_sync(
-			&controller.inner.admin_qp,
+		inner.submit_cmd_sync(
+			&inner.admin_qp,
 			SubmissionQueueEntry {
-				cdw0: CMD_IDENTIFY,
+				cdw0: ADMIN_CMD_IDENTIFY,
 				nsid: 0,
 				cdw12: [0; 2],
 				mptr: [0; 2],
@@ -861,100 +952,21 @@ impl Controller {
 				cdw: [CNS_NAMESPACE_LIST, 0, 0, 0, 0, 0],
 			},
 		);
-		let io_queue = controller.init_io_queue(1, IO_INT as _)?;
-		controller.inner.queues.write().push(io_queue)?;
+		let controller = Self {
+			inner,
+			admin_int,
+			io_int,
+		};
+		controller.inner.init_io_queue(1, IO_INT as _)?;
 		let ns_ids = unsafe { ns_ids.assume_init() };
 		for i in ns_ids {
 			if i == 0 {
 				break;
 			}
-			controller.init_ns(controller.inner.id, i)?;
+			ControllerInner::init_ns(&controller.inner, i)?;
 		}
 		// TODO create char device file for the controller
 		Ok(controller)
-	}
-
-	fn init_io_queue(&self, id: u16, int: u16) -> AllocResult<QueuePair> {
-		let qp = QueuePair::new(1)?;
-		let dptr = VirtAddr::from(qp.cq).kernel_to_physical().unwrap();
-		self.inner.submit_cmd_sync(
-			&self.inner.admin_qp,
-			SubmissionQueueEntry {
-				cdw0: CMD_CREATE_IO_COMPLETION_QUEUE,
-				nsid: 0,
-				cdw12: [0; 2],
-				mptr: [0; 2],
-				dptr: [dptr.0 as _, 0],
-				cdw: [
-					(id as u32) | (CQ_LEN << 16) as u32,
-					0b11 | ((int as u32) << 16),
-					0,
-					0,
-					0,
-					0,
-				],
-			},
-		);
-		let dptr = VirtAddr::from(qp.sq).kernel_to_physical().unwrap();
-		self.inner.submit_cmd_sync(
-			&self.inner.admin_qp,
-			SubmissionQueueEntry {
-				cdw0: CMD_CREATE_IO_SUBMISSION_QUEUE,
-				nsid: 0,
-				cdw12: [0; 2],
-				mptr: [0; 2],
-				dptr: [dptr.0 as _, 0],
-				cdw: [
-					(id as u32) | (SQ_LEN << 16) as u32,
-					0o1 | ((id as u32) << 16),
-					0,
-					0,
-					0,
-					0,
-				],
-			},
-		);
-		Ok(qp)
-	}
-
-	fn init_ns(&self, ctrlr_id: u32, nsid: u32) -> EResult<()> {
-		let mut ns_id: MaybeUninit<IdentifyNamespace> = MaybeUninit::uninit();
-		let dptr = VirtAddr::from(&mut ns_id).kernel_to_physical().unwrap();
-		self.inner.submit_cmd_sync(
-			&self.inner.admin_qp,
-			SubmissionQueueEntry {
-				cdw0: CMD_IDENTIFY,
-				nsid,
-				cdw12: [0; 2],
-				mptr: [0; 2],
-				dptr: [dptr.0 as _, 0],
-				cdw: [CNS_NAMESPACE, 0, 0, 0, 0, 0],
-			},
-		);
-		let ns_id = unsafe { ns_id.assume_init() };
-		let fidxl = (ns_id.flbas & 0xf) as usize;
-		let blk_size = math::pow2(ns_id.lbaf[fidxl].lbads as u64);
-		let path = PathBuf::new_unchecked(format!("/dev/nvme{ctrlr_id}n{nsid}")?);
-		let mut major = BLOCK_EXTENDED_MAJOR.lock();
-		let minor = major.alloc_minor(None)?;
-		let blkdev = BlkDev::new(
-			DeviceID {
-				major: major.get_major(),
-				minor,
-			},
-			path,
-			0o660,
-			Box::new(NamespaceOps {
-				ctrlr: self.inner.clone(),
-				nsid,
-
-				blk_size: NonZeroU64::new(blk_size).unwrap(),
-				blk_count: ns_id.ncap,
-			})?,
-		)?;
-		register_blk(blkdev)?;
-		// TODO create partition devices here?
-		Ok(())
 	}
 }
 
