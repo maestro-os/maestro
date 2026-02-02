@@ -35,7 +35,7 @@ use crate::{
 	},
 	println, process,
 	process::{Process, State, scheduler::schedule},
-	sync::{mutex::Mutex, semaphore::Semaphore},
+	sync::{mutex::Mutex, rwlock::RwLock, semaphore::Semaphore},
 };
 use core::{
 	any::Any,
@@ -50,7 +50,7 @@ use core::{
 };
 use utils::{
 	boxed::Box,
-	collections::path::PathBuf,
+	collections::{path::PathBuf, vec::Vec},
 	errno,
 	errno::{AllocResult, EResult},
 	format,
@@ -524,6 +524,7 @@ fn wait_rdy(bar: &Bar, r: bool) {
 
 struct NamespaceOps {
 	ctrlr: Arc<ControllerInner>,
+	nsid: u32,
 
 	blk_size: NonZeroU64,
 	blk_count: u64,
@@ -540,11 +541,37 @@ impl BlockDeviceOps for NamespaceOps {
 
 	fn read_frame(&self, off: u64, order: FrameOrder, owner: FrameOwner) -> EResult<RcFrame> {
 		let frame = RcFrame::new(order, ZONE_KERNEL, owner, off)?;
-		todo!()
+		let qp = &self.ctrlr.queues.read()[0];
+		self.ctrlr.submit_cmd_sync(
+			qp,
+			SubmissionQueueEntry {
+				cdw0: 0,
+				nsid: 0,
+				cdw12: [0, 0],
+				mptr: [0, 0],
+				dptr: [0, 0],
+				cdw: [0, 0, 0, 0, 0, 0],
+			},
+		);
+		// TODO handle error
+		Ok(frame)
 	}
 
 	fn write_pages(&self, off: u64, buf: &[u8]) -> EResult<()> {
-		todo!()
+		let qp = &self.ctrlr.queues.read()[0];
+		self.ctrlr.submit_cmd_sync(
+			qp,
+			SubmissionQueueEntry {
+				cdw0: 0,
+				nsid: 0,
+				cdw12: [0, 0],
+				mptr: [0, 0],
+				dptr: [0, 0],
+				cdw: [0, 0, 0, 0, 0, 0],
+			},
+		);
+		// TODO handle error
+		Ok(())
 	}
 }
 
@@ -636,7 +663,10 @@ struct ControllerInner {
 	bar: Bar,
 	/// Doorbell Stride
 	dstrd: usize,
+
 	admin_qp: QueuePair,
+	/// I/O queues list
+	queues: RwLock<Vec<QueuePair>>,
 }
 
 impl ControllerInner {
@@ -670,7 +700,10 @@ impl ControllerInner {
 fn handle_int(int: u32, inner: &ControllerInner) {
 	let qp = match int {
 		ADMIN_INT => &inner.admin_qp,
-		IO_INT => todo!(),
+		IO_INT => {
+			let i = int - IO_INT;
+			&inner.queues.read()[i as usize]
+		}
 		_ => return,
 	};
 	let mut qp_inner = qp.inner.lock();
@@ -788,6 +821,7 @@ impl Controller {
 			bar,
 			dstrd: ((cap >> 32) & 0xf) as usize,
 			admin_qp,
+			queues: RwLock::new(Vec::new()),
 		})?;
 		let inner_ = inner.clone();
 		let int_handle = int::register_callback(ADMIN_INT, move |int, _, _, _| {
@@ -828,7 +862,7 @@ impl Controller {
 			},
 		);
 		let io_queue = controller.init_io_queue(1, IO_INT as _)?;
-		// TODO find a way to put `io_queue` in `controller.inner`?
+		controller.inner.queues.write().push(io_queue)?;
 		let ns_ids = unsafe { ns_ids.assume_init() };
 		for i in ns_ids {
 			if i == 0 {
@@ -912,6 +946,7 @@ impl Controller {
 			0o660,
 			Box::new(NamespaceOps {
 				ctrlr: self.inner.clone(),
+				nsid,
 
 				blk_size: NonZeroU64::new(blk_size).unwrap(),
 				blk_count: ns_id.ncap,
