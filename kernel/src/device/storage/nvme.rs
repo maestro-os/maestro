@@ -88,6 +88,11 @@ const ADMIN_CMD_CREATE_IO_CQ: u32 = 0x5;
 /// Admin command opcode: Identify
 const ADMIN_CMD_IDENTIFY: u32 = 0x6;
 
+/// Command opcode: Write
+const CMD_WRITE: u32 = 0x1;
+/// Command opcode: Read
+const CMD_READ: u32 = 0x2;
+
 /// Controller or Namespace Structure: Namespace
 const CNS_NAMESPACE: u32 = 0;
 /// Controller or Namespace Structure: Controller
@@ -542,15 +547,17 @@ impl BlockDeviceOps for NamespaceOps {
 	fn read_frame(&self, off: u64, order: FrameOrder, owner: FrameOwner) -> EResult<RcFrame> {
 		let frame = RcFrame::new(order, ZONE_KERNEL, owner, off)?;
 		let qp = &self.ctrlr.queues.read()[0];
+		let lba = (off * PAGE_SIZE as u64) / self.blk_size.get();
+		let blocks = (frame.len() as u64) / self.blk_size.get();
 		self.ctrlr.submit_cmd_sync(
 			qp,
 			SubmissionQueueEntry {
-				cdw0: 0,
-				nsid: 0,
+				cdw0: CMD_READ,
+				nsid: self.nsid,
 				cdw12: [0, 0],
 				mptr: [0, 0],
-				dptr: [0, 0],
-				cdw: [0, 0, 0, 0, 0, 0],
+				dptr: [frame.phys_addr().0 as _, 0],
+				cdw: [lba as u32, (lba >> 32) as u32, blocks as _, 0, 0, 0],
 			},
 		);
 		// TODO handle error
@@ -558,16 +565,19 @@ impl BlockDeviceOps for NamespaceOps {
 	}
 
 	fn write_pages(&self, off: u64, buf: &[u8]) -> EResult<()> {
+		let phys_addr = VirtAddr::from(buf.as_ptr()).kernel_to_physical().unwrap();
+		let lba = (off * PAGE_SIZE as u64) / self.blk_size.get();
+		let blocks = buf.len() as u64 / self.blk_size.get();
 		let qp = &self.ctrlr.queues.read()[0];
 		self.ctrlr.submit_cmd_sync(
 			qp,
 			SubmissionQueueEntry {
-				cdw0: 0,
-				nsid: 0,
+				cdw0: CMD_WRITE,
+				nsid: self.nsid,
 				cdw12: [0, 0],
 				mptr: [0, 0],
-				dptr: [0, 0],
-				cdw: [0, 0, 0, 0, 0, 0],
+				dptr: [phys_addr.0 as _, 0],
+				cdw: [lba as u32, (lba >> 32) as u32, blocks as _, 0, 0, 0],
 			},
 		);
 		// TODO handle error
@@ -782,11 +792,16 @@ impl ControllerInner {
 }
 
 fn handle_int(int: u32, inner: &ControllerInner) {
+	let queues;
 	let qp = match int {
 		ADMIN_INT => &inner.admin_qp,
-		IO_INT => {
+		IO_INT.. => {
 			let i = int - IO_INT;
-			&inner.queues.read()[i as usize]
+			queues = inner.queues.read();
+			let Some(qp) = queues.get(i as usize) else {
+				return;
+			};
+			qp
 		}
 		_ => return,
 	};
