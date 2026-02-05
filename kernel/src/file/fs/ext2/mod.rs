@@ -437,15 +437,20 @@ impl NodeOps for Ext2NodeOps {
 			let blk_off = inode
 				.translate_blk_off(off, fs)?
 				.ok_or_else(|| errno!(EOVERFLOW))?;
-			fs.dev
-				.ops
-				.read_frame(blk_off.get() as _, 0, FrameOwner::Node(node.clone()))
+			fs.dev.ops.read_frame(
+				&fs.dev,
+				blk_off.get() as _,
+				0,
+				FrameOwner::Node(node.clone()),
+			)
 		})
 	}
 
 	fn write_frame(&self, node: &Node, frame: &RcFrame) -> EResult<()> {
 		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		fs.dev.ops.write_pages(frame.dev_offset(), frame.slice())
+		fs.dev
+			.ops
+			.write_pages(&fs.dev, frame.dev_offset(), frame.slice())
 	}
 
 	fn set_stat(&self, node: &Node, stat: &Stat) -> EResult<()> {

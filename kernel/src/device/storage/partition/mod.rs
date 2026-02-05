@@ -22,7 +22,13 @@
 mod gpt;
 mod mbr;
 
-use crate::device::BlkDev;
+use crate::{
+	device,
+	device::{
+		BLK_DEVICES, BlkDev,
+		storage::{STORAGE_MODE, partition},
+	},
+};
 use gpt::Gpt;
 use mbr::MbrTable;
 use utils::{boxed::Box, collections::vec::Vec, errno::EResult, ptr::arc::Arc};
@@ -68,4 +74,43 @@ pub fn read(dev: &Arc<BlkDev>) -> EResult<Option<Box<dyn Table>>> {
 		return Ok(Some(Box::new(table)?));
 	}
 	Ok(None)
+}
+
+/// Clears partition devices
+fn clear_partitions(partitions: &mut Vec<Arc<BlkDev>>) -> EResult<()> {
+	let mut blk_devices = BLK_DEVICES.lock();
+	for p in partitions.iter_mut() {
+		let dev = blk_devices.remove(&p.id);
+		if let Some(dev) = dev {
+			let _ = dev.remove_file();
+			dev.ops.drop_partition(&dev);
+		}
+	}
+	partitions.clear();
+	Ok(())
+}
+
+/// Creates device files for every partitions on the storage device `dev`.
+///
+/// All preexisting partition devices for this device are cleared.
+pub fn read_partitions(dev: &Arc<BlkDev>) -> EResult<()> {
+	if dev.is_partition {
+		return Ok(());
+	}
+	let mut dev_parts = dev.partitions.lock();
+	clear_partitions(&mut dev_parts)?;
+	let Some(parts) = partition::read(dev)? else {
+		return Ok(());
+	};
+	let parts = parts.read_partitions(dev)?;
+	// TODO When failing, remove previously registered devices
+	for (i, partition) in parts.into_iter().enumerate() {
+		let part_nbr = (i + 1) as u32;
+		let (id, path) = dev.ops.new_partition(dev, part_nbr)?;
+		// Create the partition's device file
+		let part_dev = BlkDev::new_partition(id, path, STORAGE_MODE, dev.clone(), partition)?;
+		dev_parts.push(part_dev.clone())?;
+		device::register_blk(part_dev)?;
+	}
+	Ok(())
 }

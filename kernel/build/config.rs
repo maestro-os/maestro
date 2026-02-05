@@ -92,12 +92,6 @@ macro_rules! generate_const_file {
 /// The debug section of the configuration file.
 #[derive(Deserialize)]
 struct ConfigDebug {
-	/// If enabled, the kernel tests storage.
-	///
-	/// **Warning**: this option is destructive for any data present on disks connected to the
-	/// host.
-	storage_test: bool,
-
 	/// If enabled, the kernel is compiled for QEMU. This feature is not *required* for QEMU but
 	/// it can provide additional features.
 	qemu: bool,
@@ -156,7 +150,6 @@ impl Config {
 	/// Sets the crate's cfg flags and generates the const files according to the configuration.
 	pub fn set_cfg(&self, debug: bool) {
 		if debug {
-			generate_cfg_flag!(self.debug.storage_test);
 			generate_cfg_flag!(self.debug.qemu);
 			generate_cfg_flag!(self.debug.malloc_magic);
 			generate_cfg_flag!(self.debug.malloc_check);

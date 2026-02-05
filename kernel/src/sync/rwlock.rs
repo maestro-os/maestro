@@ -26,6 +26,8 @@ use crate::arch::{
 };
 use core::{
 	cell::UnsafeCell,
+	fmt,
+	fmt::Formatter,
 	hint,
 	ops::{Deref, DerefMut},
 	ptr::NonNull,
@@ -260,6 +262,13 @@ impl<T: ?Sized, const INT: u8> RwLock<T, INT> {
 unsafe impl<T: ?Sized, const INT: u8> Send for RwLock<T, INT> {}
 
 unsafe impl<T: ?Sized, const INT: u8> Sync for RwLock<T, INT> {}
+
+impl<T: ?Sized + fmt::Debug, const INT: u8> fmt::Debug for RwLock<T, INT> {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		let guard = self.read();
+		fmt::Debug::fmt(&*guard, f)
+	}
+}
 
 /// Guard of [`RwLock`] reader.
 pub struct ReadGuard<'a, T: ?Sized, const INT: u8> {

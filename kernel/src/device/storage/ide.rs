@@ -20,11 +20,18 @@
 //! storage drives.
 
 use crate::device::{
-	BlockDeviceOps,
+	BlkDev, DeviceID,
 	bar::Bar,
-	storage::{PhysicalDevice, pata::PATAInterface},
+	register_blk,
+	storage::{
+		PhysicalDevice, SCSI_MAJOR, STORAGE_MODE, partition::read_partitions, pata::PATAInterface,
+	},
 };
-use utils::{boxed::Box, errno::AllocResult};
+use core::{
+	num::NonZeroU64,
+	sync::atomic::{AtomicU32, Ordering::Relaxed},
+};
+use utils::{boxed::Box, collections::path::PathBuf, errno::EResult, format};
 
 /// The beginning of the port range for the primary ATA bus (compatibility
 /// mode).
@@ -92,18 +99,16 @@ impl Channel {
 pub struct Controller {
 	/// Programming Interface Byte
 	prog_if: u8,
-
-	/// IDE controller's BARs.
+	/// IDE controller's BARs
 	bars: [Option<Bar>; 5],
 }
 
 impl Controller {
 	/// Creates a new instance.
-	pub fn new(dev: &dyn PhysicalDevice) -> Self {
+	pub fn new(dev: &dyn PhysicalDevice) -> EResult<Self> {
 		let bars = dev.get_bars();
-		Self {
+		let ctrlr = Self {
 			prog_if: dev.get_prog_if(),
-
 			bars: [
 				bars[0].clone(),
 				bars[1].clone(),
@@ -111,7 +116,56 @@ impl Controller {
 				bars[3].clone(),
 				bars[4].clone(),
 			],
+		};
+		for i in 0..4 {
+			let secondary = (i & 0b10) != 0;
+			let slave = (i & 0b01) != 0;
+			let pci_mode = (!secondary && ctrlr.is_primary_pci_mode())
+				|| (secondary && ctrlr.is_secondary_pci_mode());
+			let channel = if pci_mode {
+				if !secondary {
+					// Primary channel
+					Channel {
+						ata_bar: ctrlr.bars[0].clone().unwrap(),
+						control_bar: ctrlr.bars[1].clone().unwrap(),
+					}
+				} else {
+					// Secondary channel
+					Channel {
+						ata_bar: ctrlr.bars[2].clone().unwrap(),
+						control_bar: ctrlr.bars[3].clone().unwrap(),
+					}
+				}
+			} else {
+				// Compatibility mode
+				Channel::new_compatibility(secondary)
+			};
+			// Assign disk ID
+			static ID: AtomicU32 = AtomicU32::new(0);
+			let scsi_id = ID.fetch_add(1, Relaxed);
+			let Some(interface) = PATAInterface::new(scsi_id, channel, slave) else {
+				continue;
+			};
+			// Prefix is the path of the main device file
+			// TODO Handle if out of the alphabet
+			let letter = (b'a' + scsi_id as u8) as char;
+			let path = PathBuf::new_unchecked(format!("/dev/sd{letter}")?);
+			// Register devices
+			let dev = BlkDev::new(
+				DeviceID {
+					major: SCSI_MAJOR,
+					minor: scsi_id * 16,
+				},
+				path,
+				STORAGE_MODE,
+				NonZeroU64::new(512).unwrap(),
+				interface.sectors_count,
+				Box::new(interface)?,
+			)?;
+			register_blk(dev.clone())?;
+			read_partitions(&dev)?;
 		}
+		Ok(ctrlr)
 	}
 
 	/// Tells whether the primary bus of the controller is in PCI mode.
@@ -130,43 +184,5 @@ impl Controller {
 	#[inline(always)]
 	pub fn is_dma(&self) -> bool {
 		self.prog_if & 0b10000000 != 0
-	}
-
-	/// Detects all disks on the controller. For each disk, the function calls
-	/// the given closure `f`.
-	///
-	/// If an error is returned from a call to the closure, the function returns
-	/// with the same error.
-	pub(super) fn detect(
-		&self,
-	) -> impl '_ + Iterator<Item = AllocResult<Box<dyn BlockDeviceOps>>> {
-		(0..4)
-			.map(|i| {
-				let secondary = (i & 0b10) != 0;
-				let slave = (i & 0b01) != 0;
-				let pci_mode = (!secondary && self.is_primary_pci_mode())
-					|| (secondary && self.is_secondary_pci_mode());
-				if !pci_mode {
-					// Compatibility mode
-					return (Channel::new_compatibility(secondary), slave);
-				}
-				let channel = if !secondary {
-					// Primary channel
-					Channel {
-						ata_bar: self.bars[0].clone().unwrap(),
-						control_bar: self.bars[1].clone().unwrap(),
-					}
-				} else {
-					// Secondary channel
-					Channel {
-						ata_bar: self.bars[2].clone().unwrap(),
-						control_bar: self.bars[3].clone().unwrap(),
-					}
-				};
-				(channel, slave)
-			})
-			// TODO log errors?
-			.filter_map(|(channel, slave)| PATAInterface::new(channel, slave).ok())
-			.map(|i| Box::new(i).map(|a| a as Box<dyn BlockDeviceOps>))
 	}
 }

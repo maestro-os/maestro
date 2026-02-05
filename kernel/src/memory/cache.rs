@@ -276,7 +276,9 @@ impl RcFrame {
 			// Write page
 			match &self.0.owner {
 				FrameOwner::Anon => {}
-				FrameOwner::BlkDev(blk) => blk.ops.write_pages(self.dev_offset(), self.slice())?,
+				FrameOwner::BlkDev(dev) => {
+					dev.ops.write_pages(dev, self.dev_offset(), self.slice())?
+				}
 				FrameOwner::Node(node) => node.node_ops.write_frame(node, self)?,
 			}
 			// Update write timestamp

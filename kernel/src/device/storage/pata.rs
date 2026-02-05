@@ -31,15 +31,27 @@
 
 use crate::{
 	arch::x86::io::inb,
-	device::{BlockDeviceOps, storage::ide},
+	device::{
+		BlkDev, BlockDeviceOps, DeviceID,
+		id::{BLOCK_EXTENDED_MAJOR, BLOCK_EXTENDED_MAJOR_HANDLE},
+		storage::{SCSI_MAJOR, ide},
+	},
 	memory::{
 		buddy::{FrameOrder, ZONE_KERNEL},
 		cache::{FrameOwner, RcFrame},
 	},
+	println,
 	sync::mutex::Mutex,
 };
-use core::{hint::unlikely, num::NonZeroU64};
-use utils::{bytes::slice_from_bytes, errno, errno::EResult, limits::PAGE_SIZE};
+use core::hint::unlikely;
+use utils::{
+	bytes::slice_from_bytes,
+	collections::path::PathBuf,
+	errno,
+	errno::{AllocResult, EResult},
+	format,
+	limits::PAGE_SIZE,
+};
 
 /// Offset to the data register
 const REG_DATA: usize = 0;
@@ -112,17 +124,20 @@ fn delay(n: u32) {
 /// A PATA interface with a unique disk.
 #[derive(Debug)]
 pub struct PATAInterface {
-	/// The channel on which the disk is located.
+	/// ID of the storage medium
+	scsi_id: u32,
+
+	/// The channel on which the disk is located
 	channel: ide::Channel,
-	/// Tells whether the disk is slave or master.
+	/// Tells whether the disk is slave or master
 	slave: bool,
 
-	/// Tells whether the drive supports LBA48.
+	/// Tells whether the drive supports LBA48
 	lba48: bool,
 	/// The number of sectors on the disk.
-	sectors_count: u64,
+	pub sectors_count: u64,
 
-	/// Spinlock preventing data race on read/write operations.
+	/// Spinlock preventing data race on read/write operations
 	lock: Mutex<(), false>,
 }
 
@@ -132,10 +147,13 @@ impl PATAInterface {
 	/// On error, the function returns a string telling the cause.
 	///
 	/// Arguments:
+	/// - `scsi_id` is the ID of the storage medium
 	/// - `channel` is the IDE channel of the disk.
 	/// - `slave` tells whether the disk is the slave disk.
-	pub fn new(channel: ide::Channel, slave: bool) -> Result<Self, &'static str> {
+	pub fn new(scsi_id: u32, channel: ide::Channel, slave: bool) -> Option<Self> {
 		let mut s = Self {
+			scsi_id,
+
 			channel,
 			slave,
 
@@ -144,8 +162,7 @@ impl PATAInterface {
 
 			lock: Default::default(),
 		};
-		s.identify()?;
-		Ok(s)
+		s.identify().then_some(s)
 	}
 
 	/// Returns the content of the error register.
@@ -239,13 +256,14 @@ impl PATAInterface {
 
 	/// Identifies the drive, retrieving information about the drive.
 	///
-	/// On error, the function returns a string telling the cause.
-	fn identify(&mut self) -> Result<(), &'static str> {
+	/// On failure, the function returns `false`.
+	fn identify(&mut self) -> bool {
 		self.reset();
 		self.select(true);
 
 		if self.is_floating() {
-			return Err("Drive doesn't exist");
+			println!("IDE: drive does not exist");
+			return false;
 		}
 
 		unsafe {
@@ -261,7 +279,8 @@ impl PATAInterface {
 
 		let status = self.get_status();
 		if status == 0 {
-			return Err("Drive doesn't exist");
+			println!("IDE: drive does not exist");
+			return false;
 		}
 		self.wait_busy();
 
@@ -272,13 +291,15 @@ impl PATAInterface {
 			lba_hi = self.channel.ata_bar.read(REG_LBA_HI);
 		}
 		if lba_mid != 0 || lba_hi != 0 {
-			return Err("Unknown device");
+			println!("IDE: unknown device");
+			return false;
 		}
 
 		loop {
 			let status = self.get_status();
 			if status & STATUS_ERR != 0 {
-				return Err("Error while identifying the device");
+				println!("IDE: error while identifying device");
+				return false;
 			}
 			if status & STATUS_DRQ != 0 {
 				break;
@@ -300,7 +321,8 @@ impl PATAInterface {
 			| ((data[102] as u64) << 32)
 			| ((data[103] as u64) << 48);
 		if lba28_size == 0 {
-			return Err("Unsupported disk (too old)");
+			println!("IDE: unsupported disk (too old)");
+			return false;
 		}
 		self.lba48 = lba48_support;
 		self.sectors_count = if lba48_support {
@@ -308,9 +330,7 @@ impl PATAInterface {
 		} else {
 			lba28_size as _
 		};
-
-		delay(420);
-		Ok(())
+		true
 	}
 
 	/// Prepare for an I/O operation.
@@ -382,15 +402,36 @@ impl PATAInterface {
 }
 
 impl BlockDeviceOps for PATAInterface {
-	fn block_size(&self) -> NonZeroU64 {
-		SECTOR_SIZE.try_into().unwrap()
+	fn new_partition(&self, _dev: &BlkDev, id: u32) -> AllocResult<(DeviceID, PathBuf)> {
+		let device_id = if id < 16 {
+			DeviceID {
+				major: SCSI_MAJOR,
+				minor: self.scsi_id * 16 + id,
+			}
+		} else {
+			DeviceID {
+				major: BLOCK_EXTENDED_MAJOR,
+				minor: BLOCK_EXTENDED_MAJOR_HANDLE.lock().alloc_minor(None)?,
+			}
+		};
+		let letter = (b'a' + self.scsi_id as u8) as char;
+		let path = PathBuf::new_unchecked(format!("/dev/sd{letter}{id}")?);
+		Ok((device_id, path))
 	}
 
-	fn blocks_count(&self) -> u64 {
-		self.sectors_count
+	fn drop_partition(&self, dev: &BlkDev) {
+		if dev.id.major == BLOCK_EXTENDED_MAJOR {
+			BLOCK_EXTENDED_MAJOR_HANDLE.lock().free_minor(dev.id.minor);
+		}
 	}
 
-	fn read_frame(&self, off: u64, order: FrameOrder, owner: FrameOwner) -> EResult<RcFrame> {
+	fn read_frame(
+		&self,
+		dev: &BlkDev,
+		off: u64,
+		order: FrameOrder,
+		owner: FrameOwner,
+	) -> EResult<RcFrame> {
 		let frame = RcFrame::new(order, ZONE_KERNEL, owner, off)?;
 		let off = off
 			.checked_mul(SECTOR_PER_PAGE)
@@ -398,7 +439,7 @@ impl BlockDeviceOps for PATAInterface {
 		let size = frame.pages_count() as u64 * SECTOR_PER_PAGE;
 		// If the offset and size are out of bounds of the disk, return an error
 		let end = off.checked_add(size).ok_or_else(|| errno!(EOVERFLOW))?;
-		if end > self.sectors_count {
+		if unlikely(end > dev.blk_count) {
 			return Err(errno!(EOVERFLOW));
 		}
 		// Avoid data race
@@ -428,7 +469,7 @@ impl BlockDeviceOps for PATAInterface {
 		Ok(frame)
 	}
 
-	fn write_pages(&self, off: u64, buf: &[u8]) -> EResult<()> {
+	fn write_pages(&self, dev: &BlkDev, off: u64, buf: &[u8]) -> EResult<()> {
 		if unlikely(buf.len() % PAGE_SIZE != 0) {
 			return Err(errno!(EINVAL));
 		}
@@ -438,7 +479,7 @@ impl BlockDeviceOps for PATAInterface {
 		let size = buf.len() as u64 / SECTOR_SIZE;
 		// If the offset and size are out of bounds of the disk, return an error
 		let end = off.checked_add(size).ok_or_else(|| errno!(EOVERFLOW))?;
-		if end > self.sectors_count {
+		if unlikely(end > dev.blk_count) {
 			return Err(errno!(EOVERFLOW));
 		}
 		// Avoid data race

@@ -184,13 +184,12 @@ impl Gpt {
 	///
 	/// If the header is invalid, the function returns an error.
 	fn read_hdr(dev: &Arc<BlkDev>, lba: i64) -> EResult<Self> {
-		let block_size = dev.ops.block_size().get() as _;
+		let block_size = dev.blk_size.get() as _;
 		if unlikely(size_of::<Gpt>() > block_size) {
 			return Err(errno!(EINVAL));
 		}
 		// Read the first block
-		let blocks_count = dev.ops.blocks_count();
-		let lba = translate_lba(lba, blocks_count).ok_or_else(|| errno!(EINVAL))?;
+		let lba = translate_lba(lba, dev.blk_count).ok_or_else(|| errno!(EINVAL))?;
 		let page = BlkDev::read_frame(dev, lba, 0, FrameOwner::BlkDev(dev.clone()))?;
 		let gpt_hdr = &page.slice::<Self>()[0];
 		if unlikely(!gpt_hdr.is_valid()) {
@@ -230,8 +229,8 @@ impl Gpt {
 	///
 	/// `dev` is the block device
 	fn get_entries(&self, dev: &Arc<BlkDev>) -> EResult<Vec<GPTEntry>> {
-		let block_size = dev.ops.block_size().get();
-		let blocks_count = dev.ops.blocks_count();
+		let block_size = dev.blk_size.get();
+		let blocks_count = dev.blk_count;
 		let entries_start =
 			translate_lba(self.entries_start, blocks_count).ok_or_else(|| errno!(EINVAL))?;
 		let entries = (0..self.entries_number)
@@ -280,7 +279,7 @@ impl Table for Gpt {
 		let main_entries = main_hdr.get_entries(dev)?;
 		let alternate_entries = alternate_hdr.get_entries(dev)?;
 		// Check entries correctness
-		let blocks_count = dev.ops.blocks_count();
+		let blocks_count = dev.blk_count;
 		for (main_entry, alternate_entry) in main_entries.iter().zip(alternate_entries.iter()) {
 			if !main_entry.eq(alternate_entry, main_hdr.entry_size as _, blocks_count) {
 				return Err(errno!(EINVAL));
@@ -294,7 +293,7 @@ impl Table for Gpt {
 	}
 
 	fn read_partitions(&self, dev: &Arc<BlkDev>) -> EResult<Vec<Partition>> {
-		let blocks_count = dev.ops.blocks_count();
+		let blocks_count = dev.blk_count;
 		let mut partitions = Vec::new();
 		for e in self.get_entries(dev)? {
 			let start = translate_lba(e.start, blocks_count).ok_or_else(|| errno!(EINVAL))?;

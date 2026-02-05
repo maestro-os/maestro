@@ -42,14 +42,21 @@ pub const fn makedev(major: u32, minor: u32) -> u64 {
 		| (((major & !0xfff) as u64) << 32)) as _
 }
 
+/// Minimal dynamically allocatable major number
+pub const DYN_MAJOR_MIN: u32 = 234;
+/// Maximal dynamically allocatable major number
+pub const DYN_MAJOR_MAX: u32 = 255;
+
+const DYN_MAJOR_CNT: usize = (DYN_MAJOR_MAX - DYN_MAJOR_MIN + 1) as usize;
+
 /// Major numbers allocator
-static BLOCK_MAJOR_ALLOCATOR: Spin<IDAllocator<[u8; 512 / 8]>> =
+static BLOCK_MAJOR_ALLOCATOR: Spin<IDAllocator<[u8; DYN_MAJOR_CNT / 8]>> =
 	Spin::new(IDAllocator::new_inplace());
 /// Major numbers allocator
-static CHAR_MAJOR_ALLOCATOR: Spin<IDAllocator<[u8; 512 / 8]>> =
+static CHAR_MAJOR_ALLOCATOR: Spin<IDAllocator<[u8; DYN_MAJOR_CNT / 8]>> =
 	Spin::new(IDAllocator::new_inplace());
 
-fn get_allocator(device_type: DeviceType) -> &'static Spin<IDAllocator<[u8; 512 / 8]>> {
+fn get_allocator(device_type: DeviceType) -> &'static Spin<IDAllocator<[u8; DYN_MAJOR_CNT / 8]>> {
 	match device_type {
 		DeviceType::Block => &BLOCK_MAJOR_ALLOCATOR,
 		DeviceType::Char => &CHAR_MAJOR_ALLOCATOR,
@@ -69,10 +76,11 @@ pub struct MajorBlock {
 }
 
 impl MajorBlock {
-	/// Creates a new instance with a dynamically allocated major number
-	pub fn new(device_type: DeviceType) -> AllocResult<Self> {
-		let mut major_allocator = get_allocator(device_type).lock();
-		let major = major_allocator.alloc(None)?;
+	/// Creates a new instance with the given major number `major`
+	///
+	/// This function may overlap with other allocated majors. Avoiding overlaps is the caller's
+	/// responsibility.
+	pub fn new_fixed(device_type: DeviceType, major: u32) -> AllocResult<Self> {
 		Ok(Self {
 			device_type,
 			major,
@@ -81,12 +89,10 @@ impl MajorBlock {
 		})
 	}
 
-	/// Creates a new instance with the given major number `major`
-	///
-	/// If `major` is already allocated, the function returns an [`AllocError`].
-	pub fn new_fixed(device_type: DeviceType, major: u32) -> AllocResult<Self> {
+	/// Creates a new instance with a dynamically allocated major number.
+	pub fn new_dyn(device_type: DeviceType) -> AllocResult<Self> {
 		let mut major_allocator = get_allocator(device_type).lock();
-		major_allocator.alloc(Some(major))?;
+		let major = DYN_MAJOR_MIN + major_allocator.alloc(None)?;
 		Ok(Self {
 			device_type,
 			major,
@@ -123,18 +129,24 @@ impl MajorBlock {
 
 impl Drop for MajorBlock {
 	fn drop(&mut self) {
-		let mut major_allocator = get_allocator(self.device_type).lock();
-		major_allocator.free(self.major);
+		if (DYN_MAJOR_MIN..=DYN_MAJOR_MAX).contains(&self.major) {
+			let major = self.major - DYN_MAJOR_MIN;
+			let mut major_allocator = get_allocator(self.device_type).lock();
+			major_allocator.free(major);
+		}
 	}
 }
 
 /// The major number block for additional block device partitions
-pub static BLOCK_EXTENDED_MAJOR: OnceInit<Spin<MajorBlock>> = unsafe { OnceInit::new() };
+pub const BLOCK_EXTENDED_MAJOR: u32 = 259;
+
+/// Handle for allocations in the major number block for additional block device partitions
+pub static BLOCK_EXTENDED_MAJOR_HANDLE: OnceInit<Spin<MajorBlock>> = unsafe { OnceInit::new() };
 
 pub(super) fn init() -> AllocResult<()> {
-	let block_extended_major = MajorBlock::new_fixed(DeviceType::Block, 259)?;
+	let major = MajorBlock::new_fixed(DeviceType::Block, BLOCK_EXTENDED_MAJOR)?;
 	unsafe {
-		OnceInit::init(&BLOCK_EXTENDED_MAJOR, Spin::new(block_extended_major));
+		OnceInit::init(&BLOCK_EXTENDED_MAJOR_HANDLE, Spin::new(major));
 	}
 	Ok(())
 }

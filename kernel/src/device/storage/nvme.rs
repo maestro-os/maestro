@@ -23,8 +23,13 @@
 use crate::{
 	arch::core_id,
 	device::{
-		BlkDev, BlockDeviceOps, DeviceID, bar::Bar, bus::pci::PciDev, id::BLOCK_EXTENDED_MAJOR,
-		manager::PhysicalDevice, register_blk,
+		BlkDev, BlockDeviceOps, DeviceID,
+		bar::Bar,
+		bus::pci::PciDev,
+		id::{BLOCK_EXTENDED_MAJOR, BLOCK_EXTENDED_MAJOR_HANDLE},
+		manager::PhysicalDevice,
+		register_blk,
+		storage::{STORAGE_MODE, partition::read_partitions},
 	},
 	int,
 	int::CallbackHook,
@@ -530,25 +535,39 @@ fn wait_rdy(bar: &Bar, r: bool) {
 struct NamespaceOps {
 	ctrlr: Arc<ControllerInner>,
 	nsid: u32,
-
-	blk_size: NonZeroU64,
-	blk_count: u64,
 }
 
 impl BlockDeviceOps for NamespaceOps {
-	fn block_size(&self) -> NonZeroU64 {
-		self.blk_size
+	fn new_partition(&self, _dev: &BlkDev, id: u32) -> AllocResult<(DeviceID, PathBuf)> {
+		let dev_id = DeviceID {
+			major: BLOCK_EXTENDED_MAJOR,
+			minor: BLOCK_EXTENDED_MAJOR_HANDLE.lock().alloc_minor(None)?,
+		};
+		let path = PathBuf::new_unchecked(format!(
+			"/dev/nvme{ctrlr_id}n{nsid}p{id}",
+			ctrlr_id = self.ctrlr.id,
+			nsid = self.nsid
+		)?);
+		Ok((dev_id, path))
 	}
 
-	fn blocks_count(&self) -> u64 {
-		self.blk_count
+	fn drop_partition(&self, dev: &BlkDev) {
+		if dev.id.major == BLOCK_EXTENDED_MAJOR {
+			BLOCK_EXTENDED_MAJOR_HANDLE.lock().free_minor(dev.id.minor);
+		}
 	}
 
-	fn read_frame(&self, off: u64, order: FrameOrder, owner: FrameOwner) -> EResult<RcFrame> {
+	fn read_frame(
+		&self,
+		dev: &BlkDev,
+		off: u64,
+		order: FrameOrder,
+		owner: FrameOwner,
+	) -> EResult<RcFrame> {
 		let frame = RcFrame::new(order, ZONE_KERNEL, owner, off)?;
 		let qp = &self.ctrlr.queues.read()[0];
-		let lba = (off * PAGE_SIZE as u64) / self.blk_size.get();
-		let blocks = (frame.len() as u64) / self.blk_size.get();
+		let lba = (off * PAGE_SIZE as u64) / dev.blk_size;
+		let blocks = (frame.len() as u64) / dev.blk_size;
 		self.ctrlr.submit_cmd_sync(
 			qp,
 			SubmissionQueueEntry {
@@ -564,10 +583,10 @@ impl BlockDeviceOps for NamespaceOps {
 		Ok(frame)
 	}
 
-	fn write_pages(&self, off: u64, buf: &[u8]) -> EResult<()> {
+	fn write_pages(&self, dev: &BlkDev, off: u64, buf: &[u8]) -> EResult<()> {
 		let phys_addr = VirtAddr::from(buf.as_ptr()).kernel_to_physical().unwrap();
-		let lba = (off * PAGE_SIZE as u64) / self.blk_size.get();
-		let blocks = buf.len() as u64 / self.blk_size.get();
+		let lba = (off * PAGE_SIZE as u64) / dev.blk_size;
+		let blocks = buf.len() as u64 / dev.blk_size;
 		let qp = &self.ctrlr.queues.read()[0];
 		self.ctrlr.submit_cmd_sync(
 			qp,
@@ -588,8 +607,7 @@ impl BlockDeviceOps for NamespaceOps {
 impl fmt::Debug for NamespaceOps {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		f.debug_struct("NamespaceOps")
-			.field("blk_size", &self.blk_size)
-			.field("blk_count", &self.blk_count)
+			.field("nsid", &self.nsid)
 			.finish()
 	}
 }
@@ -695,29 +713,35 @@ impl ControllerInner {
 			},
 		);
 		let ns_id = unsafe { ns_id.assume_init() };
+		// Determine block size
 		let fidxl = (ns_id.flbas & 0xf) as usize;
 		let blk_size = math::pow2(ns_id.lbaf[fidxl].lbads as u64);
-		let path =
-			PathBuf::new_unchecked(format!("/dev/nvme{ctrlr_id}n{nsid}", ctrlr_id = this.id)?);
-		let mut major = BLOCK_EXTENDED_MAJOR.lock();
-		let minor = major.alloc_minor(None)?;
-		let blkdev = BlkDev::new(
+		// Build device path
+		let ctrlr_id = this.id;
+		let path = PathBuf::new_unchecked(format!("/dev/nvme{ctrlr_id}n{nsid}")?);
+		// Allocate minor
+		let id = {
+			let mut major = BLOCK_EXTENDED_MAJOR_HANDLE.lock();
+			let minor = major.alloc_minor(None)?;
 			DeviceID {
 				major: major.get_major(),
 				minor,
-			},
+			}
+		};
+		// Register devices
+		let blkdev = BlkDev::new(
+			id,
 			path,
-			0o660,
+			STORAGE_MODE,
+			NonZeroU64::new(blk_size).unwrap(),
+			ns_id.ncap,
 			Box::new(NamespaceOps {
 				ctrlr: this.clone(),
 				nsid,
-
-				blk_size: NonZeroU64::new(blk_size).unwrap(),
-				blk_count: ns_id.ncap,
 			})?,
 		)?;
-		register_blk(blkdev)?;
-		// TODO create partition devices here?
+		register_blk(blkdev.clone())?;
+		read_partitions(&blkdev)?;
 		Ok(())
 	}
 

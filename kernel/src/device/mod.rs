@@ -42,7 +42,10 @@ pub mod storage;
 pub mod tty;
 
 use crate::{
-	device::manager::DeviceManager,
+	device::{
+		manager::DeviceManager,
+		storage::{PartitionOps, partition::Partition},
+	},
 	file,
 	file::{
 		File, FileType, Mode, Stat,
@@ -55,7 +58,7 @@ use crate::{
 		cache::{FrameOwner, MappedNode, RcFrame},
 		user::UserSlice,
 	},
-	sync::spin::Spin,
+	sync::{mutex::Mutex, spin::Spin},
 	syscall::ioctl,
 };
 use core::{ffi::c_void, fmt, hint::likely, num::NonZeroU64};
@@ -66,6 +69,7 @@ use utils::{
 	collections::{
 		hashmap::HashMap,
 		path::{Path, PathBuf},
+		vec::Vec,
 	},
 	errno,
 	errno::{AllocResult, ENOENT, EResult},
@@ -160,24 +164,33 @@ impl DeviceID {
 ///
 /// This trait makes use of **interior mutability** to allow concurrent accesses.
 pub trait BlockDeviceOps: fmt::Debug {
-	/// Returns the granularity of I/O for the device, in bytes.
-	fn block_size(&self) -> NonZeroU64;
-	/// Returns the number of blocks on the device.
-	fn blocks_count(&self) -> u64;
+	/// Returns the device ID and path for a device representing the partition `id`.
+	fn new_partition(&self, dev: &BlkDev, id: u32) -> AllocResult<(DeviceID, PathBuf)>;
+
+	/// Drops the device ID used by a partition.
+	fn drop_partition(&self, dev: &BlkDev) {
+		let _ = dev;
+	}
 
 	/// Reads a frame of data from the device.
 	///
 	/// `off` is the offset of the frame on the device, in pages.
-	fn read_frame(&self, off: u64, order: FrameOrder, owner: FrameOwner) -> EResult<RcFrame>;
+	fn read_frame(
+		&self,
+		dev: &BlkDev,
+		off: u64,
+		order: FrameOrder,
+		owner: FrameOwner,
+	) -> EResult<RcFrame>;
 
 	/// Writes a frame of data to the device.
 	///
 	/// `off` is the offset of the frame on the device, in pages.
-	fn write_pages(&self, off: u64, buf: &[u8]) -> EResult<()>;
+	fn write_pages(&self, dev: &BlkDev, off: u64, buf: &[u8]) -> EResult<()>;
 
 	/// Polls the device with the given mask.
-	fn poll(&self, mask: u32) -> EResult<u32> {
-		let _ = mask;
+	fn poll(&self, dev: &BlkDev, mask: u32) -> EResult<u32> {
+		let _ = (dev, mask);
 		Err(errno!(EINVAL))
 	}
 
@@ -186,8 +199,8 @@ pub trait BlockDeviceOps: fmt::Debug {
 	/// Arguments:
 	/// - `request` is the ID of the request to perform
 	/// - `argp` is a pointer to the argument
-	fn ioctl(&self, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
-		let _ = (request, argp);
+	fn ioctl(&self, dev: &BlkDev, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
+		let _ = (dev, request, argp);
 		Err(errno!(EINVAL))
 	}
 }
@@ -202,6 +215,16 @@ pub struct BlkDev {
 	/// The file's mode
 	pub mode: Mode,
 
+	/// Size of a block in bytes
+	pub blk_size: NonZeroU64,
+	/// Number of blocks on the device
+	pub blk_count: u64,
+
+	/// Tells whether this is a partition device
+	pub is_partition: bool,
+	/// The list of associated partition devices
+	pub(crate) partitions: Mutex<Vec<Arc<BlkDev>>, false>,
+
 	/// The device I/O interface
 	pub ops: Box<dyn BlockDeviceOps>,
 	/// The device as a mapped node
@@ -209,31 +232,79 @@ pub struct BlkDev {
 }
 
 impl BlkDev {
+	fn new_impl(dev: BlkDev) -> EResult<Arc<Self>> {
+		let dev = Arc::new(dev)?;
+		if likely(file::is_init()) {
+			create_file(&dev.id, DeviceType::Block, &dev.path, dev.mode)?;
+		}
+		Ok(dev)
+	}
+
 	/// Creates a new instance.
 	///
 	/// Arguments:
 	/// - `id` is the device's ID
 	/// - `path` is the path to the device's file
 	/// - `mode` is the set of permissions associated with the device's file
-	/// - `handle` is the handle for I/O operations
+	/// - `blk_size` is the block size on the device
+	/// - `blk_count` is the block count on the device
+	/// - `ops` is the handle for I/O operations
 	pub fn new(
 		id: DeviceID,
 		path: PathBuf,
 		mode: Mode,
+		blk_size: NonZeroU64,
+		blk_count: u64,
 		ops: Box<dyn BlockDeviceOps>,
 	) -> EResult<Arc<Self>> {
-		let dev = Arc::new(Self {
+		Self::new_impl(Self {
 			id,
 			path,
 			mode,
 
+			blk_size,
+			blk_count,
+
+			is_partition: false,
+			partitions: Mutex::new(Vec::new()),
+
 			ops,
 			mapped: Default::default(),
-		})?;
-		if likely(file::is_init()) {
-			create_file(&id, DeviceType::Block, &dev.path, mode)?;
-		}
-		Ok(dev)
+		})
+	}
+
+	/// Creates a new instance.
+	///
+	/// Arguments:
+	/// - `id` is the device's ID
+	/// - `path` is the path to the device's file
+	/// - `mode` is the set of permissions associated with the device's file
+	/// - `dev` is the device containing the partition
+	/// - `partition` is the partition
+	pub fn new_partition(
+		id: DeviceID,
+		path: PathBuf,
+		mode: Mode,
+		dev: Arc<BlkDev>,
+		partition: Partition,
+	) -> EResult<Arc<Self>> {
+		Self::new_impl(Self {
+			id,
+			path,
+			mode,
+
+			blk_size: dev.blk_size,
+			blk_count: partition.size,
+
+			is_partition: true,
+			partitions: Mutex::new(Vec::new()),
+
+			ops: Box::new(PartitionOps {
+				dev,
+				partition,
+			})?,
+			mapped: Default::default(),
+		})
 	}
 
 	/// Reads a frame from the device, at the offset `off`.
@@ -247,17 +318,23 @@ impl BlkDev {
 	) -> EResult<RcFrame> {
 		if let Some(mapped) = owner.inner() {
 			mapped.get_or_insert_frame(off, order, || {
-				this.ops.read_frame(off, order, owner.clone())
+				this.ops.read_frame(this, off, order, owner.clone())
 			})
 		} else {
-			this.ops.read_frame(off, order, owner)
+			this.ops.read_frame(this, off, order, owner)
 		}
+	}
+
+	/// Removes the device file from the filesystem
+	#[inline]
+	pub fn remove_file(&self) -> EResult<()> {
+		remove_file(&self.path)
 	}
 }
 
 impl Drop for BlkDev {
 	fn drop(&mut self) {
-		let _ = remove_file(&self.path);
+		let _ = self.remove_file();
 	}
 }
 
@@ -379,12 +456,12 @@ impl FileOps for BlkDevFileOps {
 
 	fn poll(&self, file: &File, mask: u32) -> EResult<u32> {
 		let dev = file.as_block_device().ok_or_else(|| errno!(ENODEV))?;
-		dev.ops.poll(mask)
+		dev.ops.poll(&dev, mask)
 	}
 
 	fn ioctl(&self, file: &File, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
 		let dev = file.as_block_device().ok_or_else(|| errno!(ENODEV))?;
-		dev.ops.ioctl(request, argp)
+		dev.ops.ioctl(&dev, request, argp)
 	}
 }
 
