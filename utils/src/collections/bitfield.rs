@@ -18,9 +18,8 @@
 
 //! Bitfield implementation.
 
+use crate::{TryClone, collections::vec::Vec, errno::AllocResult};
 use core::hint::likely;
-use crate::{TryClone, errno::AllocResult};
-use crate::collections::vec::Vec;
 
 /// A bitfield is a data structure meant to contain only boolean values.
 ///
@@ -45,7 +44,7 @@ impl Bitfield<Vec<u8>> {
 
 impl<const N: usize> Bitfield<[u8; N]> {
 	/// Creates a new bitfield, stored in place
-	/// 
+	///
 	/// The length is `N * 8`
 	pub const fn new_inplace() -> Self {
 		Self {
@@ -164,7 +163,7 @@ mod test {
 
 	#[test]
 	fn bitfield_set0() {
-		let mut bitfield = Bitfield::new(42).unwrap();
+		let mut bitfield = Bitfield::<[u8; 42]>::new_inplace();
 		assert_eq!(bitfield.len(), 42);
 
 		for i in 0..bitfield.len() {
@@ -182,7 +181,7 @@ mod test {
 
 	#[test]
 	fn bitfield_clear0() {
-		let mut bitfield = Bitfield::new(42).unwrap();
+		let mut bitfield = Bitfield::<[u8; 42]>::new_inplace();
 		assert_eq!(bitfield.len(), 42);
 
 		for i in 0..bitfield.len() {

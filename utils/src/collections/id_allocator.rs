@@ -19,9 +19,11 @@
 //! This module implements an identifier allocator, allowing to allocate and
 //! free indexes in range `0..=max`, where `max` is given.
 
-use crate::{collections::bitfield::Bitfield, errno::AllocResult};
+use crate::{
+	collections::{bitfield::Bitfield, vec::Vec},
+	errno::AllocResult,
+};
 use core::alloc::AllocError;
-use crate::collections::vec::Vec;
 
 /// An identifier allocator, based upon a bitfield
 pub struct IDAllocator<C: AsRef<[u8]> + AsMut<[u8]> = Vec<u8>> {
