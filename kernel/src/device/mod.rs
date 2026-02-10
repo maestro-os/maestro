@@ -54,8 +54,8 @@ use crate::{
 		vfs::{ResolutionSettings, Resolved},
 	},
 	memory::{
-		buddy::FrameOrder,
-		cache::{FrameOwner, MappedNode, RcFrame},
+		buddy::ZONE_KERNEL,
+		cache::{MappedNode, RcPage},
 		user::UserSlice,
 	},
 	sync::{mutex::Mutex, spin::Spin},
@@ -172,21 +172,15 @@ pub trait BlockDeviceOps: fmt::Debug {
 		let _ = dev;
 	}
 
-	/// Reads a frame of data from the device.
+	/// Reads a page of data from the device.
 	///
-	/// `off` is the offset of the frame on the device, in pages.
-	fn read_frame(
-		&self,
-		dev: &BlkDev,
-		off: u64,
-		order: FrameOrder,
-		owner: FrameOwner,
-	) -> EResult<RcFrame>;
+	/// `off` is the offset of the page, in pages
+	fn read_page(&self, dev: &Arc<BlkDev>, off: u64) -> EResult<RcPage>;
 
-	/// Writes a frame of data to the device.
+	/// Writes a page of data back to the device.
 	///
-	/// `off` is the offset of the frame on the device, in pages.
-	fn write_pages(&self, dev: &BlkDev, off: u64, buf: &[u8]) -> EResult<()>;
+	/// `off` is the offset of the page, in pages
+	fn writeback(&self, dev: &BlkDev, off: u64, page: &RcPage) -> EResult<()>;
 
 	/// Polls the device with the given mask.
 	fn poll(&self, dev: &BlkDev, mask: u32) -> EResult<u32> {
@@ -307,22 +301,11 @@ impl BlkDev {
 		})
 	}
 
-	/// Reads a frame from the device, at the offset `off`.
+	/// Allocates a blank page for I/O.
 	///
-	/// If not in cache, the function reads the frame from the device, then inserts it in cache.
-	pub fn read_frame(
-		this: &Arc<Self>,
-		off: u64,
-		order: FrameOrder,
-		owner: FrameOwner,
-	) -> EResult<RcFrame> {
-		if let Some(mapped) = owner.inner() {
-			mapped.get_or_insert_frame(off, order, || {
-				this.ops.read_frame(this, off, order, owner.clone())
-			})
-		} else {
-			this.ops.read_frame(this, off, order, owner)
-		}
+	/// This function is meant to be used in [`BlockDeviceOps::read_page`].
+	pub fn new_page(this: &Arc<Self>, off: u64) -> AllocResult<RcPage> {
+		RcPage::new(ZONE_KERNEL, Some(this.clone()), off)
 	}
 
 	/// Removes the device file from the filesystem
@@ -420,7 +403,7 @@ impl FileOps for BlkDevFileOps {
 			.div_ceil(PAGE_SIZE as u64);
 		let mut buf_off = 0;
 		for page_off in start..end {
-			let page = BlkDev::read_frame(&dev, page_off, 0, FrameOwner::BlkDev(dev.clone()))?;
+			let page = dev.ops.read_page(&dev, page_off)?;
 			let inner_off = off as usize % PAGE_SIZE;
 			let len = unsafe {
 				let page_ptr = page.virt_addr().as_ptr::<u8>().add(inner_off);
@@ -441,7 +424,7 @@ impl FileOps for BlkDevFileOps {
 			.div_ceil(PAGE_SIZE as u64);
 		let mut buf_off = 0;
 		for page_off in start..end {
-			let page = BlkDev::read_frame(&dev, page_off, 0, FrameOwner::BlkDev(dev.clone()))?;
+			let page = dev.ops.read_page(&dev, page_off)?;
 			let inner_off = off as usize % PAGE_SIZE;
 			let len = unsafe {
 				let page_ptr = page.virt_addr().as_ptr::<u8>().add(inner_off);

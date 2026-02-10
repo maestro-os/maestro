@@ -36,10 +36,7 @@ use crate::{
 		id::{BLOCK_EXTENDED_MAJOR, BLOCK_EXTENDED_MAJOR_HANDLE},
 		storage::{SCSI_MAJOR, ide},
 	},
-	memory::{
-		buddy::{FrameOrder, ZONE_KERNEL},
-		cache::{FrameOwner, RcFrame},
-	},
+	memory::cache::RcPage,
 	println,
 	sync::mutex::Mutex,
 };
@@ -51,6 +48,7 @@ use utils::{
 	errno::{AllocResult, EResult},
 	format,
 	limits::PAGE_SIZE,
+	ptr::arc::Arc,
 };
 
 /// Offset to the data register
@@ -105,8 +103,6 @@ const STATUS_BSY: u8 = 0b10000000;
 
 /// The size of a sector in bytes
 const SECTOR_SIZE: u64 = 512;
-/// The number of sectors per page of memory
-const SECTOR_PER_PAGE: u64 = PAGE_SIZE as u64 / SECTOR_SIZE;
 
 /// Applies a delay. `n` determines the amount to wait.
 ///
@@ -425,58 +421,47 @@ impl BlockDeviceOps for PATAInterface {
 		}
 	}
 
-	fn read_frame(
-		&self,
-		dev: &BlkDev,
-		off: u64,
-		order: FrameOrder,
-		owner: FrameOwner,
-	) -> EResult<RcFrame> {
-		let frame = RcFrame::new(order, ZONE_KERNEL, owner, off)?;
-		let off = off
-			.checked_mul(SECTOR_PER_PAGE)
-			.ok_or_else(|| errno!(EOVERFLOW))?;
-		let size = frame.pages_count() as u64 * SECTOR_PER_PAGE;
-		// If the offset and size are out of bounds of the disk, return an error
-		let end = off.checked_add(size).ok_or_else(|| errno!(EOVERFLOW))?;
-		if unlikely(end > dev.blk_count) {
-			return Err(errno!(EOVERFLOW));
-		}
-		// Avoid data race
-		let _guard = self.lock.lock();
-		// Select disk
-		self.select(false);
-		// Read
-		let buf = unsafe { frame.slice_mut() };
-		let mut i = 0;
-		while i < size {
-			let off = off + i;
-			let count = (size - i).min(u16::MAX as u64) as u16;
-			let (count, _) = self.prepare_io(off, count, false);
-			let start = i as usize;
-			let end = start + count as usize;
-			for j in start..end {
-				self.wait_io()?;
-				for k in 0..256 {
-					let index = j * 256 + k;
-					unsafe {
-						buf[index] = self.channel.ata_bar.read::<u16>(REG_DATA);
+	fn read_page(&self, dev: &Arc<BlkDev>, off: u64) -> EResult<RcPage> {
+		dev.mapped.get_or_insert_page(off, || {
+			let blk = BlkDev::new_page(dev, off)?;
+			let size = PAGE_SIZE as u64 / SECTOR_SIZE;
+			let off = off.checked_mul(size).ok_or_else(|| errno!(EOVERFLOW))?;
+			// If the offset and size are out of bounds of the disk, return an error
+			let end = off.checked_add(size).ok_or_else(|| errno!(EOVERFLOW))?;
+			if unlikely(end > dev.blk_count) {
+				return Err(errno!(EOVERFLOW));
+			}
+			// Avoid data race
+			let _guard = self.lock.lock();
+			// Select disk
+			self.select(false);
+			// Read
+			let buf = unsafe { blk.slice_mut() };
+			let mut i = 0;
+			while i < size {
+				let off = off + i;
+				let count = (size - i).min(u16::MAX as u64) as u16;
+				let (count, _) = self.prepare_io(off, count, false);
+				let start = i as usize;
+				let end = start + count as usize;
+				for j in start..end {
+					self.wait_io()?;
+					for k in 0..256 {
+						let index = j * 256 + k;
+						unsafe {
+							buf[index] = self.channel.ata_bar.read::<u16>(REG_DATA);
+						}
 					}
 				}
+				i += count as u64;
 			}
-			i += count as u64;
-		}
-		Ok(frame)
+			Ok(blk)
+		})
 	}
 
-	fn write_pages(&self, dev: &BlkDev, off: u64, buf: &[u8]) -> EResult<()> {
-		if unlikely(buf.len() % PAGE_SIZE != 0) {
-			return Err(errno!(EINVAL));
-		}
-		let off = off
-			.checked_mul(SECTOR_PER_PAGE)
-			.ok_or_else(|| errno!(EOVERFLOW))?;
-		let size = buf.len() as u64 / SECTOR_SIZE;
+	fn writeback(&self, dev: &BlkDev, off: u64, blk: &RcPage) -> EResult<()> {
+		let size = PAGE_SIZE as u64 / SECTOR_SIZE;
+		let off = off.checked_mul(size).ok_or_else(|| errno!(EOVERFLOW))?;
 		// If the offset and size are out of bounds of the disk, return an error
 		let end = off.checked_add(size).ok_or_else(|| errno!(EOVERFLOW))?;
 		if unlikely(end > dev.blk_count) {
@@ -487,7 +472,7 @@ impl BlockDeviceOps for PATAInterface {
 		// Select disk
 		self.select(false);
 		// Write
-		let buf = slice_from_bytes::<u16>(buf).unwrap();
+		let buf = slice_from_bytes::<u16>(blk.slice()).unwrap();
 		let mut i = 0;
 		while i < size {
 			let off = off + i;

@@ -63,7 +63,7 @@ use crate::{
 		vfs::node::Node,
 	},
 	memory::{
-		cache::{FrameOwner, RcFrame, RcFrameVal},
+		cache::{RcBlockVal, RcPage},
 		user::UserSlice,
 	},
 	sync::spin::Spin,
@@ -136,22 +136,9 @@ const WRITE_REQUIRED_64_BITS: u32 = 0x2;
 /// `s_feature_ro_compat`: Directory contents are stored in the form of a Binary Tree.
 const WRITE_REQUIRED_DIRECTORY_BINARY_TREE: u32 = 0x4;
 
-/// Reads the block at offset `off` from the disk.
-fn read_block(fs: &Ext2Fs, off: u64) -> EResult<RcFrame> {
-	// cannot overflow since `s_log_block_size` is at least `2`
-	let order = fs.sp.s_log_block_size - 2;
-	let page_off = off << order;
-	BlkDev::read_frame(
-		&fs.dev,
-		page_off,
-		order as _,
-		FrameOwner::BlkDev(fs.dev.clone()),
-	)
-}
-
-/// Zeros the block at the given offset on the disk.
+/// Zeros the page at the given offset on the disk.
 fn zero_block(fs: &Ext2Fs, off: u64) -> EResult<()> {
-	let blk = read_block(fs, off)?;
+	let blk = fs.dev.ops.read_page(&fs.dev, off)?;
 	for b in blk.slice::<AtomicUsize>() {
 		b.store(0, Relaxed);
 	}
@@ -162,9 +149,9 @@ fn zero_block(fs: &Ext2Fs, off: u64) -> EResult<()> {
 /// Finds a `0` bit in the given block, sets it atomically, then returns its offset.
 ///
 /// If no bit is found, the function returns `None`.
-fn bitmap_alloc_impl(blk: &RcFrame) -> Option<u32> {
+fn bitmap_alloc_impl(blk: &RcPage) -> Option<u32> {
 	// Iterate on `usize` units
-	let unit_count = blk.len() / size_of::<usize>();
+	let unit_count = PAGE_SIZE / size_of::<usize>();
 	for unit_off in 0..unit_count {
 		let unit = &blk.slice::<AtomicUsize>()[unit_off];
 		// The offset of the newly allocated entry in the unit
@@ -180,7 +167,7 @@ fn bitmap_alloc_impl(blk: &RcFrame) -> Option<u32> {
 			}
 		});
 		if res.is_ok() {
-			blk.mark_page_dirty(unit_off / (PAGE_SIZE / size_of::<usize>()));
+			blk.mark_dirty();
 			let unit_off = unit_off * size_of::<usize>() * 8;
 			return Some(unit_off as u32 + off);
 		}
@@ -338,7 +325,7 @@ impl NodeOps for Ext2NodeOps {
 			// The target is stored like in regular files
 			let blk =
 				inode::check_blk_off(inode_.i_block[0], &fs.sp)?.ok_or_else(|| errno!(EUCLEAN))?;
-			let blk = read_block(fs, blk.get() as _)?;
+			let blk = fs.dev.ops.read_page(&fs.dev, blk.get() as _)?;
 			let len = buf.copy_to_user(0, &blk.slice()[..size as usize])?;
 			Ok(len)
 		}
@@ -364,7 +351,7 @@ impl NodeOps for Ext2NodeOps {
 			// Allocate a block
 			let blk_off = inode_.alloc_content_blk(0, fs)?;
 			inode_.i_block[0] = blk_off;
-			let blk = read_block(fs, blk_off as _)?;
+			let blk = fs.dev.ops.read_page(&fs.dev, blk_off as _)?;
 			// No one else can access the block since we just allocated it
 			let dst = unsafe { blk.slice_mut() };
 			// Copy
@@ -429,28 +416,16 @@ impl NodeOps for Ext2NodeOps {
 		Ok(())
 	}
 
-	fn read_page(&self, node: &Arc<Node>, off: u64) -> EResult<RcFrame> {
-		node.mapped.get_or_insert_frame(off, 0, || {
+	fn read_page(&self, node: &Arc<Node>, off: u64) -> EResult<RcPage> {
+		node.mapped.get_or_insert_page(off, || {
 			let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
 			let inode = Ext2INode::get(node, fs)?;
 			let off: u32 = off.try_into().map_err(|_| errno!(EOVERFLOW))?;
 			let blk_off = inode
 				.translate_blk_off(off, fs)?
 				.ok_or_else(|| errno!(EOVERFLOW))?;
-			fs.dev.ops.read_frame(
-				&fs.dev,
-				blk_off.get() as _,
-				0,
-				FrameOwner::Node(node.clone()),
-			)
+			fs.dev.ops.read_page(&fs.dev, blk_off.get() as _)
 		})
-	}
-
-	fn write_frame(&self, node: &Node, frame: &RcFrame) -> EResult<()> {
-		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		fs.dev
-			.ops
-			.write_pages(&fs.dev, frame.dev_offset(), frame.slice())
 	}
 
 	fn set_stat(&self, node: &Node, stat: &Stat) -> EResult<()> {
@@ -638,9 +613,9 @@ pub struct Superblock {
 
 impl Superblock {
 	/// Creates a new instance by reading from the given device.
-	fn read(dev: &Arc<BlkDev>) -> EResult<RcFrameVal<Self>> {
-		let page = BlkDev::read_frame(dev, 0, 0, FrameOwner::BlkDev(dev.clone()))?;
-		Ok(RcFrameVal::new(page, 1))
+	fn read(dev: &Arc<BlkDev>) -> EResult<RcBlockVal<Self>> {
+		let page = dev.ops.read_page(dev, 0)?;
+		Ok(RcBlockVal::new(page, 1))
 	}
 
 	/// Tells whether the superblock is valid.
@@ -662,11 +637,6 @@ impl Superblock {
 	/// Returns the number of block groups.
 	fn get_block_groups_count(&self) -> u32 {
 		self.s_blocks_count / self.s_blocks_per_group
-	}
-
-	/// Returns the size of a fragment.
-	pub fn get_fragment_size(&self) -> usize {
-		math::pow2(self.s_log_frag_size + 10) as _
 	}
 
 	/// Returns the size of an inode.
@@ -694,7 +664,7 @@ struct Ext2Fs {
 	/// The device on which the filesystem is located
 	dev: Arc<BlkDev>,
 	/// The filesystem's superblock
-	sp: RcFrameVal<Superblock>,
+	sp: RcBlockVal<Superblock>,
 	/// Tells whether the filesystem is mounted as read-only
 	readonly: bool,
 }
@@ -710,7 +680,7 @@ impl Ext2Fs {
 		let end_blk = start_blk + size.div_ceil(blk_size * 8);
 		// Iterate on blocks
 		for blk_off in start_blk..end_blk {
-			let blk = read_block(self, blk_off as _)?;
+			let blk = self.dev.ops.read_page(&self.dev, blk_off as _)?;
 			if let Some(off) = bitmap_alloc_impl(&blk) {
 				let blk_off = blk_off - start_blk;
 				return Ok(Some(blk_off * blk_size * 8 + off));
@@ -726,14 +696,14 @@ impl Ext2Fs {
 		// Get block
 		let blk_size = self.sp.get_block_size();
 		let blk_off = start_blk + index / (blk_size * 8);
-		let blk = read_block(self, blk_off as _)?;
+		let blk = self.dev.ops.read_page(&self.dev, blk_off as _)?;
 		// Atomically clear bit
 		let bitmap_byte_index = index / 8;
 		let byte = &blk.slice::<AtomicU8>()[bitmap_byte_index as usize];
 		let bitmap_bit_index = index % 8;
 		// Atomic write and mark as dirty
 		let prev = byte.fetch_and(!(1 << bitmap_bit_index), Release);
-		blk.mark_page_dirty(bitmap_byte_index as usize / PAGE_SIZE);
+		blk.mark_dirty();
 		Ok(prev & (1 << bitmap_bit_index) != 0)
 	}
 
@@ -995,7 +965,11 @@ impl FilesystemType for Ext2FsType {
 		if unlikely(!sp.is_valid()) {
 			return Err(errno!(EINVAL));
 		}
-		if unlikely(sp.s_log_block_size < 2) {
+		/*if unlikely(sp.s_log_block_size < 2) {
+			return Err(errno!(EINVAL));
+		}*/
+		// TODO: support more block sizes
+		if unlikely(sp.s_log_block_size != 2) {
 			return Err(errno!(EINVAL));
 		}
 		if sp.s_rev_level >= 1 {

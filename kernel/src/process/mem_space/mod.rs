@@ -35,12 +35,12 @@ use crate::{
 	file::{File, vfs},
 	memory::{
 		COMPAT_PROCESS_END, PROCESS_END, VirtAddr,
-		cache::RcFrame,
+		cache::RcPage,
 		user::UserSlice,
 		vmem::{KERNEL_VMEM, VMem, shootdown_range},
 	},
 	process::{
-		mem_space::mapping::MappedFrame,
+		mem_space::mapping::MappedPage,
 		scheduler::{cpu, cpu::per_cpu, critical},
 	},
 	sync::rwlock::IntRwLock,
@@ -398,7 +398,7 @@ impl MemSpace {
 	}
 
 	/// Maps a chunk of memory population with the given static pages.
-	pub fn map_special(&self, prot: u8, flags: i32, pages: &[RcFrame]) -> AllocResult<VirtAddr> {
+	pub fn map_special(&self, prot: u8, flags: i32, pages: &[RcPage]) -> AllocResult<VirtAddr> {
 		let Some(len) = NonZeroUsize::new(pages.len()) else {
 			return Err(AllocError);
 		};
@@ -418,7 +418,7 @@ impl MemSpace {
 			.lock()
 			.iter_mut()
 			.zip(pages.iter().cloned())
-			.for_each(|(dst, src)| *dst = Some(MappedFrame::new(src)));
+			.for_each(|(dst, src)| *dst = Some(MappedPage::new(src)));
 		// Commit
 		let addr = map.addr;
 		transaction.insert_mapping(map)?;

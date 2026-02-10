@@ -33,11 +33,7 @@ use crate::{
 	},
 	int,
 	int::CallbackHook,
-	memory::{
-		VirtAddr, buddy,
-		buddy::{FrameOrder, ZONE_KERNEL},
-		cache::{FrameOwner, RcFrame},
-	},
+	memory::{VirtAddr, buddy, cache::RcPage},
 	println, process,
 	process::{Process, State, scheduler::schedule},
 	sync::{mutex::Mutex, rwlock::RwLock, semaphore::Semaphore},
@@ -557,36 +553,31 @@ impl BlockDeviceOps for NamespaceOps {
 		}
 	}
 
-	fn read_frame(
-		&self,
-		dev: &BlkDev,
-		off: u64,
-		order: FrameOrder,
-		owner: FrameOwner,
-	) -> EResult<RcFrame> {
-		let frame = RcFrame::new(order, ZONE_KERNEL, owner, off)?;
-		let qp = &self.ctrlr.queues.read()[0];
-		let lba = (off * PAGE_SIZE as u64) / dev.blk_size;
-		let blocks = (frame.len() as u64) / dev.blk_size;
-		self.ctrlr.submit_cmd_sync(
-			qp,
-			SubmissionQueueEntry {
-				cdw0: CMD_READ,
-				nsid: self.nsid,
-				cdw12: [0, 0],
-				mptr: [0, 0],
-				dptr: [frame.phys_addr().0 as _, 0],
-				cdw: [lba as u32, (lba >> 32) as u32, blocks as _, 0, 0, 0],
-			},
-		);
-		// TODO handle error
-		Ok(frame)
+	fn read_page(&self, dev: &Arc<BlkDev>, off: u64) -> EResult<RcPage> {
+		dev.mapped.get_or_insert_page(off, || {
+			let blk = BlkDev::new_page(dev, off)?;
+			let blocks = PAGE_SIZE as u64 / dev.blk_size.get();
+			let lba = off * blocks;
+			let qp = &self.ctrlr.queues.read()[0];
+			self.ctrlr.submit_cmd_sync(
+				qp,
+				SubmissionQueueEntry {
+					cdw0: CMD_READ,
+					nsid: self.nsid,
+					cdw12: [0, 0],
+					mptr: [0, 0],
+					dptr: [blk.phys_addr().0 as _, 0],
+					cdw: [lba as u32, (lba >> 32) as u32, blocks as _, 0, 0, 0],
+				},
+			);
+			// TODO handle error
+			Ok(blk)
+		})
 	}
 
-	fn write_pages(&self, dev: &BlkDev, off: u64, buf: &[u8]) -> EResult<()> {
-		let phys_addr = VirtAddr::from(buf.as_ptr()).kernel_to_physical().unwrap();
-		let lba = (off * PAGE_SIZE as u64) / dev.blk_size;
-		let blocks = buf.len() as u64 / dev.blk_size;
+	fn writeback(&self, dev: &BlkDev, off: u64, blk: &RcPage) -> EResult<()> {
+		let blocks = PAGE_SIZE as u64 / dev.blk_size.get();
+		let lba = off * blocks;
 		let qp = &self.ctrlr.queues.read()[0];
 		self.ctrlr.submit_cmd_sync(
 			qp,
@@ -595,7 +586,7 @@ impl BlockDeviceOps for NamespaceOps {
 				nsid: self.nsid,
 				cdw12: [0, 0],
 				mptr: [0, 0],
-				dptr: [phys_addr.0 as _, 0],
+				dptr: [blk.phys_addr().0 as _, 0],
 				cdw: [lba as u32, (lba >> 32) as u32, blocks as _, 0, 0, 0],
 			},
 		);
@@ -716,6 +707,10 @@ impl ControllerInner {
 		// Determine block size
 		let fidxl = (ns_id.flbas & 0xf) as usize;
 		let blk_size = math::pow2(ns_id.lbaf[fidxl].lbads as u64);
+		if unlikely(blk_size > PAGE_SIZE as u64) {
+			println!("nvme: unsupported block size ({blk_size})");
+			return Ok(());
+		}
 		// Build device path
 		let ctrlr_id = this.id;
 		let path = PathBuf::new_unchecked(format!("/dev/nvme{ctrlr_id}n{nsid}")?);

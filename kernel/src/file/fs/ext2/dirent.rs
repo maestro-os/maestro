@@ -19,10 +19,10 @@
 //! A directory entry is an entry stored into an inode's content which
 //! represents a subfile in a directory.
 
-use super::{Ext2Fs, Superblock, read_block};
+use super::{Ext2Fs, Superblock};
 use crate::{
 	file::{FileType, fs::ext2::inode::Ext2INode},
-	memory::cache::RcFrame,
+	memory::cache::RcPage,
 };
 use core::{hint::unlikely, mem::offset_of, ptr::NonNull};
 use macros::AnyRepr;
@@ -213,7 +213,7 @@ pub struct DirentIterator<'a> {
 	inode: &'a Ext2INode,
 
 	/// The current block
-	blk: &'a mut Option<RcFrame>,
+	blk: &'a mut Option<RcPage>,
 	/// The current offset in the directory
 	off: u64,
 }
@@ -227,7 +227,7 @@ impl<'a> DirentIterator<'a> {
 	pub fn new(
 		fs: &'a Ext2Fs,
 		inode: &'a Ext2INode,
-		blk: &'a mut Option<RcFrame>,
+		blk: &'a mut Option<RcPage>,
 		off: u64,
 	) -> EResult<Self> {
 		*blk = Self::get_block(fs, inode, off)?;
@@ -243,7 +243,7 @@ impl<'a> DirentIterator<'a> {
 	/// Reads the block for the entry at the offset `off`.
 	///
 	/// If reaching the end of the allocated blocks, the function returns `None`.
-	fn get_block(fs: &Ext2Fs, inode: &Ext2INode, off: u64) -> EResult<Option<RcFrame>> {
+	fn get_block(fs: &Ext2Fs, inode: &Ext2INode, off: u64) -> EResult<Option<RcPage>> {
 		let blk_off = off / fs.sp.get_block_size() as u64;
 		let res = inode.translate_blk_off(blk_off as _, fs);
 		let blk_off = match res {
@@ -254,7 +254,7 @@ impl<'a> DirentIterator<'a> {
 			Err(e) if e.as_int() == EOVERFLOW => return Ok(None),
 			Err(e) => return Err(e),
 		};
-		let blk = read_block(fs, blk_off.get() as _)?;
+		let blk = fs.dev.ops.read_page(&fs.dev, blk_off.get() as _)?;
 		Ok(Some(blk))
 	}
 

@@ -28,7 +28,7 @@ use crate::{
 	memory::{
 		PhysAddr, VirtAddr,
 		buddy::ZONE_USER,
-		cache::{FrameOwner, RcFrame},
+		cache::RcPage,
 		vmem::{VMem, invalidate_page, shootdown_page, write_ro},
 	},
 	process::mem_space::{
@@ -62,31 +62,31 @@ fn zeroed_page() -> PhysAddr {
 
 /// A wrapper for a mapped frame, allowing to update the map counter.
 #[derive(Debug)]
-pub(super) struct MappedFrame(RcFrame);
+pub(super) struct MappedPage(RcPage);
 
-impl MappedFrame {
+impl MappedPage {
 	/// Creates a new instance.
-	pub fn new(frame: RcFrame) -> Self {
+	pub fn new(frame: RcPage) -> Self {
 		frame.map_counter().fetch_add(1, Release);
 		Self(frame)
 	}
 }
 
-impl Deref for MappedFrame {
-	type Target = RcFrame;
+impl Deref for MappedPage {
+	type Target = RcPage;
 
 	fn deref(&self) -> &Self::Target {
 		&self.0
 	}
 }
 
-impl Clone for MappedFrame {
+impl Clone for MappedPage {
 	fn clone(&self) -> Self {
 		Self::new(self.0.clone())
 	}
 }
 
-impl Drop for MappedFrame {
+impl Drop for MappedPage {
 	fn drop(&mut self) {
 		self.0.map_counter().fetch_sub(1, Release);
 	}
@@ -124,9 +124,9 @@ fn vmem_flags(prot: u8, cow: bool) -> usize {
 /// - `src` is the page containing the data to initialize the new page with. If `None`, the new
 ///   page is initialized with zeros
 /// - `dst` is the virtual address at which the new page is mapped
-fn init_page(vmem: &VMem, prot: u8, src: Option<&RcFrame>, dst: VirtAddr) -> AllocResult<RcFrame> {
+fn init_page(vmem: &VMem, prot: u8, src: Option<&RcPage>, dst: VirtAddr) -> AllocResult<RcPage> {
 	// Allocate destination page
-	let new_page = RcFrame::new(0, ZONE_USER, FrameOwner::Anon, 0)?;
+	let new_page = RcPage::new(ZONE_USER, None, 0)?;
 	// Map source page to copy buffer if any
 	if let Some(src) = src {
 		vmem.map(src.phys_addr(), COPY_BUFFER, 0, 0);
@@ -170,8 +170,8 @@ pub struct MemMapping {
 	pub off: u64,
 
 	// TODO use a sparse array?
-	/// The list of allocated physical pages
-	pub(super) pages: Spin<Vec<Option<MappedFrame>>>,
+	/// Pages mapped in memory
+	pub(super) pages: Spin<Vec<Option<MappedPage>>>,
 }
 
 impl MemMapping {
@@ -234,7 +234,7 @@ impl MemMapping {
 				// reading or writing)
 				let page = init_page(&mem_space.vmem, self.prot, Some(page), virtaddr)?;
 				phys_addr = page.phys_addr();
-				pages[offset] = Some(MappedFrame::new(page));
+				pages[offset] = Some(MappedPage::new(page));
 			}
 			// Map the page
 			let flags = vmem_flags(self.prot, false);
@@ -249,7 +249,7 @@ impl MemMapping {
 				let phys_addr = if write {
 					let page = init_page(&mem_space.vmem, self.prot, None, virtaddr)?;
 					let phys_addr = page.phys_addr();
-					pages[offset] = Some(MappedFrame::new(page));
+					pages[offset] = Some(MappedPage::new(page));
 					phys_addr
 				} else {
 					// Lazy allocation: map the zeroed page
@@ -270,7 +270,7 @@ impl MemMapping {
 					page = init_page(&mem_space.vmem, self.prot, Some(&page), virtaddr)?;
 				}
 				let phys_addr = page.phys_addr();
-				pages[offset] = Some(MappedFrame::new(page));
+				pages[offset] = Some(MappedPage::new(page));
 				// Map
 				let flags = vmem_flags(self.prot, !write);
 				mem_space.vmem.map(phys_addr, virtaddr, flags, 0);

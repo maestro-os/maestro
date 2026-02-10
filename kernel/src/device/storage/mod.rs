@@ -32,14 +32,13 @@ use crate::{
 		storage::partition::read_partitions,
 	},
 	file::Mode,
-	memory::{
-		buddy::FrameOrder,
-		cache::{FrameOwner, RcFrame},
-		user::UserPtr,
-	},
+	memory::{cache::RcPage, user::UserPtr},
 	syscall::{FromSyscallArg, ioctl},
 };
-use core::ffi::{c_uchar, c_ulong, c_ushort, c_void};
+use core::{
+	ffi::{c_uchar, c_ulong, c_ushort, c_void},
+	hint::likely,
+};
 use partition::Partition;
 use utils::{
 	collections::{path::PathBuf, vec::Vec},
@@ -82,25 +81,21 @@ impl BlockDeviceOps for PartitionOps {
 		panic!("trying to create a partition of a partition");
 	}
 
-	fn read_frame(
-		&self,
-		_dev: &BlkDev,
-		off: u64,
-		order: FrameOrder,
-		owner: FrameOwner,
-	) -> EResult<RcFrame> {
-		if off < self.partition.size {
-			BlkDev::read_frame(&self.dev, self.partition.offset + off, order, owner)
+	fn read_page(&self, _dev: &Arc<BlkDev>, off: u64) -> EResult<RcPage> {
+		if likely(off < self.partition.size) {
+			self.dev
+				.ops
+				.read_page(&self.dev, self.partition.offset + off)
 		} else {
 			Err(errno!(EINVAL))
 		}
 	}
 
-	fn write_pages(&self, _dev: &BlkDev, off: u64, buf: &[u8]) -> EResult<()> {
-		if off < self.partition.size {
+	fn writeback(&self, _dev: &BlkDev, off: u64, blk: &RcPage) -> EResult<()> {
+		if likely(off < self.partition.size) {
 			self.dev
 				.ops
-				.write_pages(&self.dev, self.partition.offset + off, buf)
+				.writeback(&self.dev, self.partition.offset + off, blk)
 		} else {
 			Err(errno!(EINVAL))
 		}

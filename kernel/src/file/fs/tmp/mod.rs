@@ -35,10 +35,7 @@ use crate::{
 		vfs,
 		vfs::node::Node,
 	},
-	memory::{
-		cache::{FrameOwner, RcFrame},
-		user::UserSlice,
-	},
+	memory::{cache::RcPage, user::UserSlice},
 	sync::{mutex::Mutex, spin::Spin},
 };
 use core::{any::Any, hint::unlikely};
@@ -130,7 +127,7 @@ impl DirInner {
 #[derive(Debug)]
 enum NodeContent {
 	/// Regular file content
-	Regular(Mutex<Vec<RcFrame>, false>),
+	Regular(Mutex<Vec<RcPage>, false>),
 	/// Directory entries
 	Directory(Mutex<DirInner, false>),
 	// TODO we could avoid having a spinlock here since the path is set only when the link is
@@ -314,16 +311,12 @@ impl NodeOps for NodeContent {
 		Ok(())
 	}
 
-	fn read_page(&self, _node: &Arc<Node>, off: u64) -> EResult<RcFrame> {
+	fn read_page(&self, _node: &Arc<Node>, off: u64) -> EResult<RcPage> {
 		let i: usize = off.try_into().map_err(|_| errno!(EOVERFLOW))?;
 		let NodeContent::Regular(pages) = self else {
 			return Err(errno!(EINVAL));
 		};
 		pages.lock().get(i).cloned().ok_or_else(|| errno!(EINVAL))
-	}
-
-	fn write_frame(&self, _node: &Node, _frame: &RcFrame) -> EResult<()> {
-		Ok(())
 	}
 }
 
@@ -360,7 +353,7 @@ impl FileOps for TmpFSFile {
 			pages.reserve(count)?;
 			for _ in 0..count {
 				// The offset is not necessary since `writeback` is a no-op
-				let frame = RcFrame::new_zeroed(0, FrameOwner::Node(node.clone()), 0)?;
+				let frame = RcPage::new_zeroed()?;
 				pages.push(frame)?;
 			}
 		} else {

@@ -34,7 +34,7 @@ use super::{
 use crate::{
 	device::BlkDev,
 	file::vfs::node::Node,
-	memory::{cache::RcFrame, user::UserSlice},
+	memory::{cache::RcPage, user::UserSlice},
 	sync::{mutex::Mutex, spin::Spin},
 	syscall::ioctl,
 	time::unit::Timestamp,
@@ -228,16 +228,8 @@ pub trait NodeOps: Any + Debug {
 	/// then it is read from disk.
 	///
 	/// The default implementation of this function returns an error.
-	fn read_page(&self, node: &Arc<Node>, off: u64) -> EResult<RcFrame> {
+	fn read_page(&self, node: &Arc<Node>, off: u64) -> EResult<RcPage> {
 		let _ = (node, off);
-		Err(errno!(EINVAL))
-	}
-
-	/// Writes the frame `frame` back to storage.
-	///
-	/// The default implementation of this function returns an error.
-	fn write_frame(&self, node: &Node, frame: &RcFrame) -> EResult<()> {
-		let _ = (node, frame);
 		Err(errno!(EINVAL))
 	}
 
