@@ -883,8 +883,8 @@ impl Controller {
 		dev.write_status_command((dev.read_status_command() & !(1 << 10)) | 0o110);
 		// Check page size
 		let cap: u64 = unsafe { bar.read(REG_CAP) };
-		let min_page_size = math::pow2(((cap as usize >> 48) & 0xf) + 12);
-		let max_page_size = math::pow2(((cap as usize >> 52) & 0xf) + 12);
+		let min_page_size = math::pow2(((cap >> 48) & 0xf) + 12) as usize;
+		let max_page_size = math::pow2(((cap >> 52) & 0xf) + 12) as usize;
 		if unlikely(!(min_page_size..=max_page_size).contains(&PAGE_SIZE)) {
 			println!(
 				"nvme: unsupported page size (min: {min_page_size} max: {max_page_size}, page size: {PAGE_SIZE})"
