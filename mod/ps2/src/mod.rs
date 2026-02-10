@@ -41,7 +41,7 @@ use kernel::{
 		manager,
 	},
 	int,
-	int::{CallbackHook, CallbackResult},
+	int::CallbackHook,
 	println,
 	sync::spin::Spin,
 };
@@ -315,7 +315,6 @@ fn init_in() -> Result<(), ()> {
 				handle_input(key, action);
 			}
 		}
-		CallbackResult::Continue
 	};
 
 	if apic::is_present() {

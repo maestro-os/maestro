@@ -214,11 +214,6 @@ struct TXDesc {
 
 /// Network Interface Card
 pub struct Nic {
-	/// TODO doc
-	status_reg: u16,
-	/// TODO doc
-	command_reg: u16,
-
 	/// The BAR0 of the device.
 	bar0: Bar,
 	/// The hook of the interrupt handler.
@@ -244,13 +239,6 @@ pub struct Nic {
 impl Nic {
 	/// Creates a new instance using the given device.
 	pub fn new(dev: &dyn PhysicalDevice) -> Result<Self, &str> {
-		let status_reg = dev
-			.get_status_reg()
-			.ok_or("Invalid PCI information for NIC")?;
-		let command_reg = dev
-			.get_command_reg()
-			.ok_or("Invalid PCI information for NIC")?;
-
 		let bar0 = dev.get_bars()[0].clone().ok_or("Invalid BAR for NIC")?;
 
 		let int_line = dev.get_interrupt_line().ok_or("Invalid BAR for NIC")?;
@@ -274,9 +262,6 @@ impl Nic {
 		};
 
 		let mut n = Self {
-			status_reg,
-			command_reg,
-
 			bar0,
 			int_hook,
 
