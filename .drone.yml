@@ -1,0 +1,137 @@
+---
+kind: pipeline
+type: docker
+name: Check
+
+trigger:
+  event:
+    - pull_request
+    - push
+  branch:
+    - master
+
+platform:
+  os: linux
+  arch: amd64
+
+steps:
+- name: clippy
+  image: rust:1.93.0-slim-trixie
+  commands:
+    - export ROOTDIR=$(pwd)
+    - cd $ROOTDIR/macros && cargo clippy --all-features --all-targets -- -D warnings
+    - cd $ROOTDIR/utils && cargo clippy --all-features --all-targets -- -D warnings
+    - cd $ROOTDIR/kernel && cargo clippy --all-features --all-targets -- -D warnings
+    - cd $ROOTDIR/inttest && cargo clippy --all-features --all-targets -- -D warnings
+
+- name: format
+  image: rust:1.93.0-slim-trixie
+  depends_on: [ clippy ]
+  commands:
+    - export ROOTDIR=$(pwd)
+    - cd $ROOTDIR/macros && cargo fmt --check
+    - cd $ROOTDIR/utils && cargo fmt --check
+    - cd $ROOTDIR/kernel && cargo fmt --check
+    - cd $ROOTDIR/inttest && cargo fmt --check
+
+- name: build_book
+  image: rust:1.93.0-slim-trixie
+  depends_on: [ clippy ]
+  commands:
+    - cargo install mdbook mdbook-mermaid
+    - mdbook-mermaid install doc/
+    - mdbook build doc/
+  
+- name: build_doc
+  image: rust:1.93.0-slim-trixie
+  depends_on: [ clippy ]
+  commands:
+    - cd kernel
+    - cargo doc --target arch/x86/x86.json
+    - cargo doc --target arch/x86_64/x86_64.json
+
+- name: build
+  image: rust:1.93.0-slim-trixie
+  depends_on: [ clippy ]
+  commands:
+    - cd kernel
+    - cargo build --target arch/x86/x86.json --profile dev
+    - cargo build --target arch/x86/x86.json --profile release
+    - cargo build --target arch/x86_64/x86_64.json --profile dev
+    - cargo build --target arch/x86_64/x86_64.json --profile release
+    - grub-file --is-x86-multiboot2 target/x86/debug/maestro
+    - grub-file --is-x86-multiboot2 target/x86/release/maestro
+    - grub-file --is-x86-multiboot2 target/x86_64/debug/maestro
+    - grub-file --is-x86-multiboot2 target/x86_64/release/maestro
+
+- name: miri
+  image: rust:1.93.0-slim-trixie
+  depends_on: [ build ]
+  environment:
+    MIRIFLAGS: -Zmiri-disable-stacked-borrows
+  commands:
+    - cargo miri test
+  # Note: would be great to limit to 10 minutes
+
+- name: module
+  image: rust:1.93.0-slim-trixie
+  depends_on: [ build ]
+  commands:
+    - export ROOTDIR=$(pwd)
+    # clippy
+    - cd $ROOTDIR/mod/e1000
+    - CMD=clippy ARCH=x86 PROFILE=debug ../build -- -D warnings
+    - CMD=clippy ARCH=x86 PROFILE=release ../build -- -D warnings
+    - CMD=clippy ARCH=x86_64 PROFILE=debug ../build -- -D warnings
+    - CMD=clippy ARCH=x86_64 PROFILE=release ../build -- -D warnings
+    - cd $ROOTDIR/mod/ps2
+    - CMD=clippy ARCH=x86 PROFILE=debug ../build -- -D warnings
+    - CMD=clippy ARCH=x86 PROFILE=release ../build -- -D warnings
+    - CMD=clippy ARCH=x86_64 PROFILE=debug ../build -- -D warnings
+    - CMD=clippy ARCH=x86_64 PROFILE=release ../build -- -D warnings
+    # format
+    - cd $ROOTDIR/mod/e1000 && cargo fmt --check
+    - cd $ROOTDIR/mod/ps2 && cargo fmt --check
+    # build
+    - cd $ROOTDIR/mod/e1000
+    - ARCH=x86 PROFILE=debug ../build
+    - ARCH=x86 PROFILE=release ../build
+    - ARCH=x86_64 PROFILE=debug ../build
+    - ARCH=x86_64 PROFILE=release ../build
+
+- name: selftest
+  image: rust:1.93.0-slim-trixie
+  depends_on: [ module ]
+  commands:
+    - export ROOTDIR=$(pwd)
+    # Note: from now on, should limit every command to 10 minutes
+    - cd $ROOTDIR/utils && cargo test 
+    - cd $ROOTDIR/kernel
+    - CARGOFLAGS="--target arch/x86/x86.json" ci/test.sh self
+    - CARGOFLAGS="--target arch/x86_64/x86_64.json" ci/test.sh self
+
+- name: build_inttest
+  image: rust:1.93.0-slim-trixie
+  depends_on: [ module ]
+  commands:
+    - export ROOTDIR=$(pwd)
+    - cd $ROOTDIR/inttest
+    - ARCH=x86 TARGET=i686-unknown-linux-musl ./build.sh && mv disk disk-x86
+    - ARCH=x86_64 TARGET=x86_64-unknown-linux-musl ./build.sh && mv disk disk-x86_64
+    - ARCH=x86_64 TARGET=i686-unknown-linux-musl ./build.sh && mv disk disk-x86_64-compat
+
+- name: inttest
+  image: rust:1.93.0-slim-trixie
+  depends_on: [ build_inttest ]
+  # Note: it would be great to add like 20 minutes timeout here
+  commands:
+    - cd kernel
+    - cp ../inttest/disk-x86 qemu_disk
+    - CARGOFLAGS="--target arch/x86/x86.json" QEMUFLAGS="-smp 1" ci/test.sh int
+    - CARGOFLAGS="--target arch/x86/x86.json" QEMUFLAGS="-smp 2" ci/test.sh int
+    - cp ../inttest/disk-x86_64 qemu_disk
+    - CARGOFLAGS="--target arch/x86_64/x86_64.json" QEMUFLAGS="-smp 1" ci/test.sh int
+    - CARGOFLAGS="--target arch/x86_64/x86_64.json" QEMUFLAGS="-smp 2" ci/test.sh int
+    - cp ../inttest/disk-x86_64-compat qemu_disk
+    - CARGOFLAGS="--target arch/x86_64/x86_64.json" QEMUFLAGS="-smp 1" ci/test.sh int
+    - CARGOFLAGS="--target arch/x86_64/x86_64.json" QEMUFLAGS="-smp 2" ci/test.sh int
