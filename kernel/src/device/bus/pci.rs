@@ -216,7 +216,7 @@ impl MsiX<'_> {
 			return Err(errno!(EINVAL));
 		}
 		let bir = self.message_table & 0b111;
-		let off = self.message_table & !0b111;
+		let off = (self.message_table & !0b111) as usize + n as usize * size_of::<MsiXMessage>();
 		let bir = self
 			.dev
 			.get_bars()
@@ -227,7 +227,7 @@ impl MsiX<'_> {
 		let data = x86::apic::msi_message_data(edge_trigger, deassert, vector);
 		unsafe {
 			bir.write(
-				off as usize,
+				off,
 				MsiXMessage {
 					addr_low: addr as u32,
 					addr_high: (addr >> 32) as u32,

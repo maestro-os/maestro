@@ -21,7 +21,7 @@
 //! [NVMe specification](https://nvmexpress.org/wp-content/uploads/NVM-Express-Base-Specification-Revision-2.3-2025.08.01-Ratified.pdf)
 
 use crate::{
-	arch::core_id,
+	arch::{core_id, x86::sti},
 	device::{
 		BlkDev, BlockDeviceOps, DeviceID,
 		bar::Bar,
@@ -958,6 +958,7 @@ impl Controller {
 			handle_int(int, &inner);
 		})?
 		.unwrap();
+		sti();
 		// Identify controller
 		let mut data: MaybeUninit<IdentifyController> = MaybeUninit::uninit();
 		let dptr = VirtAddr::from(&mut data).kernel_to_physical().unwrap();
@@ -972,6 +973,8 @@ impl Controller {
 				cdw: [CNS_CONTROLLER, 0, 0, 0, 0, 0],
 			},
 		);
+		let dev_path = PathBuf::new_unchecked(format!("/dev/nvme{}", inner.id)?);
+		println!("nvme: detected controller ({dev_path})");
 		// List namespaces
 		let mut ns_ids: MaybeUninit<[u32; 1024]> = MaybeUninit::uninit();
 		let dptr = VirtAddr::from(&mut ns_ids).kernel_to_physical().unwrap();
