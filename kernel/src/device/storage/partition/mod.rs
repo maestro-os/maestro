@@ -24,10 +24,8 @@ mod mbr;
 
 use crate::{
 	device,
-	device::{
-		BLK_DEVICES, BlkDev,
-		storage::{STORAGE_MODE, partition},
-	},
+	device::{BLK_DEVICES, BlkDev, storage::STORAGE_MODE},
+	println,
 };
 use gpt::Gpt;
 use mbr::MbrTable;
@@ -97,9 +95,10 @@ pub fn read_partitions(dev: &Arc<BlkDev>) -> EResult<()> {
 	if dev.is_partition {
 		return Ok(());
 	}
+	println!("Read partitions on {}", dev.path);
 	let mut dev_parts = dev.partitions.lock();
 	clear_partitions(&mut dev_parts)?;
-	let Some(parts) = partition::read(dev)? else {
+	let Some(parts) = read(dev)? else {
 		return Ok(());
 	};
 	let parts = parts.read_partitions(dev)?;
@@ -108,6 +107,7 @@ pub fn read_partitions(dev: &Arc<BlkDev>) -> EResult<()> {
 		let part_nbr = (i + 1) as u32;
 		let (id, path) = dev.ops.new_partition(dev, part_nbr)?;
 		// Create the partition's device file
+		println!("Found partition {path}");
 		let part_dev = BlkDev::new_partition(id, path, STORAGE_MODE, dev.clone(), partition)?;
 		dev_parts.push(part_dev.clone())?;
 		device::register_blk(part_dev)?;

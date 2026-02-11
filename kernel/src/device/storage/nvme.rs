@@ -21,7 +21,10 @@
 //! [NVMe specification](https://nvmexpress.org/wp-content/uploads/NVM-Express-Base-Specification-Revision-2.3-2025.08.01-Ratified.pdf)
 
 use crate::{
-	arch::{core_id, x86::sti},
+	arch::{
+		core_id,
+		x86::{idt::disable_int, sti},
+	},
 	device::{
 		BlkDev, BlockDeviceOps, DeviceID,
 		bar::Bar,
@@ -690,6 +693,10 @@ struct ControllerInner {
 
 impl ControllerInner {
 	fn init_ns(this: &Arc<Self>, nsid: u32) -> EResult<()> {
+		// Build device path
+		let path =
+			PathBuf::new_unchecked(format!("/dev/nvme{ctrlr_id}n{nsid}", ctrlr_id = this.id)?);
+		println!("nvme: detected namespace ({path})");
 		let mut ns_id: MaybeUninit<IdentifyNamespace> = MaybeUninit::uninit();
 		let dptr = VirtAddr::from(&mut ns_id).kernel_to_physical().unwrap();
 		this.submit_cmd_sync(
@@ -711,9 +718,6 @@ impl ControllerInner {
 			println!("nvme: unsupported block size ({blk_size})");
 			return Ok(());
 		}
-		// Build device path
-		let ctrlr_id = this.id;
-		let path = PathBuf::new_unchecked(format!("/dev/nvme{ctrlr_id}n{nsid}")?);
 		// Allocate minor
 		let id = {
 			let mut major = BLOCK_EXTENDED_MAJOR_HANDLE.lock();
@@ -787,25 +791,29 @@ impl ControllerInner {
 	fn submit_cmd_sync(&self, qp: &QueuePair, mut cmd: SubmissionQueueEntry) {
 		// Wait for space in the submission queue
 		let _permit = qp.sem.acquire();
-		let mut qp_inner = qp.inner.lock();
-		let sq_tail = qp_inner.sq_tail;
-		// Add command identifier
-		cmd.cdw0 = (cmd.cdw0 & !0xffff0000) | ((sq_tail & 0xffff) << 16);
-		// Insert in submission queue
-		unsafe {
-			qp.sq.add(sq_tail as usize).write_volatile(cmd);
-		}
-		qp_inner.waiting_processes[sq_tail as usize] = Some(Process::current());
-		// Update queue tail
-		qp_inner.sq_tail = (sq_tail + 1) % (SQ_LEN as u32);
-		unsafe {
-			self.bar.write::<u32>(
-				queue_doorbell_off(qp.id, false, self.dstrd),
-				qp_inner.sq_tail,
-			);
-		}
-		// Wait for completion
-		process::set_state(State::Sleeping);
+		// Disable interrupt to prevent the completion interrupt from being handled before the
+		// process is put to sleep
+		disable_int(|| {
+			let mut qp_inner = qp.inner.lock();
+			let sq_tail = qp_inner.sq_tail;
+			// Add command identifier
+			cmd.cdw0 = (cmd.cdw0 & !0xffff0000) | ((sq_tail & 0xffff) << 16);
+			// Insert in submission queue
+			unsafe {
+				qp.sq.add(sq_tail as usize).write_volatile(cmd);
+			}
+			qp_inner.waiting_processes[sq_tail as usize] = Some(Process::current());
+			// Update queue tail
+			qp_inner.sq_tail = (sq_tail + 1) % (SQ_LEN as u32);
+			unsafe {
+				self.bar.write::<u32>(
+					queue_doorbell_off(qp.id, false, self.dstrd),
+					qp_inner.sq_tail,
+				);
+			}
+			// Wait for completion
+			process::set_state(State::Sleeping);
+		});
 		schedule();
 	}
 }
@@ -973,8 +981,6 @@ impl Controller {
 				cdw: [CNS_CONTROLLER, 0, 0, 0, 0, 0],
 			},
 		);
-		let dev_path = PathBuf::new_unchecked(format!("/dev/nvme{}", inner.id)?);
-		println!("nvme: detected controller ({dev_path})");
 		// List namespaces
 		let mut ns_ids: MaybeUninit<[u32; 1024]> = MaybeUninit::uninit();
 		let dptr = VirtAddr::from(&mut ns_ids).kernel_to_physical().unwrap();
@@ -989,6 +995,8 @@ impl Controller {
 				cdw: [CNS_NAMESPACE_LIST, 0, 0, 0, 0, 0],
 			},
 		);
+		let dev_path = PathBuf::new_unchecked(format!("/dev/nvme{}", inner.id)?);
+		println!("nvme: detected controller ({dev_path})");
 		let controller = Self {
 			inner,
 			admin_int,
