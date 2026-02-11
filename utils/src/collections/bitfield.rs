@@ -163,7 +163,7 @@ mod test {
 
 	#[test]
 	fn bitfield_set0() {
-		let mut bitfield = Bitfield::<[u8; 42]>::new_inplace();
+		let mut bitfield = Bitfield::new_allocated(42).unwrap();
 		assert_eq!(bitfield.len(), 42);
 
 		for i in 0..bitfield.len() {
@@ -181,7 +181,7 @@ mod test {
 
 	#[test]
 	fn bitfield_clear0() {
-		let mut bitfield = Bitfield::<[u8; 42]>::new_inplace();
+		let mut bitfield = Bitfield::new_allocated(42).unwrap();
 		assert_eq!(bitfield.len(), 42);
 
 		for i in 0..bitfield.len() {
