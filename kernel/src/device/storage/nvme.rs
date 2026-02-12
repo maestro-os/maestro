@@ -47,6 +47,7 @@ use core::{
 	fmt::Formatter,
 	hint,
 	hint::unlikely,
+	mem,
 	mem::MaybeUninit,
 	num::NonZeroU64,
 	ptr::NonNull,
@@ -157,6 +158,13 @@ struct CompletionQueueEntry {
 	cid: u16,
 	/// Status
 	status: u16,
+}
+
+impl CompletionQueueEntry {
+	#[inline]
+	fn status(&self) -> u16 {
+		self.status >> 1
+	}
 }
 
 #[repr(C)]
@@ -557,12 +565,17 @@ impl BlockDeviceOps for NamespaceOps {
 	}
 
 	fn read_page(&self, dev: &Arc<BlkDev>, off: u64) -> EResult<RcPage> {
+		let blocks = PAGE_SIZE as u64 / dev.blk_size.get();
+		let lba = off * blocks;
+		// Bound check
+		let end_lba = lba.checked_add(blocks).ok_or_else(|| errno!(EOVERFLOW))?;
+		if unlikely(end_lba > dev.blk_count) {
+			return Err(errno!(EOVERFLOW));
+		}
 		dev.mapped.get_or_insert_page(off, || {
 			let blk = BlkDev::new_page(dev, off)?;
-			let blocks = PAGE_SIZE as u64 / dev.blk_size.get();
-			let lba = off * blocks;
 			let qp = &self.ctrlr.queues.read()[0];
-			self.ctrlr.submit_cmd_sync(
+			let cqe = self.ctrlr.submit_cmd_sync(
 				qp,
 				SubmissionQueueEntry {
 					cdw0: CMD_READ,
@@ -573,7 +586,10 @@ impl BlockDeviceOps for NamespaceOps {
 					cdw: [lba as u32, (lba >> 32) as u32, blocks as _, 0, 0, 0],
 				},
 			);
-			// TODO handle error
+			if unlikely(cqe.status() != 0) {
+				// TODO print log?
+				return Err(errno!(EIO));
+			}
 			Ok(blk)
 		})
 	}
@@ -581,8 +597,13 @@ impl BlockDeviceOps for NamespaceOps {
 	fn writeback(&self, dev: &BlkDev, off: u64, blk: &RcPage) -> EResult<()> {
 		let blocks = PAGE_SIZE as u64 / dev.blk_size.get();
 		let lba = off * blocks;
+		// Bound check
+		let end_lba = lba.checked_add(blocks).ok_or_else(|| errno!(EOVERFLOW))?;
+		if unlikely(end_lba > dev.blk_count) {
+			return Err(errno!(EOVERFLOW));
+		}
 		let qp = &self.ctrlr.queues.read()[0];
-		self.ctrlr.submit_cmd_sync(
+		let cqe = self.ctrlr.submit_cmd_sync(
 			qp,
 			SubmissionQueueEntry {
 				cdw0: CMD_WRITE,
@@ -593,7 +614,10 @@ impl BlockDeviceOps for NamespaceOps {
 				cdw: [lba as u32, (lba >> 32) as u32, blocks as _, 0, 0, 0],
 			},
 		);
-		// TODO handle error
+		if unlikely(cqe.status() != 0) {
+			// TODO print log?
+			return Err(errno!(EIO));
+		}
 		Ok(())
 	}
 }
@@ -606,6 +630,12 @@ impl fmt::Debug for NamespaceOps {
 	}
 }
 
+enum QueueEntry {
+	Empty,
+	Submitted(Arc<Process>),
+	Completed(CompletionQueueEntry),
+}
+
 struct QueuePairInner {
 	/// Submission queues tail
 	sq_tail: u32,
@@ -613,8 +643,8 @@ struct QueuePairInner {
 	cq_head: u32,
 
 	completion_phase: bool,
-	/// Associated process for each submission entry
-	waiting_processes: [Option<Arc<Process>>; SQ_LEN],
+	/// Associated data for each submission entry
+	entries: [QueueEntry; SQ_LEN],
 }
 
 impl Default for QueuePairInner {
@@ -624,7 +654,7 @@ impl Default for QueuePairInner {
 			cq_head: 0,
 
 			completion_phase: true,
-			waiting_processes: array::from_fn::<_, SQ_LEN, _>(|_| None),
+			entries: array::from_fn::<_, SQ_LEN, _>(|_| QueueEntry::Empty),
 		}
 	}
 }
@@ -699,7 +729,7 @@ impl ControllerInner {
 		println!("nvme: detected namespace ({path})");
 		let mut ns_id: MaybeUninit<IdentifyNamespace> = MaybeUninit::uninit();
 		let dptr = VirtAddr::from(&mut ns_id).kernel_to_physical().unwrap();
-		this.submit_cmd_sync(
+		let cqe = this.submit_cmd_sync(
 			&this.admin_qp,
 			SubmissionQueueEntry {
 				cdw0: ADMIN_CMD_IDENTIFY,
@@ -711,11 +741,15 @@ impl ControllerInner {
 			},
 		);
 		let ns_id = unsafe { ns_id.assume_init() };
+		if unlikely(cqe.status() != 0) {
+			println!("nvme: failed to identify namespace {nsid}");
+			return Ok(());
+		}
 		// Determine block size
 		let fidxl = (ns_id.flbas & 0xf) as usize;
 		let blk_size = math::pow2(ns_id.lbaf[fidxl].lbads as u64);
 		if unlikely(blk_size > PAGE_SIZE as u64) {
-			println!("nvme: unsupported block size ({blk_size})");
+			println!("nvme: unsupported block size {blk_size} on namespace {nsid}");
 			return Ok(());
 		}
 		// Allocate minor
@@ -744,10 +778,10 @@ impl ControllerInner {
 		Ok(())
 	}
 
-	fn init_io_queue(&self, id: u16, int: u16) -> AllocResult<()> {
+	fn init_io_queue(&self, id: u16, int: u16) -> EResult<()> {
 		let qp = QueuePair::new(id)?;
 		let dptr = VirtAddr::from(qp.cq).kernel_to_physical().unwrap();
-		self.submit_cmd_sync(
+		let cqe = self.submit_cmd_sync(
 			&self.admin_qp,
 			SubmissionQueueEntry {
 				cdw0: ADMIN_CMD_CREATE_IO_CQ,
@@ -765,8 +799,15 @@ impl ControllerInner {
 				],
 			},
 		);
+		if unlikely(cqe.status() != 0) {
+			println!(
+				"nvme: I/O completion queue {id} creation error ({})",
+				cqe.status()
+			);
+			return Err(errno!(EIO));
+		}
 		let dptr = VirtAddr::from(qp.sq).kernel_to_physical().unwrap();
-		self.submit_cmd_sync(
+		let cqe = self.submit_cmd_sync(
 			&self.admin_qp,
 			SubmissionQueueEntry {
 				cdw0: ADMIN_CMD_CREATE_IO_SQ,
@@ -784,16 +825,29 @@ impl ControllerInner {
 				],
 			},
 		);
-		self.queues.write().push(qp)
+		if unlikely(cqe.status() != 0) {
+			println!(
+				"nvme: I/O submission queue {id} creation error ({})",
+				cqe.status()
+			);
+			return Err(errno!(EIO));
+		}
+		self.queues.write().push(qp)?;
+		Ok(())
 	}
 
 	/// Submits a command, returning when completed
-	fn submit_cmd_sync(&self, qp: &QueuePair, mut cmd: SubmissionQueueEntry) {
+	#[must_use]
+	fn submit_cmd_sync(
+		&self,
+		qp: &QueuePair,
+		mut cmd: SubmissionQueueEntry,
+	) -> CompletionQueueEntry {
 		// Wait for space in the submission queue
 		let _permit = qp.sem.acquire();
 		// Disable interrupt to prevent the completion interrupt from being handled before the
 		// process is put to sleep
-		disable_int(|| {
+		let sq_tail = disable_int(|| {
 			let mut qp_inner = qp.inner.lock();
 			let sq_tail = qp_inner.sq_tail;
 			// Add command identifier
@@ -802,7 +856,7 @@ impl ControllerInner {
 			unsafe {
 				qp.sq.add(sq_tail as usize).write_volatile(cmd);
 			}
-			qp_inner.waiting_processes[sq_tail as usize] = Some(Process::current());
+			qp_inner.entries[sq_tail as usize] = QueueEntry::Submitted(Process::current());
 			// Update queue tail
 			qp_inner.sq_tail = (sq_tail + 1) % (SQ_LEN as u32);
 			unsafe {
@@ -813,8 +867,16 @@ impl ControllerInner {
 			}
 			// Wait for completion
 			process::set_state(State::Sleeping);
+			sq_tail
 		});
 		schedule();
+		// Retrieve CQE
+		let mut qp_inner = qp.inner.lock();
+		let ent = mem::replace(&mut qp_inner.entries[sq_tail as usize], QueueEntry::Empty);
+		let QueueEntry::Completed(cqe) = ent else {
+			unreachable!();
+		};
+		cqe
 	}
 }
 
@@ -841,10 +903,11 @@ fn handle_int(int: u32, inner: &ControllerInner) {
 			break;
 		}
 		// Wake up process
-		let proc = qp_inner.waiting_processes[cqe.cid as usize].take();
-		if let Some(proc) = proc {
-			Process::wake_from(&proc, State::Sleeping as _);
+		let ent = &mut qp_inner.entries[cqe.cid as usize];
+		if let QueueEntry::Submitted(proc) = ent {
+			Process::wake_from(proc, State::Sleeping as _)
 		}
+		*ent = QueueEntry::Completed(cqe);
 		qp_inner.cq_head = (qp_inner.cq_head + 1) % (CQ_LEN as u32);
 		if qp_inner.cq_head == 0 {
 			qp_inner.completion_phase = !qp_inner.completion_phase;
@@ -968,9 +1031,9 @@ impl Controller {
 		.unwrap();
 		sti();
 		// Identify controller
-		let mut data: MaybeUninit<IdentifyController> = MaybeUninit::uninit();
-		let dptr = VirtAddr::from(&mut data).kernel_to_physical().unwrap();
-		inner.submit_cmd_sync(
+		let mut ctrlr_id: MaybeUninit<IdentifyController> = MaybeUninit::uninit();
+		let dptr = VirtAddr::from(&mut ctrlr_id).kernel_to_physical().unwrap();
+		let cqe = inner.submit_cmd_sync(
 			&inner.admin_qp,
 			SubmissionQueueEntry {
 				cdw0: ADMIN_CMD_IDENTIFY,
@@ -981,10 +1044,38 @@ impl Controller {
 				cdw: [CNS_CONTROLLER, 0, 0, 0, 0, 0],
 			},
 		);
+		if unlikely(cqe.status() != 0) {
+			println!(
+				"nvme: controller identification failed (status: {})",
+				cqe.status()
+			);
+			return Err(errno!(EIO));
+		}
+		let ctrlr_id = unsafe { ctrlr_id.assume_init() };
+		// Check entries sizes
+		let minsubsize = (ctrlr_id.sqes & 0xf) as u32;
+		let maxsubsize = ((ctrlr_id.sqes >> 4) & 0xf) as u32;
+		let mincomsize = (ctrlr_id.cqes & 0xf) as u32;
+		let maxcomsize = ((ctrlr_id.cqes >> 4) & 0xf) as u32;
+		let subsize = size_of::<SubmissionQueueEntry>().ilog2();
+		let comsize = size_of::<CompletionQueueEntry>().ilog2();
+		if unlikely(
+			!(minsubsize..=maxsubsize).contains(&subsize)
+				|| !(mincomsize..=maxcomsize).contains(&comsize),
+		) {
+			println!("nvme: unsupported queue entry size");
+			return Err(errno!(EINVAL));
+		}
+		unsafe {
+			inner.bar.write(
+				REG_CC,
+				inner.bar.read::<u32>(REG_CC) | (subsize << 16) | (comsize << 20),
+			);
+		}
 		// List namespaces
 		let mut ns_ids: MaybeUninit<[u32; 1024]> = MaybeUninit::uninit();
 		let dptr = VirtAddr::from(&mut ns_ids).kernel_to_physical().unwrap();
-		inner.submit_cmd_sync(
+		let cqe = inner.submit_cmd_sync(
 			&inner.admin_qp,
 			SubmissionQueueEntry {
 				cdw0: ADMIN_CMD_IDENTIFY,
@@ -995,6 +1086,10 @@ impl Controller {
 				cdw: [CNS_NAMESPACE_LIST, 0, 0, 0, 0, 0],
 			},
 		);
+		if unlikely(cqe.status() != 0) {
+			println!("nvme: namespace listing failed (status: {})", cqe.status());
+			return Err(errno!(EIO));
+		}
 		let dev_path = PathBuf::new_unchecked(format!("/dev/nvme{}", inner.id)?);
 		println!("nvme: detected controller ({dev_path})");
 		let controller = Self {
