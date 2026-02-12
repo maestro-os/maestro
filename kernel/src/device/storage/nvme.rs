@@ -21,10 +21,7 @@
 //! [NVMe specification](https://nvmexpress.org/wp-content/uploads/NVM-Express-Base-Specification-Revision-2.3-2025.08.01-Ratified.pdf)
 
 use crate::{
-	arch::{
-		core_id,
-		x86::{idt::disable_int, sti},
-	},
+	arch::{core_id, x86::idt::disable_int},
 	device::{
 		BlkDev, BlockDeviceOps, DeviceID,
 		bar::Bar,
@@ -790,7 +787,7 @@ impl ControllerInner {
 				mptr: [0; 2],
 				dptr: [dptr.0 as _, 0],
 				cdw: [
-					(id as u32) | (CQ_LEN << 16) as u32,
+					(id as u32) | ((CQ_LEN - 1) << 16) as u32,
 					0b11 | ((int as u32) << 16),
 					0,
 					0,
@@ -816,8 +813,8 @@ impl ControllerInner {
 				mptr: [0; 2],
 				dptr: [dptr.0 as _, 0],
 				cdw: [
-					(id as u32) | (SQ_LEN << 16) as u32,
-					0o1 | ((id as u32) << 16),
+					(id as u32) | ((SQ_LEN - 1) << 16) as u32,
+					0b1 | ((id as u32) << 16),
 					0,
 					0,
 					0,
@@ -1029,7 +1026,6 @@ impl Controller {
 			handle_int(int, &inner);
 		})?
 		.unwrap();
-		sti();
 		// Identify controller
 		let mut ctrlr_id: MaybeUninit<IdentifyController> = MaybeUninit::uninit();
 		let dptr = VirtAddr::from(&mut ctrlr_id).kernel_to_physical().unwrap();
@@ -1097,7 +1093,7 @@ impl Controller {
 			admin_int,
 			io_int,
 		};
-		controller.inner.init_io_queue(1, IO_INT as _)?;
+		controller.inner.init_io_queue(1, 1)?;
 		let ns_ids = unsafe { ns_ids.assume_init() };
 		for i in ns_ids {
 			if i == 0 {
