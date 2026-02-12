@@ -140,13 +140,17 @@ impl BlockDeviceOps for PartitionOps {
 	}
 }
 
+enum Controller {
+	Ide(ide::Controller),
+	Nvme(nvme::Controller),
+}
+
 /// Manages storage controllers, devices and their partitions.
 pub struct StorageManager {
 	/// Allocated device major number for NVMe controllers
 	nvme_ctrlr_major: MajorBlock,
-
-	/// The list of detected interfaces
-	interfaces: Vec<Arc<BlkDev>>,
+	/// The list of detected controllers
+	controllers: Vec<Controller>,
 }
 
 impl StorageManager {
@@ -154,8 +158,7 @@ impl StorageManager {
 	pub fn new() -> EResult<Self> {
 		Ok(Self {
 			nvme_ctrlr_major: MajorBlock::new_dyn(DeviceType::Char)?,
-
-			interfaces: Vec::new(),
+			controllers: Vec::new(),
 		})
 	}
 }
@@ -169,17 +172,23 @@ impl DeviceManager for StorageManager {
 		match (dev.get_subclass(), dev.get_prog_if()) {
 			// IDE
 			(0x01, _) => {
-				let _ide = ide::Controller::new(dev);
-				// TODO figure out what to do with the controller
-			}
-			// NVM
-			(0x08, 0x02) => {
-				let _nvm = match nvme::Controller::new(dev) {
+				let ctrlr = ide::Controller::new(dev);
+				let ctrlr = match ctrlr {
 					Ok(n) => n,
 					Err(e) if e.as_int() == ENOMEM => return Err(e),
 					Err(_) => return Ok(()),
 				};
-				// TODO figure out what to do with the controller
+				self.controllers.push(Controller::Ide(ctrlr))?;
+			}
+			// NVMe
+			(0x08, 0x02) => {
+				let ctrlr = nvme::Controller::new(dev);
+				let ctrlr = match ctrlr {
+					Ok(n) => n,
+					Err(e) if e.as_int() == ENOMEM => return Err(e),
+					Err(_) => return Ok(()),
+				};
+				self.controllers.push(Controller::Nvme(ctrlr))?;
 			}
 			_ => {}
 		}
