@@ -43,6 +43,7 @@ use crate::{
 	},
 	memory::user::UserSlice,
 	net::{SocketDesc, SocketDomain, SocketType},
+	println,
 	sync::{atomic::AtomicU64, once::OnceInit, spin::Spin},
 	time::{
 		clock::{Clock, current_time_sec},
@@ -544,6 +545,7 @@ pub(crate) fn init(root: Option<(u32, u32)>) -> EResult<()> {
 		}),
 		None => MountSource::NoDev(String::try_from(b"tmpfs")?),
 	};
+	println!("Mount root filesystem from `{source}`");
 	let root = mountpoint::create(source, None, 0, None)?;
 	// Init the VFS's root entry.
 	unsafe {

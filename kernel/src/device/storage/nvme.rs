@@ -580,7 +580,7 @@ impl BlockDeviceOps for NamespaceOps {
 					cdw12: [0, 0],
 					mptr: [0, 0],
 					dptr: [blk.phys_addr().0 as _, 0],
-					cdw: [lba as u32, (lba >> 32) as u32, blocks as _, 0, 0, 0],
+					cdw: [lba as u32, (lba >> 32) as u32, (blocks - 1) as _, 0, 0, 0],
 				},
 			);
 			if unlikely(cqe.status() != 0) {
@@ -608,7 +608,7 @@ impl BlockDeviceOps for NamespaceOps {
 				cdw12: [0, 0],
 				mptr: [0, 0],
 				dptr: [blk.phys_addr().0 as _, 0],
-				cdw: [lba as u32, (lba >> 32) as u32, blocks as _, 0, 0, 0],
+				cdw: [lba as u32, (lba >> 32) as u32, (blocks - 1) as _, 0, 0, 0],
 			},
 		);
 		if unlikely(cqe.status() != 0) {
