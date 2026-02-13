@@ -43,9 +43,7 @@ use crate::{
 use core::{
 	fmt,
 	fmt::Formatter,
-	hint::unlikely,
 	marker::PhantomData,
-	mem,
 	ops::Deref,
 	slice,
 	sync::atomic::{
@@ -106,7 +104,7 @@ impl RcPage {
 	/// - `dev_off` is the offset of the page on the device
 	pub fn new(flags: Flags, dev: Option<Arc<BlkDev>>, dev_off: u64) -> AllocResult<Self> {
 		let addr = buddy::alloc(0, flags)?;
-		Ok(Self(Arc::new(RcPageInner {
+		let p = Self(Arc::new(RcPageInner {
 			addr,
 
 			dev,
@@ -114,7 +112,9 @@ impl RcPage {
 
 			map_count: Default::default(),
 			lru: Default::default(),
-		})?))
+		})?);
+		LRU.lock().insert_front(p.0.clone());
+		Ok(p)
 	}
 
 	/// Allocates a new, zeroed page in the kernel zone.
@@ -309,29 +309,21 @@ impl MappedNode {
 		off: u64,
 		init: Init,
 	) -> EResult<RcPage> {
-		let (page, insert) = {
-			let mut pages = self.cache.lock();
-			match pages.get(&off) {
-				// Cache hit
-				Some(page) => (page.clone(), false),
-				// Cache miss: read and insert
-				_ => {
-					let page = init()?;
-					page.init(off);
-					pages.insert(off, page.clone())?;
-					(page, true)
+		let mut pages = self.cache.lock();
+		match pages.get(&off) {
+			// Cache hit
+			Some(page) => Ok(page.clone()),
+			// Cache miss: read and insert
+			_ => {
+				let page = init()?;
+				page.init(off);
+				pages.insert(off, page.clone())?;
+				unsafe {
+					LRU.lock().lru_promote(&page.0);
 				}
+				Ok(page)
 			}
-		};
-		// Insert in the LRU, or promote
-		let mut lru = LRU.lock();
-		if unlikely(insert) {
-			lru.insert_front(page.0.clone());
-		} else {
-			// TODO promote in the LRU. We must make sure the page cannot be promoted by someone
-			// else before being inserted
 		}
-		Ok(page)
 	}
 
 	/// Synchronizes all pages in the cache back to disk.
@@ -357,19 +349,6 @@ impl MappedNode {
 			}
 			retain
 		});
-	}
-}
-
-impl Drop for MappedNode {
-	fn drop(&mut self) {
-		// Unlink all remaining pages from the LRU
-		let mut lru = LRU.lock();
-		let cache = mem::take(&mut self.cache).into_inner();
-		for (_, page) in cache {
-			unsafe {
-				lru.remove(&page.0);
-			}
-		}
 	}
 }
 
