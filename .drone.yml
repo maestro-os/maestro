@@ -50,10 +50,20 @@ steps:
     - cargo doc --target arch/x86/x86.json
     - cargo doc --target arch/x86_64/x86_64.json
 
+- name: build_binutils_elf
+  image: rust:1.93.0-slim-trixie
+  depends_on: [ clippy ]
+  commands:
+  
+    - export ROOTDIR=$(pwd)
+    - cd $ROOTDIR/utils/elf
+    - cargo build --release
+
 - name: build
   image: rust:1.93.0-slim-trixie
   depends_on: [ clippy ]
   commands:
+    - apt update && apt install -y clang grub-pc-bin lld
     - cd kernel
     - cargo build --target arch/x86/x86.json --profile dev
     - cargo build --target arch/x86/x86.json --profile release
@@ -77,6 +87,7 @@ steps:
   image: rust:1.93.0-slim-trixie
   depends_on: [ build ]
   commands:
+    - apt update && apt install -y clang lld
     - export ROOTDIR=$(pwd)
     # clippy
     - cd $ROOTDIR/mod/e1000
@@ -103,6 +114,7 @@ steps:
   image: rust:1.93.0-slim-trixie
   depends_on: [ module ]
   commands:
+    - apt update && apt install -y clang lld qemu-system xorriso
     - export ROOTDIR=$(pwd)
     # Note: from now on, should limit every command to 10 minutes
     - cd $ROOTDIR/utils && cargo test 
