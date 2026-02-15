@@ -247,7 +247,7 @@ pub extern "C" fn finish(prev: &Process, next: &Process) {
 			ent.update_gdt(gdt::TLS_OFFSET + i * size_of::<gdt::Entry>());
 		});
 	// Bind memory space
-	match next.mem_space.as_ref() {
+	match next.active_mem_space.lock().as_ref() {
 		Some(mem_space) => MemSpace::bind(mem_space),
 		None => MemSpace::unbind(),
 	}

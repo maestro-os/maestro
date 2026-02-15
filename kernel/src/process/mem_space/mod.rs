@@ -40,6 +40,7 @@ use crate::{
 		vmem::{KERNEL_VMEM, VMem, shootdown_range},
 	},
 	process::{
+		Process,
 		mem_space::mapping::MappedPage,
 		scheduler::{cpu, cpu::per_cpu, critical},
 	},
@@ -594,16 +595,20 @@ impl MemSpace {
 	/// `f` is executed in a critical section to prevent the temporary memory space from being
 	/// replaced by the scheduler.
 	pub fn switch<F: FnOnce(&Arc<Self>) -> T, T>(this: &Arc<Self>, f: F) -> T {
-		critical(|| {
+		let proc = Process::current();
+		let old = critical(|| {
 			let old = per_cpu().mem_space.get();
+			*proc.active_mem_space.lock() = Some(this.clone());
 			Self::bind(this);
-			let res = f(this);
-			match old {
-				Some(old) => MemSpace::bind(&old),
-				None => MemSpace::unbind(),
-			}
-			res
-		})
+			old
+		});
+		let res = f(this);
+		match &old {
+			Some(old) => MemSpace::bind(old),
+			None => MemSpace::unbind(),
+		}
+		critical(|| *proc.active_mem_space.lock() = old);
+		res
 	}
 
 	/// Clones the current memory space for process forking.

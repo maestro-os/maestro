@@ -70,9 +70,10 @@ pub fn exec(frame: &mut IntFrame, image: ProgramImage) -> EResult<()> {
 	// Safe because no other thread can execute this function at the same time for the same process
 	unsafe {
 		*proc.fd_table.get_mut() = fds;
-		*proc.mem_space.get_mut() = Some(image.mem_space);
+		*proc.mem_space.get_mut() = Some(image.mem_space.clone());
 		*proc.sig_handlers.get_mut() = signal_handlers;
 	}
+	*proc.active_mem_space.lock() = Some(image.mem_space);
 	// Reset signals
 	proc.signal.lock().sigpending = Default::default();
 	proc.vfork_wake();

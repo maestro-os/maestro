@@ -339,8 +339,11 @@ pub struct Process {
 	/// TLS entries.
 	pub tls: Spin<[gdt::Entry; TLS_ENTRIES_COUNT]>, // TODO rwlock
 
-	/// The virtual memory of the process.
+	/// The virtual memory of the process
 	mem_space: UnsafeMut<Option<Arc<MemSpace>>>,
+	/// The memory the process context is currently bound to
+	active_mem_space: Spin<Option<Arc<MemSpace>>, false>,
+
 	/// Filesystem access information
 	pub fs: Spin<ProcessFs>,
 	/// The process's current umask.
@@ -550,6 +553,8 @@ impl Process {
 
 			// Not needed for kernel threads
 			mem_space: Default::default(),
+			active_mem_space: Default::default(),
+
 			fs: Spin::new(ProcessFs::dummy()?),
 			umask: Default::default(),
 			fd_table: Default::default(),
@@ -605,6 +610,8 @@ impl Process {
 			tls: Default::default(),
 
 			mem_space: UnsafeMut::new(None),
+			active_mem_space: Spin::new(None),
+
 			fs: Spin::new(ProcessFs::dummy()?),
 			umask: AtomicU32::new(DEFAULT_UMASK),
 			fd_table: UnsafeMut::new(Some(Arc::new(Default::default())?)),
@@ -878,7 +885,9 @@ impl Process {
 			gs_base: Default::default(),
 			tls: Spin::new(*parent.tls.lock()),
 
-			mem_space: UnsafeMut::new(Some(mem_space)),
+			mem_space: UnsafeMut::new(Some(mem_space.clone())),
+			active_mem_space: Spin::new(Some(mem_space)),
+
 			fs: Spin::new(parent.fs.lock().try_clone()?),
 			umask: AtomicU32::new(parent.umask.load(Relaxed)),
 			fd_table: UnsafeMut::new(fd_table),
