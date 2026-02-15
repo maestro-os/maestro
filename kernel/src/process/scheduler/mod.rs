@@ -340,6 +340,11 @@ pub fn schedule() {
 	});
 }
 
+/// Preempt at the next yield point outside a critical section
+pub fn preempt() {
+	per_cpu().preempt_counter.fetch_and(!(1 << 31), Relaxed);
+}
+
 /// Enter a critical section, disabling preemption.
 #[inline]
 pub fn preempt_disable() {

@@ -46,7 +46,7 @@ use crate::{
 		pid::{IDLE_PID, INIT_PID, PidHandle},
 		rusage::Rusage,
 		scheduler::{
-			cpu, critical, dequeue, enqueue, switch,
+			cpu, critical, dequeue, enqueue, preempt, switch,
 			switch::{KThreadEntry, idle_task, save_segments},
 		},
 		signal::{AltStack, SIGNALS_COUNT, SigSet, SignalAction},
@@ -442,9 +442,7 @@ pub(crate) fn init() -> EResult<()> {
 			}
 		},
 	)?);
-	mem::forget(int::register_callback(0x20, |_, _, _, _| {
-		per_cpu().preempt_counter.fetch_and(!(1 << 31), Relaxed);
-	})?);
+	mem::forget(int::register_callback(0x20, |_, _, _, _| preempt())?);
 	// Re-enable timer since it has been disabled by delay functions
 	timer::apic::periodic(100_000_000);
 	// Create init process
@@ -756,6 +754,10 @@ impl Process {
 				pid = this.get_pid()
 			);
 			enqueue(this);
+			// If the woken up process has a higher priority than the current, preempt
+			if Process::current().cmp_priority(this) == Ordering::Less {
+				preempt();
+			}
 		});
 	}
 
