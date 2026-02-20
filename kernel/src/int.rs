@@ -25,22 +25,32 @@ use crate::{
 	},
 	memory::user::UserSlice,
 	power::{halt, halting},
-	process::scheduler::{alter_flow, preempt_check_resched},
+	process::scheduler::{alter_flow, cpu::CPU, preempt_check_resched},
 	rand,
-	sync::spin::IntSpin,
 };
-use core::{hint::unlikely, ptr, ptr::NonNull};
-use utils::{boxed::Box, bytes::as_bytes, collections::vec::Vec, errno::AllocResult};
+use core::{array, cell::UnsafeCell, hint::unlikely, ptr::NonNull};
+use utils::{boxed::Box, bytes::as_bytes, errno::AllocResult};
 
 type CallbackInner = dyn FnMut(u32, u32, &mut IntFrame, u8);
 /// A callback to handle an interruption
 pub type Callback = Box<CallbackInner>;
 
+/// Per-CPU callback list, stored in [`PerCpu`].
+pub struct CallbackList([UnsafeCell<Option<Callback>>; idt::ENTRIES_COUNT]);
+
+impl Default for CallbackList {
+	fn default() -> Self {
+		Self(array::from_fn(|_| UnsafeCell::new(None)))
+	}
+}
+
 /// Structure used to detect whenever the object owning the callback is
 /// destroyed, allowing to unregister it automatically.
 #[must_use]
 pub struct CallbackHook {
-	/// The id of the interrupt the callback is bound to
+	/// The CPU core the callback is bound to
+	cpu: u32,
+	/// The ID of the interrupt the callback is bound to
 	id: u32,
 	/// Pointer to the callback, used for removal
 	callback: NonNull<CallbackInner>,
@@ -49,24 +59,11 @@ pub struct CallbackHook {
 impl Drop for CallbackHook {
 	fn drop(&mut self) {
 		// Remove the callback
-		let mut vec = CALLBACKS[self.id as usize].lock();
-		let i = vec
-			.iter()
-			.position(|c| ptr::addr_eq(Box::as_ptr(c), self.callback.as_ptr()));
-		if let Some(i) = i {
-			vec.remove(i);
-		}
+		CPU[self.cpu as usize].int_callbacks.0[self.id as usize] = None;
 	}
 }
 
-/// The default value for [`CALLBACKS`]
-#[allow(clippy::declare_interior_mutable_const)]
-const CALLBACKS_INIT: IntSpin<Vec<Callback>> = IntSpin::new(Vec::new());
-/// List containing vectors that store callbacks for every interrupt watchdogs
-static CALLBACKS: [IntSpin<Vec<Callback>>; idt::ENTRIES_COUNT as _] =
-	[CALLBACKS_INIT; idt::ENTRIES_COUNT as _];
-
-/// Registers a callback for the interrupt ID `id`.
+/// Registers a callback for the interrupt ID `id` on the current CPU core.
 ///
 /// The latest registered callback is executed last.
 ///
@@ -94,6 +91,7 @@ pub fn register_callback<F: 'static + FnMut(u32, u32, &mut IntFrame, u8)>(
 	let mut vec = callbacks.lock();
 	vec.push(callback)?;
 	Ok(Some(CallbackHook {
+		cpu,
 		id,
 		callback: ptr,
 	}))
@@ -121,9 +119,11 @@ extern "C" fn interrupt_handler(frame: &mut IntFrame) {
 	let ring = (frame.cs & 0b11) as u8;
 	let code = frame.code as u32;
 	// Call corresponding callbacks
-	let mut callbacks = CALLBACKS[id as usize].lock();
-	for c in callbacks.iter_mut() {
-		c(id, code, frame, ring);
+	{
+		let mut callbacks = CALLBACKS[id as usize].lock();
+		for c in callbacks.iter_mut() {
+			c(id, code, frame, ring);
+		}
 	}
 	// If not a hardware exception, send EOI
 	if let Some(irq) = id.checked_sub(32) {

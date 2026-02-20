@@ -28,11 +28,8 @@ pub mod switch;
 
 use crate::{
 	arch::{
-		core_id, end_of_interrupt,
-		x86::{
-			cli,
-			idt::{IntFrame, disable_int},
-		},
+		core_id,
+		x86::{cli, idt::IntFrame},
 	},
 	process::{
 		Process, State,
@@ -53,6 +50,9 @@ use utils::{
 	list_type,
 	ptr::arc::{Arc, AtomicArc},
 };
+
+/// Flag in the preempt counter, telling whether preemption has been requested
+const PREEMPT_FLAG: u32 = 1 << 31;
 
 // TODO must be configurable
 /// The timeout, in milliseconds, after which processes are rebalanced
@@ -305,44 +305,44 @@ pub(crate) fn rebalance_task() -> ! {
 /// **Note**: calling this function inside a critical section is invalid.
 pub fn schedule() {
 	// Disable interrupts so that no interrupt can occur before switching to the next process
-	disable_int(|| {
-		// Reset preempt flag
-		per_cpu().preempt_counter.fetch_or(1 << 31, Relaxed);
-		// Make deferred calls
-		defer::consume();
-		let sched = &per_cpu().sched;
-		let (prev, next) = {
-			let prev = sched.cur_proc.get();
-			// Find the next process to run
-			let next = sched
-				.get_next_process()
-				.unwrap_or_else(|| sched.idle_task.clone());
-			// If the process to run is the current, do nothing
-			if ptr::eq(next.as_ref(), prev.as_ref()) {
-				return;
-			}
-			// Update the idle bitmap if necessary
-			if prev.is_idle_task() {
-				IDLE_CPUS.clear_bit(core_id() as _);
-			} else if next.is_idle_task() {
-				IDLE_CPUS.set_bit(core_id() as _);
-			}
-			// Swap current running process. We use pointers to avoid cloning the Arc
-			let next_ptr = Arc::as_ptr(&next);
-			let prev = sched.swap_current_process(next);
-			(Arc::as_ptr(&prev), next_ptr)
-		};
-		// Send end of interrupt, so that the next tick can be received
-		end_of_interrupt(0);
-		unsafe {
-			switch(prev, next);
+	cli();
+	// Reset preempt flag
+	#[allow(unused_variables)]
+	let old_preempt_counter = per_cpu().preempt_counter.fetch_or(PREEMPT_FLAG, Relaxed);
+	// Ensure we are not in a critical section
+	debug_assert_eq!(old_preempt_counter & !PREEMPT_FLAG, 0);
+	// Make deferred calls
+	defer::consume();
+	let sched = &per_cpu().sched;
+	let (prev, next) = {
+		let prev = sched.cur_proc.get();
+		// Find the next process to run
+		let next = sched
+			.get_next_process()
+			.unwrap_or_else(|| sched.idle_task.clone());
+		// If the process to run is the current, do nothing
+		if ptr::eq(next.as_ref(), prev.as_ref()) {
+			return;
 		}
-	});
+		// Update the idle bitmap if necessary
+		if prev.is_idle_task() {
+			IDLE_CPUS.clear_bit(core_id() as _);
+		} else if next.is_idle_task() {
+			IDLE_CPUS.set_bit(core_id() as _);
+		}
+		// Swap current running process. We use pointers to avoid cloning the Arc
+		let next_ptr = Arc::as_ptr(&next);
+		let prev = sched.swap_current_process(next);
+		(Arc::as_ptr(&prev), next_ptr)
+	};
+	unsafe {
+		switch(prev, next);
+	}
 }
 
 /// Preempt at the next yield point outside a critical section
 pub fn preempt() {
-	per_cpu().preempt_counter.fetch_and(!(1 << 31), Relaxed);
+	per_cpu().preempt_counter.fetch_and(!PREEMPT_FLAG, Relaxed);
 }
 
 /// Enter a critical section, disabling preemption.

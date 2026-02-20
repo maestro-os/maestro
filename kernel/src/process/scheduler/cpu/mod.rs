@@ -23,6 +23,7 @@ pub mod topology;
 use super::{RunQueue, Scheduler, defer::DeferredCallQueue};
 use crate::{
 	arch::x86::{gdt::Gdt, tss::Tss},
+	int::CallbackList,
 	process::{Process, mem_space::MemSpace},
 	sync::{atomic::AtomicU64, once::OnceInit, spin::IntSpin},
 };
@@ -75,6 +76,9 @@ pub struct PerCpu {
 	/// The CPU's TSS
 	tss: UnsafeCell<Tss>,
 
+	/// Interrupt callbacks
+	pub(crate) int_callbacks: CallbackList,
+
 	/// The core's scheduler
 	pub sched: Scheduler,
 	/// The time in between each tick on the core, in nanoseconds
@@ -113,6 +117,8 @@ impl PerCpu {
 
 			gdt: Default::default(),
 			tss: Default::default(),
+
+			int_callbacks: CallbackList::default(),
 
 			sched: Scheduler {
 				run_queue: IntSpin::new(RunQueue {
