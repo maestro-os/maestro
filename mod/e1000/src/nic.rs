@@ -22,7 +22,7 @@ use core::{cmp::min, hint::unlikely, mem::size_of, num::NonZeroUsize, ptr, slice
 use kernel::{
 	device::{bar::Bar, manager::PhysicalDevice},
 	int,
-	int::CallbackHook,
+	int::CallbackHandle,
 	memory::{PhysAddr, VirtAddr, buddy},
 	net,
 	net::{BindAddress, MAC, buf::BufList},
@@ -217,7 +217,7 @@ pub struct Nic {
 	/// The BAR0 of the device.
 	bar0: Bar,
 	/// The hook of the interrupt handler.
-	int_hook: CallbackHook,
+	int_hook: CallbackHandle,
 
 	/// Tells whether the EEPROM exist.
 	eeprom_exists: bool,
@@ -242,9 +242,11 @@ impl Nic {
 		let bar0 = dev.get_bars()[0].clone().ok_or("Invalid BAR for NIC")?;
 
 		let int_line = dev.get_interrupt_line().ok_or("Invalid BAR for NIC")?;
-		let int_hook = int::register_callback(int_line as _, |_, _, _, _| todo!())
-			.map_err(|_| "Memory allocation failed")?
-			.unwrap();
+		let int_hook = unsafe {
+			int::register_callback(int_line as _, |_, _, _, _| todo!())
+				.map_err(|_| "Memory allocation failed")?
+				.unwrap()
+		};
 
 		let rx_pages =
 			NonZeroUsize::new((RX_DESC_COUNT * size_of::<RXDesc>()).div_ceil(PAGE_SIZE)).unwrap();

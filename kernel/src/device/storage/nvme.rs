@@ -32,7 +32,7 @@ use crate::{
 		storage::{STORAGE_MODE, partition::read_partitions},
 	},
 	int,
-	int::CallbackHandler,
+	int::CallbackHandle,
 	memory::{VirtAddr, buddy, cache::RcPage},
 	println, process,
 	process::{Process, State, scheduler::schedule},
@@ -925,8 +925,8 @@ fn handle_int(int: u32, inner: &ControllerInner) {
 pub struct Controller {
 	inner: Arc<ControllerInner>,
 
-	admin_int: CallbackHandler,
-	io_int: CallbackHandler,
+	admin_int: CallbackHandle,
+	io_int: CallbackHandle,
 }
 
 impl Controller {

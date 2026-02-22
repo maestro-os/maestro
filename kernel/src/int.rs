@@ -47,18 +47,18 @@ impl Default for CallbackList {
 	}
 }
 
-/// Registered interrupt handler
+/// Registered interrupt handle
 ///
 /// Dropping this structure does **not** unregister the interrupt handler
 #[must_use]
-pub struct CallbackHandler {
+pub struct CallbackHandle {
 	/// The CPU core the callback is bound to
 	cpu: u32,
 	/// The ID of the interrupt the callback is bound to
 	id: u32,
 }
 
-impl CallbackHandler {
+impl CallbackHandle {
 	/// Unregister the interrupt handler
 	///
 	/// # Safety
@@ -98,7 +98,7 @@ impl CallbackHandler {
 pub unsafe fn register_callback<F: 'static + FnMut(u32, u32, &mut IntFrame, u8)>(
 	id: u32,
 	callback: F,
-) -> AllocResult<Option<CallbackHandler>> {
+) -> AllocResult<Option<CallbackHandle>> {
 	disable_int(|| {
 		let callbacks = &per_cpu().int_callbacks;
 		let Some(cell) = callbacks.0.get(id as usize) else {
@@ -108,7 +108,7 @@ pub unsafe fn register_callback<F: 'static + FnMut(u32, u32, &mut IntFrame, u8)>
 		unsafe {
 			*cell.get() = Some(callback);
 		}
-		Ok(Some(CallbackHandler {
+		Ok(Some(CallbackHandle {
 			cpu: core_id(),
 			id,
 		}))

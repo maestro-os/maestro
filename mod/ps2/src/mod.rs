@@ -41,7 +41,7 @@ use kernel::{
 		manager,
 	},
 	int,
-	int::CallbackHook,
+	int::CallbackHandle,
 	println,
 	sync::spin::Spin,
 };
@@ -255,7 +255,7 @@ static PS2_KEYBOAD: Spin<PS2Keyboard> = Spin::new(PS2Keyboard {
 /// The PS2 keyboard structure.
 pub struct PS2Keyboard {
 	/// The callback hook for keyboard input interrupts.
-	keyboard_interrupt_callback_hook: Option<CallbackHook>,
+	keyboard_interrupt_callback_hook: Option<CallbackHandle>,
 
 	/// The current scancode set being used by the keyboard.
 	scancode_set: ScancodeSet,
@@ -320,9 +320,10 @@ fn init_in() -> Result<(), ()> {
 	if apic::is_present() {
 		apic::redirect_int(0x1, lapic_id(), KBD_INT);
 	}
-	let hook_result = int::register_callback(KBD_INT as _, callback);
-	kbd.keyboard_interrupt_callback_hook = hook_result.map_err(|_| ())?;
-
+	unsafe {
+		let hook_result = int::register_callback(KBD_INT as _, callback);
+		kbd.keyboard_interrupt_callback_hook = hook_result.unwrap();
+	}
 	Ok(())
 }
 
