@@ -309,21 +309,21 @@ impl MappedNode {
 		off: u64,
 		init: Init,
 	) -> EResult<RcPage> {
-		let mut pages = self.cache.lock();
-		match pages.get(&off) {
+		let pages = self.cache.lock();
+		if let Some(page) = pages.get(&off) {
 			// Cache hit
-			Some(page) => Ok(page.clone()),
-			// Cache miss: read and insert
-			_ => {
-				let page = init()?;
-				page.init(off);
-				pages.insert(off, page.clone())?;
-				unsafe {
-					LRU.lock().lru_promote(&page.0);
-				}
-				Ok(page)
-			}
+			return Ok(page.clone());
 		}
+		// Getting the page from disk might require sleeping. Do not hold a spinlock while sleeping
+		drop(pages);
+		// Cache miss: read and insert
+		let page = init()?;
+		page.init(off);
+		self.cache.lock().insert(off, page.clone())?;
+		unsafe {
+			LRU.lock().lru_promote(&page.0);
+		}
+		Ok(page)
 	}
 
 	/// Synchronizes all pages in the cache back to disk.

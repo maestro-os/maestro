@@ -41,7 +41,7 @@ use crate::{
 		unit::TimeUnit,
 	},
 };
-use core::{hint::unlikely, mem::ManuallyDrop};
+use core::hint::unlikely;
 use unit::Timestamp;
 use utils::{errno, errno::EResult};
 
@@ -83,13 +83,14 @@ pub(crate) fn init() -> EResult<()> {
 	if apic::is_present() {
 		apic::redirect_int(0x8, core_id(), rtc::INTERRUPT_VECTOR);
 	}
-	let hook = int::register_callback(rtc::INTERRUPT_VECTOR as _, move |_, _, _, _| {
-		rtc::reset();
-		// FIXME: we are loosing precision here
-		clock::update((1_000_000_000 / FREQUENCY) as _);
-		timer::tick();
-	})?;
-	let _ = ManuallyDrop::new(hook);
+	unsafe {
+		int::register_callback(rtc::INTERRUPT_VECTOR as _, move |_, _, _, _| {
+			rtc::reset();
+			// FIXME: we are loosing precision here
+			clock::update((1_000_000_000 / FREQUENCY) as _);
+			timer::tick();
+		})?;
+	}
 	rtc::set_enabled(true);
 	Ok(())
 }

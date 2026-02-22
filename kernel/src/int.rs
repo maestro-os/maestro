@@ -20,15 +20,18 @@
 
 use crate::{
 	arch::{
-		end_of_interrupt,
-		x86::{idt, idt::IntFrame},
+		core_id, end_of_interrupt,
+		x86::{
+			idt,
+			idt::{IntFrame, disable_int},
+		},
 	},
 	memory::user::UserSlice,
 	power::{halt, halting},
-	process::scheduler::{alter_flow, cpu::CPU, preempt_check_resched},
+	process::scheduler::{alter_flow, cpu::per_cpu, defer, preempt_check_resched},
 	rand,
 };
-use core::{array, cell::UnsafeCell, hint::unlikely, ptr::NonNull};
+use core::{array, cell::UnsafeCell, hint::unlikely};
 use utils::{boxed::Box, bytes::as_bytes, errno::AllocResult};
 
 type CallbackInner = dyn FnMut(u32, u32, &mut IntFrame, u8);
@@ -44,22 +47,31 @@ impl Default for CallbackList {
 	}
 }
 
-/// Structure used to detect whenever the object owning the callback is
-/// destroyed, allowing to unregister it automatically.
+/// Registered interrupt handler
+///
+/// Dropping this structure does **not** unregister the interrupt handler
 #[must_use]
-pub struct CallbackHook {
+pub struct CallbackHandler {
 	/// The CPU core the callback is bound to
 	cpu: u32,
 	/// The ID of the interrupt the callback is bound to
 	id: u32,
-	/// Pointer to the callback, used for removal
-	callback: NonNull<CallbackInner>,
 }
 
-impl Drop for CallbackHook {
-	fn drop(&mut self) {
-		// Remove the callback
-		CPU[self.cpu as usize].int_callbacks.0[self.id as usize] = None;
+impl CallbackHandler {
+	/// Unregister the interrupt handler
+	///
+	/// # Safety
+	///
+	/// This function must not be called inside an interrupt handler.
+	pub unsafe fn unregister(self) {
+		defer::synchronous(self.cpu, move || {
+			// Remove the callback
+			let cell = &per_cpu().int_callbacks.0[self.id as usize];
+			unsafe {
+				*cell.get() = None;
+			}
+		});
 	}
 }
 
@@ -79,22 +91,28 @@ impl Drop for CallbackHook {
 /// If the provided ID is invalid, the function returns `None`.
 ///
 /// On success, the function returns a hook that unregisters the callback on drop.
-pub fn register_callback<F: 'static + FnMut(u32, u32, &mut IntFrame, u8)>(
+///
+/// # Safety
+///
+/// This function must not be called inside an interrupt handler.
+pub unsafe fn register_callback<F: 'static + FnMut(u32, u32, &mut IntFrame, u8)>(
 	id: u32,
 	callback: F,
-) -> AllocResult<Option<CallbackHook>> {
-	let Some(callbacks) = CALLBACKS.get(id as usize) else {
-		return Ok(None);
-	};
-	let callback = Box::new(callback)?;
-	let ptr = NonNull::from(Box::as_ref(&callback));
-	let mut vec = callbacks.lock();
-	vec.push(callback)?;
-	Ok(Some(CallbackHook {
-		cpu,
-		id,
-		callback: ptr,
-	}))
+) -> AllocResult<Option<CallbackHandler>> {
+	disable_int(|| {
+		let callbacks = &per_cpu().int_callbacks;
+		let Some(cell) = callbacks.0.get(id as usize) else {
+			return Ok(None);
+		};
+		let callback: Callback = Box::new(callback)?;
+		unsafe {
+			*cell.get() = Some(callback);
+		}
+		Ok(Some(CallbackHandler {
+			cpu: core_id(),
+			id,
+		}))
+	})
 }
 
 /// Called whenever an interruption is triggered.
@@ -119,12 +137,15 @@ extern "C" fn interrupt_handler(frame: &mut IntFrame) {
 	let ring = (frame.cs & 0b11) as u8;
 	let code = frame.code as u32;
 	// Call corresponding callbacks
-	{
-		let mut callbacks = CALLBACKS[id as usize].lock();
-		for c in callbacks.iter_mut() {
-			c(id, code, frame, ring);
+	disable_int(|| {
+		let cell = &per_cpu().int_callbacks.0[id as usize];
+		// We can take a mutable reference since no other interrupt can occur before we finish this
+		// one, as interrupts are disabled
+		let callback = unsafe { &mut *cell.get() };
+		if let Some(callback) = callback {
+			callback(id, code, frame, ring);
 		}
-	}
+	});
 	// If not a hardware exception, send EOI
 	if let Some(irq) = id.checked_sub(32) {
 		end_of_interrupt(irq as _);

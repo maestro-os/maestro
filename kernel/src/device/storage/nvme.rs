@@ -32,7 +32,7 @@ use crate::{
 		storage::{STORAGE_MODE, partition::read_partitions},
 	},
 	int,
-	int::CallbackHook,
+	int::CallbackHandler,
 	memory::{VirtAddr, buddy, cache::RcPage},
 	println, process,
 	process::{Process, State, scheduler::schedule},
@@ -925,8 +925,8 @@ fn handle_int(int: u32, inner: &ControllerInner) {
 pub struct Controller {
 	inner: Arc<ControllerInner>,
 
-	admin_int: CallbackHook,
-	io_int: CallbackHook,
+	admin_int: CallbackHandler,
+	io_int: CallbackHandler,
 }
 
 impl Controller {
@@ -1015,17 +1015,20 @@ impl Controller {
 			queues: RwLock::new(Vec::new()),
 		})?;
 		let inner_ = inner.clone();
-		let admin_int = int::register_callback(ADMIN_INT, move |int, _, _, _| {
-			let inner = inner_.clone();
-			handle_int(int, &inner);
-		})?
-		.unwrap();
-		let inner_ = inner.clone();
-		let io_int = int::register_callback(IO_INT, move |int, _, _, _| {
-			let inner = inner_.clone();
-			handle_int(int, &inner);
-		})?
-		.unwrap();
+		let (admin_int, io_int) = unsafe {
+			let admin_int = int::register_callback(ADMIN_INT, move |int, _, _, _| {
+				let inner = inner_.clone();
+				handle_int(int, &inner);
+			})?
+			.unwrap();
+			let inner_ = inner.clone();
+			let io_int = int::register_callback(IO_INT, move |int, _, _, _| {
+				let inner = inner_.clone();
+				handle_int(int, &inner);
+			})?
+			.unwrap();
+			(admin_int, io_int)
+		};
 		// Identify controller
 		let mut ctrlr_id: MaybeUninit<IdentifyController> = MaybeUninit::uninit();
 		let dptr = VirtAddr::from(&mut ctrlr_id).kernel_to_physical().unwrap();

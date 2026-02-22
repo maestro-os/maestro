@@ -406,43 +406,43 @@ pub(crate) fn init() -> EResult<()> {
 			_ => {}
 		}
 	};
-	mem::forget(int::register_callback(0x00, callback)?);
-	mem::forget(int::register_callback(0x03, callback)?);
-	mem::forget(int::register_callback(0x06, callback)?);
-	mem::forget(int::register_callback(0x0d, callback)?);
-	mem::forget(int::register_callback(0x10, callback)?);
-	mem::forget(int::register_callback(0x11, callback)?);
-	mem::forget(int::register_callback(0x13, callback)?);
-	mem::forget(int::register_callback(
-		0x0e,
-		|_id: u32, code: u32, frame: &mut IntFrame, ring: u8| {
-			let accessed_addr = VirtAddr(register_get!("cr2"));
-			let pc = frame.get_program_counter();
-			let Some(mem_space) = per_cpu().mem_space.get() else {
-				panic::with_frame(frame);
-			};
-			// Check access
-			let sig = mem_space.handle_page_fault(accessed_addr, code);
-			match sig {
-				Ok(true) => {}
-				Ok(false) => {
-					if ring < 3 {
-						// Check if the fault was caused by a user <-> kernel copy/zero
-						if (user::raw_copy as usize..user::raw_fault as usize).contains(&pc) {
-							// Jump to `raw_fault`
-							frame.set_program_counter(user::raw_fault as usize);
-						} else {
-							panic::with_frame(frame);
-						}
+	let page_fault_callback = |_id: u32, code: u32, frame: &mut IntFrame, ring: u8| {
+		let accessed_addr = VirtAddr(register_get!("cr2"));
+		let pc = frame.get_program_counter();
+		let Some(mem_space) = per_cpu().mem_space.get() else {
+			panic::with_frame(frame);
+		};
+		// Check access
+		let sig = mem_space.handle_page_fault(accessed_addr, code);
+		match sig {
+			Ok(true) => {}
+			Ok(false) => {
+				if ring < 3 {
+					// Check if the fault was caused by a user <-> kernel copy/zero
+					if (user::raw_copy as usize..user::raw_copy as usize).contains(&pc) {
+						// Jump to `copy_fault`
+						frame.set_program_counter(user::raw_copy as usize);
 					} else {
-						Process::kill(&Process::current(), Signal::SIGSEGV);
+						panic::with_frame(frame);
 					}
+				} else {
+					Process::kill(&Process::current(), Signal::SIGSEGV);
 				}
-				Err(_) => Process::kill(&Process::current(), Signal::SIGBUS),
 			}
-		},
-	)?);
-	mem::forget(int::register_callback(0x20, |_, _, _, _| preempt())?);
+			Err(_) => Process::kill(&Process::current(), Signal::SIGBUS),
+		}
+	};
+	unsafe {
+		int::register_callback(0x00, callback)?;
+		int::register_callback(0x03, callback)?;
+		int::register_callback(0x06, callback)?;
+		int::register_callback(0x0d, callback)?;
+		int::register_callback(0x10, callback)?;
+		int::register_callback(0x11, callback)?;
+		int::register_callback(0x13, callback)?;
+		int::register_callback(0x0e, page_fault_callback)?;
+		int::register_callback(0x20, |_, _, _, _| preempt())?;
+	}
 	// Re-enable timer since it has been disabled by delay functions
 	timer::apic::periodic(100_000_000);
 	// Create init process
