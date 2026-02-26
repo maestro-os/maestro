@@ -19,11 +19,29 @@ case $ARCH in
 		;;
 esac
 
+# Default to NVMe
+if [ -z $DISKTYPE ]; then
+	DISKTYPE="nvme"
+fi
+case $DISKTYPE in
+	ide)
+		DISKMAJOR=8
+		;;
+	nvme)
+		DISKMAJOR=259
+		;;
+	*)
+		>&2 echo "Invalid disk type '$DISKTYPE'"
+		exit 1
+		;;
+esac
+
 # Build ISO
 
 mkdir -p iso/boot/grub
 cp $1 iso/boot/maestro
 cp grub.cfg iso/boot/grub
+sed -i "s/ROOTMAJOR/$DISKMAJOR/" iso/boot/grub/grub.cfg
 grub-mkrescue -o kernel.iso iso
 
 # Run the kernel
@@ -31,8 +49,14 @@ grub-mkrescue -o kernel.iso iso
 export QEMUDISK=qemu_disk
 export QEMUFLAGS="-device isa-debug-exit,iobase=0xf4,iosize=0x04 $QEMUFLAGS"
 if [ -f $QEMUDISK ]; then
-  # TODO allow testing both IDE and NVMe
-  QEMUFLAGS="-device nvme,serial=deadbeef,drive=nvme -drive file=$QEMUDISK,format=raw,if=none,id=nvme $QEMUFLAGS"
+	case $DISKTYPE in
+		ide)
+			QEMUFLAGS="-drive file=$QEMUDISK,format=raw $QEMUFLAGS"
+			;;
+		nvme)
+			QEMUFLAGS="-device nvme,serial=deadbeef,drive=nvme -drive file=$QEMUDISK,format=raw,if=none,id=nvme $QEMUFLAGS"
+			;;
+	esac
 fi
 
 ${QEMU} -cdrom kernel.iso $QEMUFLAGS

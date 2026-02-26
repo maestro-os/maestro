@@ -177,12 +177,14 @@ jobs:
             user: "x86_64-unknown-linux-musl"
             user_compat: "i686-unknown-linux-musl"
         cores: ["1", "2"]
+        disktype: ["ide", "nvme"]
     steps:
       - name: Run
         working-directory: kernel
         env:
           CARGOFLAGS: --target arch/${{ matrix.arch.kernel }}/${{ matrix.arch.kernel }}.json
           QEMUFLAGS: "-smp ${{ matrix.cores }}"
+          DISKTYPE: ${{ matrix.disktype }}
         run: |
           cp ../inttest/disk-${{ matrix.arch.kernel }} qemu_disk
           ci/test.sh int
@@ -193,6 +195,7 @@ jobs:
         env:
           CARGOFLAGS: --target arch/${{ matrix.arch.kernel }}/${{ matrix.arch.kernel }}.json
           QEMUFLAGS: "-smp ${{ matrix.cores }}"
+          DISKTYPE: ${{ matrix.disktype }}
         run: |
           cp ../inttest/disk-${{ matrix.arch.kernel }}-compat qemu_disk
           ci/test.sh int
