@@ -20,7 +20,7 @@
 
 use crate::{
 	arch::x86::cpu::{enumerate_cpus, topology_add},
-	println,
+	println, process,
 	process::scheduler::cpu::{per_cpu, store_per_cpu},
 	sync::once::OnceInit,
 };
@@ -113,6 +113,7 @@ pub(crate) fn init2(first: bool) -> AllocResult<()> {
 			todo!() // fallback to PIT
 		}
 	}
+	process::register_callbacks()?;
 	Ok(())
 }
 

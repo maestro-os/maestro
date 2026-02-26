@@ -187,7 +187,7 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	println!("Setup SMP");
 	smp::init().expect("SMP setup failed");
 	println!("Setup processes");
-	process::init().expect("processes initialization failed");
+	process::init().expect("cannot create init process");
 	exec::vdso::init().expect("vDSO loading failed");
 
 	println!("Setup devices management");

@@ -366,10 +366,8 @@ pub struct Process {
 /// The list of all processes on the system.
 pub static PROCESSES: IntRwLock<BTreeMap<Pid, Arc<Process>>> = IntRwLock::new(BTreeMap::new());
 
-/// Initializes processes management.
-///
-/// This function must be called only once, at kernel initialization.
-pub(crate) fn init() -> EResult<()> {
+/// Registers process callbacks on the current CPU
+pub(crate) fn register_callbacks() -> AllocResult<()> {
 	// Register interruption callbacks
 	let callback = |id: u32, _code: u32, frame: &mut IntFrame, ring: u8| {
 		if ring < 3 {
@@ -445,6 +443,10 @@ pub(crate) fn init() -> EResult<()> {
 	}
 	// Re-enable timer since it has been disabled by delay functions
 	timer::apic::periodic(100_000_000);
+	Ok(())
+}
+
+pub(crate) fn init() -> EResult<()> {
 	// Create init process
 	let proc = Process::init()?;
 	per_cpu().sched.swap_current_process(proc);
