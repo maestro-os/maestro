@@ -164,7 +164,7 @@ jobs:
           ./build.sh
           mv disk disk-${{ matrix.arch.kernel }}-compat
   inttest:
-    name: inttest (${{ matrix.arch.kernel }})
+    name: inttest (${{ matrix.arch.kernel }}, ${{ matrix.cores }} CPU(s), ${{ matrix.disktype }})
     runs-on: [self-hosted, linux]
     needs: build_inttest
     strategy:
