@@ -978,11 +978,6 @@ impl Controller {
 			bar.write(REG_CC, bar.read::<u32>(REG_CC) & !FLAG_CC_EN);
 		}
 		wait_rdy(&bar, false);
-		// Set capabilities
-		unsafe {
-			let cc = bar.read::<u32>(REG_CC);
-			bar.write(REG_CC, (cc & !0x3ff0) | ((PAGE_SIZE.ilog2() - 12) << 7));
-		}
 		let admin_qp = QueuePair::new(0)?;
 		let aqa = (CQ_LEN << 16) | SQ_LEN;
 		unsafe {
@@ -995,8 +990,16 @@ impl Controller {
 				VirtAddr::from(admin_qp.cq).kernel_to_physical().unwrap().0 as u64,
 			);
 			bar.write(REG_AQA, aqa as u32);
+			// Set capabilities
+			let mut cc = bar.read::<u32>(REG_CC);
+			// Set submission and completion queues entry sizes now to circumvent a bug on some
+			// QEMU versions
+			cc |= 6 << 16;
+			cc |= 4 << 20;
+			// Set page size
+			cc = (cc & !0x3ff0) | ((PAGE_SIZE.ilog2() - 12) << 7);
 			// Enable controller
-			bar.write(REG_CC, bar.read::<u32>(REG_CC) | FLAG_CC_EN);
+			bar.write(REG_CC, cc | FLAG_CC_EN);
 		}
 		wait_rdy(&bar, true);
 		// Check for fatal error
