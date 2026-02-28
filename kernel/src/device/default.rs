@@ -22,7 +22,7 @@ use super::{CharDev, DeviceType, register_char};
 use crate::{
 	device::{DeviceID, id::MajorBlock, tty::TTYDeviceHandle},
 	file::{File, fs::FileOps},
-	logger::LOGGER,
+	logger,
 	memory::user::UserSlice,
 	rand,
 	rand::{GRND_RANDOM, getrandom},
@@ -109,7 +109,7 @@ pub struct KMsgDeviceHandle;
 impl FileOps for KMsgDeviceHandle {
 	fn read(&self, _file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		let off = off.try_into().map_err(|_| errno!(EINVAL))?;
-		let logger = LOGGER.lock();
+		let logger = logger::BUF.lock();
 		let content = logger.get_content();
 		let l = buf.copy_to_user(0, &content[off..])?;
 		Ok(l)

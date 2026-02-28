@@ -24,7 +24,7 @@
 //! Printing can be silenced at boot using the `-silent` command line argument, but logs remain in
 //! memory.
 
-use crate::logger::LOGGER;
+use crate::logger;
 use core::fmt;
 
 /// Prints/logs the given message.
@@ -32,8 +32,7 @@ use core::fmt;
 /// This function is meant to be used through [`print!`] and [`println!`] macros only.
 #[doc(hidden)]
 pub fn _print(args: fmt::Arguments) {
-	let mut logger = LOGGER.lock();
-	fmt::write(&mut *logger, args).ok();
+	fmt::write(&mut *logger::BUF.lock(), args).ok();
 }
 
 /// Prints the given formatted string with the given values.

@@ -29,18 +29,19 @@ use crate::{
 		core_id,
 		x86::{cli, idt::IntFrame},
 	},
-	logger::LOGGER,
+	logger,
 	memory::VirtAddr,
 	power, println, register_get,
 };
 use core::{
 	fmt,
 	panic::{Location, PanicInfo},
+	sync::atomic::Ordering::Release,
 };
 
 fn panic_impl(msg: impl fmt::Display, loc: Option<&Location>, frame: Option<&IntFrame>) -> ! {
 	cli();
-	LOGGER.lock().silent = false;
+	logger::SILENT.store(false, Release);
 	// Print panic
 	println!("-- KERNEL PANIC! --");
 	let cpu = core_id();

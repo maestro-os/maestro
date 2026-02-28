@@ -26,21 +26,21 @@ use core::{
 	cmp::{Ordering, min},
 	fmt,
 	fmt::Write,
+	sync::atomic::{AtomicBool, Ordering::Relaxed},
 };
 
 /// The size of the kernel logs buffer in bytes.
 const LOGS_SIZE: usize = 1048576;
 
+/// Tells whether the logger is silent.
+pub static SILENT: AtomicBool = AtomicBool::new(false);
 /// The kernel's logger.
-pub static LOGGER: IntSpin<Logger> = IntSpin::new(Logger::new());
+pub static BUF: IntSpin<LoggerBuffer> = IntSpin::new(LoggerBuffer::new());
 
 /// Kernel logger, used to print/store kernel logs.
 ///
 /// Internally, the logger uses a ring buffer for storage.
-pub struct Logger {
-	/// Tells whether the logger is silent.
-	pub silent: bool,
-
+pub struct LoggerBuffer {
 	/// The buffer storing the kernel logs.
 	buf: [u8; LOGS_SIZE],
 	/// The buffer's reading head.
@@ -49,13 +49,11 @@ pub struct Logger {
 	write_head: usize,
 }
 
-impl Logger {
+impl LoggerBuffer {
 	/// Creates a new instance.
 	#[allow(clippy::new_without_default)]
 	pub const fn new() -> Self {
 		Self {
-			silent: false,
-
 			buf: [0; LOGS_SIZE],
 			read_head: 0,
 			write_head: 0,
@@ -71,6 +69,7 @@ impl Logger {
 		}
 	}
 
+	// FIXME: this function is useless because the actual buffer may be split in half (ring buffer)
 	/// Returns a reference to a slice containing the logs stored into the
 	/// logger's buffer.
 	pub fn get_content(&self) -> &[u8] {
@@ -117,10 +116,10 @@ impl Logger {
 	}
 }
 
-impl Write for Logger {
+impl Write for LoggerBuffer {
 	fn write_str(&mut self, s: &str) -> fmt::Result {
 		self.push(s.as_bytes());
-		if !self.silent {
+		if !SILENT.load(Relaxed) {
 			TTY.write(s.as_bytes());
 		}
 		Ok(())

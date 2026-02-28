@@ -88,7 +88,6 @@ use crate::{
 		fs::{float, initramfs},
 		vfs,
 	},
-	logger::LOGGER,
 	memory::{cache, vmem},
 	process::{
 		Process, exec,
@@ -99,7 +98,7 @@ use crate::{
 	sync::spin::Spin,
 	tty::TTY,
 };
-use core::ffi::c_void;
+use core::{ffi::c_void, sync::atomic::Ordering::Release};
 pub use utils;
 use utils::{
 	collections::{path::Path, string::String, vec::Vec},
@@ -174,7 +173,7 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	// Parse bootloader command line arguments
 	let cmdline = boot_info.cmdline.unwrap_or_default();
 	let args_parser = cmdline::ArgsParser::parse(cmdline).expect("could not parse command line");
-	LOGGER.lock().silent = args_parser.is_silent();
+	logger::SILENT.store(args_parser.is_silent(), Release);
 
 	println!("Find ACPI structures");
 	acpi::init().expect("ACPI initialization failed");
