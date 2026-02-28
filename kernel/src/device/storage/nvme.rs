@@ -383,49 +383,7 @@ struct IdentifyController {
 	mxtmt: u16,
 	/// Sanitize Capabilities
 	sanicap: u32,
-	/// Host Memory Buffer Minimum Descriptor Entry Size
-	hmminds: u32,
-	/// Host Memory Maximum Descriptors Entries
-	hmmaxd: u16,
-	/// NVM Set Identifier Maximum
-	nsetidmax: u16,
-	/// Endurance Group Identifier Maximum
-	endgidmax: u16,
-	/// ANA Transition Time
-	anatt: u8,
-	/// Asymmetric Namespace Access Capabilities
-	anacap: u8,
-	/// ANA Group Identifier Maximum
-	anagrpmax: u32,
-	/// Number of ANA Group Identifiers
-	nanagrpid: u32,
-	/// Persistent Event Log Size
-	pels: u32,
-	/// Domain Identifier
-	did: u16,
-	/// Key Per I/O Capabilities
-	kpioc: u8,
-	_reserved4: u8,
-	/// Maximum Processing Time for Firmware Activation Without Reset
-	mptfawr: u16,
-	_reserved5: u16,
-	/// Max Endurance Group Capacity
-	megcap: [u64; 2],
-	/// Temperature Threshold Hysteresis Attributes
-	tmpthha: u8,
-	/// Maximum Unlimited Power Attributes
-	mupa: u8,
-	/// Command Quiesce Time
-	cqt: u16,
-	/// Configurable Device Personality Attributes
-	cdpa: u16,
-	/// Maximum Unlimited Power
-	mup: u16,
-	/// Interval Power Measurement Sample Rate
-	ipmsr: u16,
-	/// Maximum Stop Measurement Time
-	msmt: u16,
-	_reserved6: [u8; 116],
+	_reserved6: [u8; 180],
 
 	// NVM Command Set Attributes
 	/// Submission Queue Entry Size
