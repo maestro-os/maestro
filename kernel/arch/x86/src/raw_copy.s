@@ -23,9 +23,11 @@
 .section .text
 
 .global raw_copy
-.global copy_fault
+.global raw_zero
+.global raw_fault
 
-// TODO can be optimized
+// The order of functions is important for bound checking in the exception handler
+
 raw_copy:
 	push esi
 	push edi
@@ -41,7 +43,22 @@ raw_copy:
 	mov eax, 1
 	ret
 
-copy_fault:
+raw_zero:
+	push esi
+	push edi
+
+	mov edi, 12[esp]
+	mov ecx, 16[esp]
+
+	xor eax, eax
+	rep stosb
+
+	pop edi
+	pop esi
+	mov eax, 1
+	ret
+
+raw_fault:
 	pop edi
 	pop esi
 	xor eax, eax

@@ -38,8 +38,11 @@ use utils::{
 unsafe extern "C" {
 	/// Copy, with access check. On success, the function returns `true`.
 	pub fn raw_copy(dst: *mut u8, src: *const u8, n: usize) -> bool;
-	/// Function to be called back when a page fault occurs while using [`raw_copy`].
-	pub fn copy_fault();
+	/// Zero a range of memory, with page fault handling. On success, the function returns `true`.
+	pub fn raw_zero(dst: *mut u8, n: usize) -> bool;
+
+	/// Function called back when a page fault occurs while using [`raw_copy`] or [`raw_zero`].
+	pub fn raw_fault();
 }
 
 /// Low level function to copy data from userspace to kernelspace, with access check.
@@ -47,6 +50,22 @@ unsafe extern "C" {
 /// If the access check fails, the function returns [`EFAULT`].
 unsafe fn user_copy(src: *const u8, dst: *mut u8, n: usize) -> EResult<()> {
 	let res = vmem::smap_disable(|| raw_copy(dst, src, n));
+	if likely(res) {
+		Ok(())
+	} else {
+		Err(errno!(EFAULT))
+	}
+}
+
+/// Low level function to zero a range of memory, with page fault handling.
+///
+/// If the access check fails, the function returns [`EFAULT`].
+///
+/// # Safety
+///
+/// The caller must ensure that `dst` points to valid memory that can be written to.
+unsafe fn user_zero(dst: *mut u8, n: usize) -> EResult<()> {
+	let res = vmem::smap_disable(|| raw_zero(dst, n));
 	if likely(res) {
 		Ok(())
 	} else {
@@ -320,6 +339,24 @@ impl<'a, T: Sized + fmt::Debug> UserSlice<'a, T> {
 	/// If the slice is not accessible, the function returns an error.
 	pub fn copy_to_user(&self, off: usize, buf: &[T]) -> EResult<usize> {
 		unsafe { self.copy_to_user_raw(off, buf.as_ptr(), buf.len()) }
+	}
+
+	/// Zeros the portion of the slice starting at offset `off`, with length `len`.
+	///
+	/// The function returns the number of elements written.
+	///
+	/// If the pointer is null, the function does nothing and returns `0`.
+	///
+	/// If the slice is not accessible, the function returns an error.
+	pub fn zero(&self, off: usize, len: usize) -> EResult<usize> {
+		let Some(ptr) = self.ptr else {
+			return Ok(0);
+		};
+		let len = min(len, self.len.saturating_sub(off));
+		unsafe {
+			user_zero(ptr.as_ptr().add(off) as *mut _, size_of::<T>() * len)?;
+		}
+		Ok(len)
 	}
 }
 

@@ -30,7 +30,7 @@ use crate::{
 		perm::{AccessProfile, can_execute_file},
 		vfs,
 	},
-	memory::{COMPAT_PROCESS_END, PROCESS_END, VirtAddr, vmem},
+	memory::{COMPAT_PROCESS_END, PROCESS_END, VirtAddr, user::UserSlice, vmem},
 	process::{
 		USER_STACK_SIZE,
 		exec::{ProgramImage, vdso::MappedVDSO},
@@ -40,7 +40,7 @@ use crate::{
 		},
 	},
 };
-use core::{cmp::max, hint::unlikely, num::NonZeroUsize, ops::Add, ptr, slice};
+use core::{cmp::max, hint::unlikely, num::NonZeroUsize, ops::Add, ptr};
 use utils::{
 	collections::{path::Path, string::String, vec::Vec},
 	errno,
@@ -277,11 +277,9 @@ fn map_segment(
 		// Zero the end of the last page if needed
 		let begin = load_base + seg.p_vaddr as usize + seg.p_filesz as usize;
 		let len = begin.next_multiple_of(PAGE_SIZE) - begin.0;
-		if len > 0 {
-			unsafe {
-				let slice = slice::from_raw_parts_mut(begin.as_ptr::<u8>(), len);
-				vmem::write_ro(|| vmem::smap_disable(|| slice.fill(0)));
-			}
+		unsafe {
+			let slice = UserSlice::from_user(begin.as_ptr::<u8>(), len)?;
+			vmem::write_ro(|| slice.zero(0, len))?;
 		}
 	}
 	// Add zero pages at the end if needed

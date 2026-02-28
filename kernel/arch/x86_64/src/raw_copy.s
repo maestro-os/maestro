@@ -23,15 +23,24 @@
 .section .text
 
 .global raw_copy
-.global copy_fault
+.global raw_zero
+.global raw_fault
 
-// TODO can be optimized
+// The order of functions is important for bound checking in the exception handler
+
 raw_copy:
     mov rcx, rdx
 	rep movsb
 	mov rax, 1
 	ret
 
-copy_fault:
+raw_zero:
+    mov rcx, rsi
+	xor rax, rax
+	rep stosb
+	mov rax, 1
+	ret
+
+raw_fault:
 	xor rax, rax
 	ret

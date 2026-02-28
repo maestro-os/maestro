@@ -50,12 +50,7 @@ pub struct ZeroDeviceHandle;
 
 impl FileOps for ZeroDeviceHandle {
 	fn read(&self, _file: &File, _: u64, buf: UserSlice<u8>) -> EResult<usize> {
-		let b: [u8; 128] = [0; 128];
-		let mut i = 0;
-		while i < buf.len() {
-			i += buf.copy_to_user(i, &b)?;
-		}
-		Ok(buf.len())
+		buf.zero(0, buf.len())
 	}
 
 	fn write(&self, _file: &File, _: u64, buf: UserSlice<u8>) -> EResult<usize> {

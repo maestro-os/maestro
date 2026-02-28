@@ -425,10 +425,10 @@ pub(crate) fn init() -> EResult<()> {
 				Ok(true) => {}
 				Ok(false) => {
 					if ring < 3 {
-						// Check if the fault was caused by a user <-> kernel copy
-						if (user::raw_copy as usize..user::copy_fault as usize).contains(&pc) {
-							// Jump to `copy_fault`
-							frame.set_program_counter(user::copy_fault as usize);
+						// Check if the fault was caused by a user <-> kernel copy/zero
+						if (user::raw_copy as usize..user::raw_fault as usize).contains(&pc) {
+							// Jump to `raw_fault`
+							frame.set_program_counter(user::raw_fault as usize);
 						} else {
 							return CallbackResult::Panic;
 						}
