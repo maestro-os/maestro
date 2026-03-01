@@ -417,9 +417,9 @@ pub(crate) fn register_callbacks() -> AllocResult<()> {
 			Ok(false) => {
 				if ring < 3 {
 					// Check if the fault was caused by a user <-> kernel copy/zero
-					if (user::raw_copy as usize..user::raw_copy as usize).contains(&pc) {
-						// Jump to `copy_fault`
-						frame.set_program_counter(user::raw_copy as usize);
+					if (user::raw_copy as usize..user::raw_fault as usize).contains(&pc) {
+						// Jump to `raw_fault`
+						frame.set_program_counter(user::raw_fault as usize);
 					} else {
 						panic::with_frame(frame);
 					}
