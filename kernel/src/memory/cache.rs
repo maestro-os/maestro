@@ -44,7 +44,6 @@ use core::{
 	fmt,
 	fmt::Formatter,
 	marker::PhantomData,
-	mem,
 	ops::Deref,
 	slice,
 	sync::atomic::{
@@ -229,14 +228,15 @@ impl RcPage {
 	pub fn is_shared(&self) -> bool {
 		self.0.map_count.load(Acquire) > 1
 	}
+}
 
-	/// Releases the page if this is the last reference to it (excluding LRU).
-	fn release(this: &Self) {
-		if Arc::strong_count(&this.0) > 2 {
+impl Drop for RcPage {
+	fn drop(&mut self) {
+		if Arc::strong_count(&self.0) > 2 {
 			return;
 		}
 		unsafe {
-			LRU.lock().remove(&this.0);
+			LRU.lock().remove(&self.0);
 		}
 	}
 }
@@ -350,22 +350,7 @@ impl MappedNode {
 
 	/// Removes, without flushing, all the pages after the offset `off` (included).
 	pub fn truncate(&self, off: u64) {
-		self.cache.lock().retain(|o, page| {
-			let retain = *o < off;
-			if !retain {
-				RcPage::release(page);
-			}
-			retain
-		});
-	}
-}
-
-impl Drop for MappedNode {
-	fn drop(&mut self) {
-		let pages = mem::take(&mut self.cache).into_inner();
-		for (_, page) in pages {
-			RcPage::release(&page);
-		}
+		self.cache.lock().retain(|o, _| *o < off);
 	}
 }
 

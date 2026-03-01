@@ -33,7 +33,7 @@ fn acquire<const INT: bool>(queue: &IntSpin<Queue>, permits: usize) -> EResult<(
 		let mut q = queue.lock();
 		q.acquired += 1;
 		// If enough permits are available, return
-		if q.acquired < permits {
+		if q.acquired <= permits {
 			return Ok(());
 		}
 		// Not enough permits: we must sleep. The process is dequeued when a permit becomes
