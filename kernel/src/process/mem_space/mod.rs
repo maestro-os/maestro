@@ -47,7 +47,7 @@ use crate::{
 	sync::rwlock::IntRwLock,
 };
 use core::{
-	alloc::AllocError, cmp::min, ffi::c_void, fmt, hint::unlikely, mem, num::NonZeroUsize,
+	alloc::AllocError, cmp::min, ffi::c_void, fmt, hint::unlikely, mem, num::NonZeroUsize, ptr,
 };
 use gap::MemGap;
 use mapping::MemMapping;
@@ -550,7 +550,7 @@ impl MemSpace {
 			return;
 		}
 		critical(|| {
-			// Mark the memory space as bound
+			// Update per-CPU structure
 			let prev = per_cpu().mem_space.replace(Some(this.clone()));
 			// Update new bitmap
 			let core_id = core_id() as usize;
@@ -558,7 +558,9 @@ impl MemSpace {
 			// Do actual bind
 			this.vmem.bind();
 			// Update old bitmap if any
-			if let Some(prev) = prev {
+			if let Some(prev) = prev
+				&& !ptr::eq(Arc::as_ptr(&prev), Arc::as_ptr(this))
+			{
 				prev.bound_cpus.clear_bit(core_id);
 			}
 		});
@@ -591,9 +593,6 @@ impl MemSpace {
 	/// Temporarily switches to `this` to executes the closure `f`.
 	///
 	/// After execution, the function restores the previous memory space.
-	///
-	/// `f` is executed in a critical section to prevent the temporary memory space from being
-	/// replaced by the scheduler.
 	pub fn switch<F: FnOnce(&Arc<Self>) -> T, T>(this: &Arc<Self>, f: F) -> T {
 		let proc = Process::current();
 		let old = critical(|| {
@@ -603,11 +602,13 @@ impl MemSpace {
 			old
 		});
 		let res = f(this);
-		match &old {
-			Some(old) => MemSpace::bind(old),
-			None => MemSpace::unbind(),
-		}
-		critical(|| *proc.active_mem_space.lock() = old);
+		critical(|| {
+			match &old {
+				Some(old) => MemSpace::bind(old),
+				None => MemSpace::unbind(),
+			}
+			*proc.active_mem_space.lock() = old;
+		});
 		res
 	}
 

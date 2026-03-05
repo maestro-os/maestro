@@ -21,7 +21,7 @@
 //! [NVMe specification](https://nvmexpress.org/wp-content/uploads/NVM-Express-Base-Specification-Revision-2.3-2025.08.01-Ratified.pdf)
 
 use crate::{
-	arch::{core_id, x86::idt::disable_int},
+	arch::core_id,
 	device::{
 		BlkDev, BlockDeviceOps, DeviceID,
 		bar::Bar,
@@ -36,7 +36,7 @@ use crate::{
 	memory::{VirtAddr, buddy, cache::RcPage},
 	println, process,
 	process::{Process, State, scheduler::schedule},
-	sync::{mutex::Mutex, rwlock::RwLock, semaphore::Semaphore},
+	sync::{rwlock::RwLock, semaphore::Semaphore, spin::Spin},
 };
 use core::{
 	any::Any,
@@ -624,7 +624,7 @@ struct QueuePair {
 
 	/// Limits concurrent users of the queues pair
 	sem: Semaphore<false>,
-	inner: Mutex<QueuePairInner, false>,
+	inner: Spin<QueuePairInner, false>,
 }
 
 impl QueuePair {
@@ -800,11 +800,16 @@ impl ControllerInner {
 	) -> CompletionQueueEntry {
 		// Wait for space in the submission queue
 		let _permit = qp.sem.acquire();
-		// Disable interrupt to prevent the completion interrupt from being handled before the
-		// process is put to sleep
-		let sq_tail = disable_int(|| {
+		// The spinlock disables interrupts to prevent the completion interrupt from being handled
+		// before the process is put to sleep
+		let sq_tail;
+		{
 			let mut qp_inner = qp.inner.lock();
-			let sq_tail = qp_inner.sq_tail;
+			sq_tail = qp_inner.sq_tail;
+			debug_assert!(matches!(
+				qp_inner.entries[sq_tail as usize],
+				QueueEntry::Empty
+			));
 			// Add command identifier
 			cmd.cdw0 = (cmd.cdw0 & !0xffff0000) | ((sq_tail & 0xffff) << 16);
 			// Insert in submission queue
@@ -822,14 +827,13 @@ impl ControllerInner {
 			}
 			// Wait for completion
 			process::set_state(State::Sleeping);
-			sq_tail
-		});
+		}
 		schedule();
 		// Retrieve CQE
 		let mut qp_inner = qp.inner.lock();
 		let ent = mem::replace(&mut qp_inner.entries[sq_tail as usize], QueueEntry::Empty);
 		let QueueEntry::Completed(cqe) = ent else {
-			unreachable!();
+			panic!();
 		};
 		cqe
 	}
@@ -858,11 +862,14 @@ fn handle_int(int: u32, inner: &ControllerInner) {
 			break;
 		}
 		// Wake up process
-		let ent = &mut qp_inner.entries[cqe.cid as usize];
-		if let QueueEntry::Submitted(proc) = ent {
-			Process::wake_from(proc, State::Sleeping as _)
-		}
-		*ent = QueueEntry::Completed(cqe);
+		let ent = mem::replace(
+			&mut qp_inner.entries[cqe.cid as usize],
+			QueueEntry::Completed(cqe),
+		);
+		let QueueEntry::Submitted(proc) = ent else {
+			unreachable!();
+		};
+		Process::wake_from(&proc, State::Sleeping as _);
 		qp_inner.cq_head = (qp_inner.cq_head + 1) % (CQ_LEN as u32);
 		if qp_inner.cq_head == 0 {
 			qp_inner.completion_phase = !qp_inner.completion_phase;

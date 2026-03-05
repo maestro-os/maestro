@@ -26,7 +26,7 @@ use crate::{
 	file::perm::Uid,
 	memory::{VirtAddr, user::UserPtr},
 	process,
-	process::{mem_space::MemSpace, pid::Pid},
+	process::pid::Pid,
 	syscall::{
 		FromSyscallArg,
 		wait::{WCONTINUED, WEXITED, WUNTRACED},
@@ -478,9 +478,6 @@ impl SignalHandler {
 		};
 		let ctx_addr = VirtAddr(stack_addr.saturating_sub(ctx_size)).down_align_to(ctx_align);
 		let signal_sp = VirtAddr(ctx_addr.saturating_sub(size_of::<u64>()));
-		// Bind virtual memory
-		let mem_space = proc.mem_space.as_ref().unwrap();
-		MemSpace::bind(mem_space);
 		// Write data on stack
 		if frame.is_compat() {
 			let ctx = UContext32::new(altstack.into(), sigmask, frame);
