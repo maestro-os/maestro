@@ -217,23 +217,6 @@ pub fn set_tid_address(_tidptr: UserPtr<c_int>) -> EResult<usize> {
 	Ok(Process::current().tid as _)
 }
 
-/// Wait for the vfork operation to complete.
-fn wait_vfork_done(child_pid: Pid) {
-	loop {
-		let Some(child) = Process::get_by_pid(child_pid) else {
-			// Child disappeared for some reason, stop
-			break;
-		};
-		// If done, stop waiting
-		if child.is_vfork_done() {
-			break;
-		}
-		// Sleep until done
-		process::set_state(State::Sleeping);
-		schedule();
-	}
-}
-
 #[allow(clippy::type_complexity)]
 pub fn compat_clone(
 	flags: c_ulong,
@@ -243,22 +226,22 @@ pub fn compat_clone(
 	_child_tid: UserPtr<c_int>,
 	frame: &mut IntFrame,
 ) -> EResult<usize> {
-	let (child_pid, child_tid) = {
-		let child = Process::fork(
-			frame,
-			stack,
-			ForkOptions {
-				share_memory: flags & CLONE_VM != 0,
-				share_fd: flags & CLONE_FILES != 0,
-				share_sighand: flags & CLONE_SIGHAND != 0,
-			},
-		)?;
-		(child.get_pid(), child.tid)
-	};
+	let child = Process::fork(
+		frame,
+		stack,
+		ForkOptions {
+			share_memory: flags & CLONE_VM != 0,
+			share_fd: flags & CLONE_FILES != 0,
+			share_sighand: flags & CLONE_SIGHAND != 0,
+		},
+	)?;
 	if flags & CLONE_VFORK != 0 {
-		wait_vfork_done(child_pid);
+		while !child.is_vfork_done() {
+			process::set_state(State::Sleeping);
+			schedule();
+		}
 	}
-	Ok(child_tid as _)
+	Ok(child.tid as _)
 }
 
 #[allow(clippy::type_complexity)]

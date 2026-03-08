@@ -131,10 +131,8 @@ switch:
 	push edi
 
     # Swap contexts
-    mov eax, [esp + 20]
     mov [eax + {off}], esp
-    mov eax, [esp + 24]
-    mov esp, [eax + {off}]
+    mov esp, [edx + {off}]
 
 	pop edi
 	pop esi
