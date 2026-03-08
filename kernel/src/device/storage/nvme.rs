@@ -21,7 +21,7 @@
 //! [NVMe specification](https://nvmexpress.org/wp-content/uploads/NVM-Express-Base-Specification-Revision-2.3-2025.08.01-Ratified.pdf)
 
 use crate::{
-	arch::core_id,
+	arch::{core_id, x86::idt::disable_int},
 	device::{
 		BlkDev, BlockDeviceOps, DeviceID,
 		bar::Bar,
@@ -800,42 +800,44 @@ impl ControllerInner {
 	) -> CompletionQueueEntry {
 		// Wait for space in the submission queue
 		let _permit = qp.sem.acquire();
-		// The spinlock disables interrupts to prevent the completion interrupt from being handled
-		// before the process is put to sleep
-		let sq_tail;
-		{
+		// Disable interrupts to prevent the completion interrupt from being handled before the
+		// process is put to sleep
+		disable_int(|| {
+			let sq_tail;
+			{
+				let mut qp_inner = qp.inner.lock();
+				sq_tail = qp_inner.sq_tail;
+				debug_assert!(matches!(
+					qp_inner.entries[sq_tail as usize],
+					QueueEntry::Empty
+				));
+				// Add command identifier
+				cmd.cdw0 = (cmd.cdw0 & !0xffff0000) | ((sq_tail & 0xffff) << 16);
+				// Insert in submission queue
+				unsafe {
+					qp.sq.add(sq_tail as usize).write_volatile(cmd);
+				}
+				qp_inner.entries[sq_tail as usize] = QueueEntry::Submitted(Process::current());
+				// Update queue tail
+				qp_inner.sq_tail = (sq_tail + 1) % (SQ_LEN as u32);
+				unsafe {
+					self.bar.write::<u32>(
+						queue_doorbell_off(qp.id, false, self.dstrd),
+						qp_inner.sq_tail,
+					);
+				}
+				// Wait for completion
+				process::set_state(State::Sleeping);
+			}
+			schedule();
+			// Retrieve CQE
 			let mut qp_inner = qp.inner.lock();
-			sq_tail = qp_inner.sq_tail;
-			debug_assert!(matches!(
-				qp_inner.entries[sq_tail as usize],
-				QueueEntry::Empty
-			));
-			// Add command identifier
-			cmd.cdw0 = (cmd.cdw0 & !0xffff0000) | ((sq_tail & 0xffff) << 16);
-			// Insert in submission queue
-			unsafe {
-				qp.sq.add(sq_tail as usize).write_volatile(cmd);
-			}
-			qp_inner.entries[sq_tail as usize] = QueueEntry::Submitted(Process::current());
-			// Update queue tail
-			qp_inner.sq_tail = (sq_tail + 1) % (SQ_LEN as u32);
-			unsafe {
-				self.bar.write::<u32>(
-					queue_doorbell_off(qp.id, false, self.dstrd),
-					qp_inner.sq_tail,
-				);
-			}
-			// Wait for completion
-			process::set_state(State::Sleeping);
-		}
-		schedule();
-		// Retrieve CQE
-		let mut qp_inner = qp.inner.lock();
-		let ent = mem::replace(&mut qp_inner.entries[sq_tail as usize], QueueEntry::Empty);
-		let QueueEntry::Completed(cqe) = ent else {
-			panic!();
-		};
-		cqe
+			let ent = mem::replace(&mut qp_inner.entries[sq_tail as usize], QueueEntry::Empty);
+			let QueueEntry::Completed(cqe) = ent else {
+				panic!();
+			};
+			cqe
+		})
 	}
 }
 

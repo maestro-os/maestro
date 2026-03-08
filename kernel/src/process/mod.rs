@@ -31,7 +31,7 @@ pub mod signal;
 pub mod user_desc;
 
 use crate::{
-	arch::x86::{FxState, gdt, idt::IntFrame, timer},
+	arch::x86::{FxState, cli, gdt, idt::IntFrame, timer},
 	file,
 	file::{
 		File, O_RDWR,
@@ -723,43 +723,45 @@ impl Process {
 		State::from_id(id)
 	}
 
-	/// In a critical section, write-locks the process's state while executing `f`
-	fn lock_state<F: FnOnce(State)>(&self, f: F) {
-		critical(|| {
-			let mut val;
-			loop {
-				val = self.state.fetch_or(STATE_LOCK, Release);
-				if val & STATE_LOCK == 0 {
-					break;
-				}
-				hint::spin_loop();
+	/// Write-locks the process's state.
+	///
+	/// The function returns the current process state.
+	fn lock_state(&self) -> State {
+		let mut val;
+		loop {
+			val = self.state.fetch_or(STATE_LOCK, Release);
+			if val & STATE_LOCK == 0 {
+				break;
 			}
-			let state = State::from_id(val);
-			f(state);
-			self.state.fetch_and(!STATE_LOCK, Release);
-		});
+			hint::spin_loop();
+		}
+		State::from_id(val)
 	}
 
-	/// Wakes up the process if in [`State::Sleeping`] state.
-	///
-	/// `from_mask` is the mask of states the process can wake up from. If the current state is not
-	/// in the mask, the function does nothing.
+	/// Write-unlocks the process's state.
+	#[inline]
+	fn unlock_state(&self) {
+		self.state.fetch_and(!STATE_LOCK, Release);
+	}
+
+	/// Wakes up the process if it is currently in state present in `from_mask`.
 	pub fn wake_from(this: &Arc<Self>, from_mask: u8) {
-		this.lock_state(|old_state| {
-			if from_mask & old_state as u8 == 0 {
-				return;
+		critical(|| {
+			let old_state = this.lock_state();
+			if from_mask & old_state as u8 != 0 {
+				this.state.store(STATE_LOCK | State::Running as u8, Release);
+				#[cfg(feature = "strace")]
+				println!(
+					"[strace {pid}] changed state: {old_state:?} -> Running",
+					pid = this.get_pid()
+				);
+				enqueue(this);
+				// If the woken up process has a higher priority than the current, preempt
+				if Process::current().cmp_priority(this) == Ordering::Less {
+					preempt();
+				}
 			}
-			this.state.store(STATE_LOCK | State::Running as u8, Release);
-			#[cfg(feature = "strace")]
-			println!(
-				"[strace {pid}] changed state: {old_state:?} -> Running",
-				pid = this.get_pid()
-			);
-			enqueue(this);
-			// If the woken up process has a higher priority than the current, preempt
-			if Process::current().cmp_priority(this) == Ordering::Less {
-				preempt();
-			}
+			this.unlock_state();
 		});
 	}
 
@@ -1050,10 +1052,15 @@ impl fmt::Debug for Process {
 ///
 /// If the transition from the previous state to `new_state` is invalid, the function does
 /// nothing.
+///
+/// If `new_state` is [`State::IntSleeping`], [`State::Sleeping`] or [`State::Stopped`], the state
+/// remains write-locked until the next reschedule.
 pub fn set_state(new_state: State) {
 	let proc = Process::current();
-	proc.lock_state(|old_state| {
+	critical(|| {
+		let old_state = proc.lock_state();
 		if new_state == old_state {
+			proc.unlock_state();
 			return;
 		}
 		let valid = matches!(
@@ -1065,6 +1072,7 @@ pub fn set_state(new_state: State) {
 				)
 		);
 		if !valid {
+			proc.unlock_state();
 			return;
 		}
 		// Update state
@@ -1105,6 +1113,14 @@ pub fn set_state(new_state: State) {
 			}
 			// Set vfork as done just in case
 			proc.vfork_wake();
+		}
+		// Sleeping or stopped processes are unlocked only once rescheduled, to prevent another
+		// core from waking them up before they are actually asleep
+		match new_state {
+			State::Running | State::Zombie => proc.unlock_state(),
+			// Disable interruptions to prevent deadlock if an interruption tries to wake up the
+			// process
+			_ => cli(),
 		}
 	});
 }

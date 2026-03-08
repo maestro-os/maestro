@@ -220,26 +220,16 @@ pub fn set_tid_address(_tidptr: UserPtr<c_int>) -> EResult<usize> {
 /// Wait for the vfork operation to complete.
 fn wait_vfork_done(child_pid: Pid) {
 	loop {
-		// Use a scope to avoid holding references that could be lost, since `schedule` could never
-		// return
-		{
-			let Some(child) = Process::get_by_pid(child_pid) else {
-				// Child disappeared for some reason, stop
-				break;
-			};
-			// If done, stop waiting
-			if child.is_vfork_done() {
-				break;
-			}
-			// Sleep until done
-			process::set_state(State::Sleeping);
-			// If vfork has completed in between, cancel sleeping
-			if unlikely(child.is_vfork_done()) {
-				Process::wake_from(&Process::current(), State::Sleeping as u8);
-				break;
-			}
+		let Some(child) = Process::get_by_pid(child_pid) else {
+			// Child disappeared for some reason, stop
+			break;
+		};
+		// If done, stop waiting
+		if child.is_vfork_done() {
+			break;
 		}
-		// Let another process run while we wait
+		// Sleep until done
+		process::set_state(State::Sleeping);
 		schedule();
 	}
 }

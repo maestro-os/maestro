@@ -238,6 +238,9 @@ pub extern "C" fn finish(prev: &Process, next: &Process) {
 	fxrstor(&next.fpu.lock());
 	// Save segments
 	save_segments(prev);
+	// State is saved for `prev`, we may unlock its state so that it can be resumed if it is
+	// currently sleeping
+	prev.unlock_state();
 	// Restore TLS entries from `next`
 	next.tls
 		.lock()
