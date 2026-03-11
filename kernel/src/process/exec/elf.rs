@@ -266,20 +266,30 @@ fn map_segment(
 	let addr = load_base + page_start;
 	let pages = (page_off + seg.p_filesz as usize).div_ceil(PAGE_SIZE);
 	if let Some(pages) = NonZeroUsize::new(pages) {
+		let mmap_prot = seg.mmap_prot();
+		// Compute length of memory to zero
+		let zero_begin = load_base + seg.p_vaddr as usize + seg.p_filesz as usize;
+		let zero_len = zero_begin.next_multiple_of(PAGE_SIZE) - zero_begin.0;
+		// If the last page needs to get zeroed, temporarily allow writing
+		let prot = if zero_len > 0 {
+			PROT_READ | PROT_WRITE
+		} else {
+			mmap_prot
+		};
 		mem_space.map(
 			addr,
 			pages,
-			seg.mmap_prot(),
+			prot,
 			MAP_PRIVATE | MAP_FIXED,
 			Some(file),
 			seg.p_offset - page_off as u64,
 		)?;
-		// Zero the end of the last page if needed
-		let begin = load_base + seg.p_vaddr as usize + seg.p_filesz as usize;
-		let len = begin.next_multiple_of(PAGE_SIZE) - begin.0;
-		unsafe {
-			let slice = UserSlice::from_user(begin.as_ptr::<u8>(), len)?;
-			vmem::write_ro(|| slice.zero(0, len))?;
+		if zero_len > 0 {
+			// Zero the end of the last page
+			let slice = UserSlice::from_user(zero_begin.as_ptr::<u8>(), zero_len)?;
+			slice.zero(0, zero_len)?;
+			// Update protection
+			mem_space.set_prot(addr, pages.get(), mmap_prot)?;
 		}
 	}
 	// Add zero pages at the end if needed

@@ -24,14 +24,10 @@ use crate::{
 	memory::{VirtAddr, user::UserSlice},
 	process::{
 		Process,
-		mem_space::{MAP_ANONYMOUS, MAP_SHARED, PROT_WRITE},
+		mem_space::{MAP_ANONYMOUS, MAP_SHARED, PROT_EXEC, PROT_READ, PROT_WRITE},
 	},
 };
-use core::{
-	ffi::{c_int, c_void},
-	hint::unlikely,
-	num::NonZeroUsize,
-};
+use core::{ffi::c_int, hint::unlikely, num::NonZeroUsize};
 use utils::{errno, errno::EResult, limits::PAGE_SIZE};
 
 /// Performs the `mmap` system call.
@@ -50,6 +46,9 @@ pub fn do_mmap(
 		return Err(errno!(EINVAL));
 	};
 	let prot = prot as u8;
+	if unlikely(prot & !(PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
+		return Err(errno!(EINVAL));
+	}
 	let file = if flags & MAP_ANONYMOUS == 0 {
 		// Validation
 		if unlikely(fd < 0) {
@@ -111,18 +110,22 @@ pub fn mincore(addr: VirtAddr, length: usize, vec: *mut u8) -> EResult<usize> {
 	Ok(0)
 }
 
-pub fn madvise(_addr: *mut c_void, _length: usize, _advice: c_int) -> EResult<usize> {
+pub fn madvise(_addr: VirtAddr, _length: usize, _advice: c_int) -> EResult<usize> {
 	// TODO
 	Ok(0)
 }
 
-pub fn mprotect(addr: *mut c_void, len: usize, prot: c_int) -> EResult<usize> {
+pub fn mprotect(addr: VirtAddr, len: usize, prot: c_int) -> EResult<usize> {
 	// Check alignment of `addr` and `length`
-	if !addr.is_aligned_to(PAGE_SIZE) || len == 0 {
+	if unlikely(!addr.is_aligned_to(PAGE_SIZE)) {
 		return Err(errno!(EINVAL));
 	}
 	let prot = prot as u8;
-	Process::current().mem_space().set_prot(addr, len, prot)?;
+	if unlikely(prot & !(PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
+		return Err(errno!(EINVAL));
+	}
+	let pages = len.div_ceil(PAGE_SIZE);
+	Process::current().mem_space().set_prot(addr, pages, prot)?;
 	Ok(0)
 }
 

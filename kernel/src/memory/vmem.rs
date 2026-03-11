@@ -257,6 +257,9 @@ pub fn shootdown_range(addr: VirtAddr, count: usize, cpus: impl Iterator<Item = 
 /// read-only data writable.
 ///
 /// Writing on some read-only regions (code for example) is dangerous.
+///
+/// This function should be used in a critical section, as the Write Protect flag is not saved on
+/// context switch.
 #[inline]
 pub unsafe fn write_ro<F: FnOnce() -> T, T>(f: F) -> T {
 	let prev = x86::set_write_protected(false);

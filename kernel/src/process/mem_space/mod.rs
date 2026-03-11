@@ -32,7 +32,7 @@ use crate::{
 		core_id, x86,
 		x86::paging::{PAGE_FAULT_INSTRUCTION, PAGE_FAULT_WRITE},
 	},
-	file::{File, vfs},
+	file::{File, perm::can_write_file, vfs},
 	memory::{
 		COMPAT_PROCESS_END, PROCESS_END, VirtAddr,
 		cache::RcPage,
@@ -46,9 +46,7 @@ use crate::{
 	},
 	sync::rwlock::IntRwLock,
 };
-use core::{
-	alloc::AllocError, cmp::min, ffi::c_void, fmt, hint::unlikely, mem, num::NonZeroUsize, ptr,
-};
+use core::{alloc::AllocError, cmp::min, fmt, hint::unlikely, mem, num::NonZeroUsize, ptr};
 use gap::MemGap;
 use mapping::MemMapping;
 use transaction::MemSpaceTransaction;
@@ -89,6 +87,16 @@ pub type Page = [u8; PAGE_SIZE];
 /// Tells whether the address is in bound of the userspace.
 pub fn bound_check(addr: usize, n: usize) -> bool {
 	addr >= PAGE_SIZE && addr.saturating_add(n) <= COPY_BUFFER.0
+}
+
+fn check_write_perm(file: Option<&Arc<File>>, prot: u8) -> EResult<()> {
+	if prot & PROT_WRITE != 0
+		&& let Some(file) = file
+		&& unlikely(!can_write_file(&file.stat(), true))
+	{
+		return Err(errno!(EACCES));
+	}
+	Ok(())
 }
 
 /// Removes gaps in `on` in the given range, using `transaction`.
@@ -311,6 +319,7 @@ impl MemSpace {
 		if unlikely(flags & (MAP_PRIVATE | MAP_SHARED) == 0) {
 			return Err(errno!(EINVAL));
 		}
+		check_write_perm(file.as_ref(), prot)?;
 		if flags & MAP_FIXED_NOREPLACE != 0 {
 			// Check for mappings already present in range TODO: can be optimized
 			let used = transaction.state.mappings.iter().any(|(_, m)| {
@@ -648,18 +657,57 @@ impl MemSpace {
 	///
 	/// Arguments:
 	/// - `addr` is the address to the beginning of the range to be set
-	/// - `len` is the length of the range in bytes
+	/// - `pages` is the number of pages in the range
 	/// - `prot` is a set of mapping flags
 	///
 	/// If a mapping to be modified is associated with a file, and the file doesn't have the
 	/// matching permissions, the function returns an error.
-	pub fn set_prot(&self, _addr: *mut c_void, _len: usize, _prot: u8) -> EResult<()> {
-		// TODO Iterate on mappings in the range:
-		//		If the mapping is shared and associated to a file, check file permissions match
-		// `prot` (only write)
-		//		Split the mapping if needed
-		//		Set permissions
-		//		Update vmem
+	pub fn set_prot(&self, mut addr: VirtAddr, pages: usize, prot: u8) -> EResult<()> {
+		let end = pages
+			.checked_mul(PAGE_SIZE)
+			.and_then(|len| addr.0.checked_add(len))
+			.filter(|end| *end <= COPY_BUFFER.0)
+			.ok_or_else(|| errno!(EINVAL))?;
+		let mut transaction = MemSpaceTransaction::new(self);
+		while addr.0 < end {
+			let mapping = transaction
+				.state
+				.get_mut_mapping_for_addr(addr)
+				.ok_or_else(|| errno!(ENOMEM))?;
+			check_write_perm(mapping.file.as_ref(), prot)?;
+			let mapping_addr = mapping.addr;
+			let mapping_len = mapping.size.get() * PAGE_SIZE;
+			let mapping_end = mapping_addr + mapping_len;
+			if addr <= mapping_addr && end >= mapping_end.0 {
+				// The mapping is entirely contained within the range, just change its protection
+				mapping.prot = prot;
+				addr.0 += mapping_len;
+			} else {
+				// The mapping has to be split
+				let (off, prot_next) = if addr >= mapping_addr {
+					(mapping_addr.0 - addr.0, true)
+				} else {
+					(end - mapping_addr.0, false)
+				};
+				let (prev, _, next) = mapping.split(off / PAGE_SIZE, 0)?;
+				// Remove the old mapping and insert new ones
+				transaction.remove_mapping(mapping_addr)?;
+				if let Some(mut m) = prev {
+					if !prot_next {
+						m.prot = prot;
+					}
+					transaction.insert_mapping(m)?;
+				}
+				if let Some(mut m) = next {
+					if prot_next {
+						m.prot = prot;
+					}
+					transaction.insert_mapping(m)?;
+				}
+				addr.0 += off;
+			}
+		}
+		shootdown_range(addr, pages, self.bound_cpus());
 		Ok(())
 	}
 
