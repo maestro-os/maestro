@@ -105,11 +105,6 @@ const CNS_NAMESPACE_LIST: u32 = 2;
 const SQ_LEN: usize = (PAGE_SIZE << 2) / size_of::<SubmissionQueueEntry>();
 const CQ_LEN: usize = PAGE_SIZE / size_of::<CompletionQueueEntry>();
 
-/// Admin queue interrupt vector
-const ADMIN_INT: u32 = 0x22;
-/// I/O queue interrupt vector
-const IO_INT: u32 = 0x23;
-
 /// Returns the register offset for the doorbell property of the given `queue`.
 ///
 /// Arguments:
@@ -841,20 +836,7 @@ impl ControllerInner {
 	}
 }
 
-fn handle_int(int: u32, inner: &ControllerInner) {
-	let queues;
-	let qp = match int {
-		ADMIN_INT => &inner.admin_qp,
-		IO_INT.. => {
-			let i = int - IO_INT;
-			queues = inner.queues.read();
-			let Some(qp) = queues.get(i as usize) else {
-				return;
-			};
-			qp
-		}
-		_ => return,
-	};
+fn handle_int(inner: &ControllerInner, qp: &QueuePair) {
 	let mut qp_inner = qp.inner.lock();
 	let mut any = false;
 	loop {
@@ -926,14 +908,35 @@ impl Controller {
 			);
 			return Err(errno!(EINVAL));
 		}
+		// Setup interrupt handler
+		static CTRLR_ID: AtomicU32 = AtomicU32::new(0);
+		let inner = Arc::new(ControllerInner {
+			id: CTRLR_ID.fetch_add(1, Relaxed),
+			bar,
+			dstrd: ((cap >> 32) & 0xf) as usize,
+			admin_qp: QueuePair::new(0)?,
+			queues: RwLock::new(Vec::new()),
+		})?;
+		let (admin_int, io_int) = unsafe {
+			let inner_ = inner.clone();
+			let admin_int = int::alloc_callback(move |_, _, _, _| {
+				handle_int(&inner_, &inner_.admin_qp);
+			})?;
+			let inner_ = inner.clone();
+			let io_int = int::alloc_callback(move |_, _, _, _| {
+				let queues = inner_.queues.read();
+				handle_int(&inner_, &queues[0]);
+			})?;
+			(admin_int, io_int)
+		};
 		// Setup MSI
 		let msi_x = dev.enable_msi_x();
 		if let Some(msi_x) = msi_x {
 			msi_x
-				.set(0, core_id() as _, true, false, ADMIN_INT)
+				.set(0, core_id() as _, true, false, admin_int.id())
 				.inspect_err(|_| println!("nvme: failed to initialize MSI-x"))?;
 			msi_x
-				.set(1, core_id() as _, true, false, IO_INT)
+				.set(1, core_id() as _, true, false, io_int.id())
 				.inspect_err(|_| println!("nvme: failed to initialize MSI-x"))?;
 			println!("nvme: using MSI-X");
 		} else {
@@ -942,23 +945,30 @@ impl Controller {
 		}
 		// Disable controller
 		unsafe {
-			bar.write(REG_CC, bar.read::<u32>(REG_CC) & !FLAG_CC_EN);
+			inner
+				.bar
+				.write(REG_CC, inner.bar.read::<u32>(REG_CC) & !FLAG_CC_EN);
 		}
-		wait_rdy(&bar, false);
-		let admin_qp = QueuePair::new(0)?;
+		wait_rdy(&inner.bar, false);
 		let aqa = (CQ_LEN << 16) | SQ_LEN;
 		unsafe {
-			bar.write(
+			inner.bar.write(
 				REG_ASQ,
-				VirtAddr::from(admin_qp.sq).kernel_to_physical().unwrap().0 as u64,
+				VirtAddr::from(inner.admin_qp.sq)
+					.kernel_to_physical()
+					.unwrap()
+					.0 as u64,
 			);
-			bar.write(
+			inner.bar.write(
 				REG_ACQ,
-				VirtAddr::from(admin_qp.cq).kernel_to_physical().unwrap().0 as u64,
+				VirtAddr::from(inner.admin_qp.cq)
+					.kernel_to_physical()
+					.unwrap()
+					.0 as u64,
 			);
-			bar.write(REG_AQA, aqa as u32);
+			inner.bar.write(REG_AQA, aqa as u32);
 			// Set capabilities
-			let mut cc = bar.read::<u32>(REG_CC);
+			let mut cc = inner.bar.read::<u32>(REG_CC);
 			// Set submission and completion queues entry sizes now to circumvent a bug on some
 			// QEMU versions
 			cc |= 6 << 16;
@@ -966,39 +976,15 @@ impl Controller {
 			// Set page size
 			cc = (cc & !0x3ff0) | ((PAGE_SIZE.ilog2() - 12) << 7);
 			// Enable controller
-			bar.write(REG_CC, cc | FLAG_CC_EN);
+			inner.bar.write(REG_CC, cc | FLAG_CC_EN);
 		}
-		wait_rdy(&bar, true);
+		wait_rdy(&inner.bar, true);
 		// Check for fatal error
-		let status = unsafe { bar.read::<u32>(REG_CSTS) };
+		let status = unsafe { inner.bar.read::<u32>(REG_CSTS) };
 		if unlikely(status & FLAG_CSTS_CFS != 0) {
 			println!("nvme: fatal error during initialization");
 			return Err(errno!(EINVAL));
 		}
-		// Setup interrupt handler
-		static CTRLR_ID: AtomicU32 = AtomicU32::new(0);
-		let inner = Arc::new(ControllerInner {
-			id: CTRLR_ID.fetch_add(1, Relaxed),
-			bar,
-			dstrd: ((cap >> 32) & 0xf) as usize,
-			admin_qp,
-			queues: RwLock::new(Vec::new()),
-		})?;
-		let inner_ = inner.clone();
-		let (admin_int, io_int) = unsafe {
-			let admin_int = int::register_callback(ADMIN_INT, move |int, _, _, _| {
-				let inner = inner_.clone();
-				handle_int(int, &inner);
-			})?
-			.unwrap();
-			let inner_ = inner.clone();
-			let io_int = int::register_callback(IO_INT, move |int, _, _, _| {
-				let inner = inner_.clone();
-				handle_int(int, &inner);
-			})?
-			.unwrap();
-			(admin_int, io_int)
-		};
 		// Identify controller
 		let mut ctrlr_id: MaybeUninit<IdentifyController> = MaybeUninit::uninit();
 		let dptr = VirtAddr::from(&mut ctrlr_id).kernel_to_physical().unwrap();

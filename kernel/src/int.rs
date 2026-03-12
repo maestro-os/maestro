@@ -31,12 +31,14 @@ use crate::{
 	process::scheduler::{alter_flow, cpu::per_cpu, defer, preempt_check_resched},
 	rand,
 };
-use core::{array, cell::UnsafeCell, hint::unlikely};
+use core::{alloc::AllocError, array, cell::UnsafeCell, hint::unlikely};
 use utils::{boxed::Box, bytes::as_bytes, errno::AllocResult};
 
 type CallbackInner = dyn FnMut(u32, u32, &mut IntFrame, u8);
 /// A callback to handle an interruption
 pub type Callback = Box<CallbackInner>;
+
+const HARDWARE_INT_COUNT: usize = 32;
 
 /// Per-CPU callback list, stored in [`PerCpu`].
 pub struct CallbackList([UnsafeCell<Option<Callback>>; idt::ENTRIES_COUNT]);
@@ -59,6 +61,12 @@ pub struct CallbackHandle {
 }
 
 impl CallbackHandle {
+	/// Returns the ID of the interrupt
+	#[inline]
+	pub fn id(&self) -> u32 {
+		self.id
+	}
+
 	/// Unregister the interrupt handler
 	///
 	/// # Safety
@@ -112,6 +120,35 @@ pub unsafe fn register_callback<F: 'static + FnMut(u32, u32, &mut IntFrame, u8)>
 			cpu: core_id(),
 			id,
 		}))
+	})
+}
+
+/// Like [`register_callback`], except the function allocates an ID instead of using a fixed one.
+///
+/// The function cannot allocate a hardware interrupt ID.
+///
+/// If no ID is available, the function returns [`AllocError`].
+///
+/// # Safety
+///
+/// This function must not be called inside an interrupt handler.
+pub unsafe fn alloc_callback<F: 'static + FnMut(u32, u32, &mut IntFrame, u8)>(
+	callback: F,
+) -> AllocResult<CallbackHandle> {
+	disable_int(|| {
+		let (id, cell) = per_cpu().int_callbacks.0[HARDWARE_INT_COUNT..]
+			.iter()
+			.enumerate()
+			.find(|(_, cell)| unsafe { (*cell.get()).is_none() })
+			.ok_or(AllocError)?;
+		let callback: Callback = Box::new(callback)?;
+		unsafe {
+			*cell.get() = Some(callback);
+		}
+		Ok(CallbackHandle {
+			cpu: core_id(),
+			id: (HARDWARE_INT_COUNT + id) as _,
+		})
 	})
 }
 
