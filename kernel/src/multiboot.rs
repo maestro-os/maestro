@@ -20,7 +20,7 @@
 //! image. It provides essential information such as the memory mapping and the
 //! ELF structure of the kernel.
 
-use crate::{memory::PhysAddr, sync::once::OnceInit};
+use crate::{memory::PhysAddr, println, sync::once::OnceInit};
 use core::{ffi::c_void, hint::unlikely, mem::offset_of, slice};
 
 /// Multiboot2 magic number.
@@ -38,6 +38,8 @@ pub const TAG_TYPE_MODULE: u32 = 3;
 pub const TAG_TYPE_BASIC_MEMINFO: u32 = 4;
 /// Multiboot tag type: memory size
 pub const TAG_TYPE_MMAP: u32 = 6;
+/// Multiboot tag type: framebuffer information
+pub const TAG_TYPE_FRAMEBUFFER: u32 = 8;
 /// Multiboot tag type: kernel's ELF sections
 pub const TAG_TYPE_ELF_SECTIONS: u32 = 9;
 
@@ -104,6 +106,32 @@ struct TagMmap {
 }
 
 #[repr(C)]
+#[derive(Debug)]
+struct TagFramebufferInfo {
+	type_: u32,
+	size: u32,
+	framebuffer_addr: u64,
+	framebuffer_pitch: u32,
+	framebuffer_width: u32,
+	framebuffer_height: u32,
+	framebuffer_bpp: u8,
+	framebuffer_type: u8,
+	reserved: u8,
+}
+
+/// Framebuffer RGB palette information
+#[repr(C)]
+#[derive(Clone, Debug)]
+pub struct TagFramebufferRGB {
+	pub framebuffer_red_field_position: u8,
+	pub framebuffer_red_mask_size: u8,
+	pub framebuffer_green_field_position: u8,
+	pub framebuffer_green_mask_size: u8,
+	pub framebuffer_blue_field_position: u8,
+	pub framebuffer_blue_mask_size: u8,
+}
+
+#[repr(C)]
 struct TagELFSections {
 	type_: u32,
 	size: u32,
@@ -147,6 +175,9 @@ pub struct BootInfo {
 	/// The list of physical memory mappings.
 	pub memory_maps: *const MmapEntry,
 
+	/// Initial framebuffer information
+	pub fb_info: Option<FramebufferInfo>,
+
 	/// The number of ELF entries.
 	pub elf_num: u32,
 	/// The size of ELF entries.
@@ -160,6 +191,24 @@ pub struct BootInfo {
 	///
 	/// If `None`, no initramfs is loaded.
 	pub initramfs: Option<&'static [u8]>,
+}
+
+/// Initial framebuffer information
+#[derive(Clone, Debug)]
+pub struct FramebufferInfo {
+	/// Physical address of the framebuffer
+	pub framebuffer_addr: u64,
+	/// Length of a line, in bytes
+	pub framebuffer_pitch: u32,
+	/// Framebuffer width, in pixels
+	pub framebuffer_width: u32,
+	/// Framebuffer height, in pixels
+	pub framebuffer_height: u32,
+	/// Framebuffer bits per pixel
+	pub framebuffer_bpp: u8,
+
+	/// Framebuffer RGB palette information
+	pub framebuffer_rgb: TagFramebufferRGB,
 }
 
 /// The field storing the information given to the kernel at boot time.
@@ -210,6 +259,36 @@ fn handle_tag(boot_info: &mut BootInfo, tag: &Tag) {
 			boot_info.memory_maps_size = t.size as usize - offset_of!(TagMmap, entries);
 			boot_info.memory_maps_entry_size = t.entry_size as usize;
 			boot_info.memory_maps = t.entries.as_ptr();
+		}
+		TAG_TYPE_FRAMEBUFFER => {
+			let t: &TagFramebufferInfo = unsafe { reinterpret_tag(tag) };
+			match t.framebuffer_type {
+				// RGB direct color
+				1 => {
+					let framebuffer_rgb = unsafe {
+						(t as *const TagFramebufferInfo)
+							.add(1)
+							.cast::<TagFramebufferRGB>()
+							.read()
+					};
+					boot_info.fb_info = Some(FramebufferInfo {
+						framebuffer_addr: t.framebuffer_addr,
+						framebuffer_pitch: t.framebuffer_pitch,
+						framebuffer_width: t.framebuffer_width,
+						framebuffer_height: t.framebuffer_height,
+						framebuffer_bpp: t.framebuffer_bpp,
+
+						framebuffer_rgb,
+					})
+				}
+				// VGA text mode
+				2 => {}
+				// Unsupported
+				_ => println!(
+					"Warning: unsupported framebuffer type {}",
+					t.framebuffer_type
+				),
+			}
 		}
 		TAG_TYPE_ELF_SECTIONS => {
 			let t: &TagELFSections = unsafe { reinterpret_tag(tag) };

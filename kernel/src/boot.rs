@@ -94,7 +94,7 @@ header:
 	.long (header_end - header)
 	.long -(0xe85250d6 + (header_end - header))
 
-# The entry tag, setting the entry point of the kernel.
+# Specifies the entry point to the kernel
 .align 8
 entry_address_tag:
 	.short 3
@@ -102,6 +102,16 @@ entry_address_tag:
 	.long (entry_address_tag_end - entry_address_tag)
 	.long multiboot_entry
 entry_address_tag_end:
+# Asks for a framebuffer
+.align 8
+framebuffer_tag:
+	.short 5
+	.short 0
+	.long (framebuffer_tag_end - framebuffer_tag)
+	.long 0
+	.long 0
+	.long 0
+framebuffer_tag_end:
 
 # End tag
 .align 8
