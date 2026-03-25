@@ -44,7 +44,7 @@
 #![feature(strict_provenance_lints)]
 #![feature(unsigned_nonzero_div_ceil)]
 #![deny(fuzzy_provenance_casts)]
-#![deny(missing_docs)]
+#![warn(missing_docs)]
 #![allow(clippy::tabs_in_doc_comments)]
 #![allow(dead_code)]
 #![allow(incomplete_features)]
@@ -96,7 +96,6 @@ use crate::{
 		scheduler::{cpu::CPU, switch, switch::idle_task},
 	},
 	sync::spin::Spin,
-	tty::TTY,
 };
 use core::{ffi::c_void, sync::atomic::Ordering::Release};
 pub use utils;
@@ -142,17 +141,14 @@ fn init(init_path: String) -> EResult<IntFrame> {
 
 /// An inner function is required to ensure everything in scope is dropped before idle.
 fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
-	// Initialize TTY
-	TTY.show();
+	let boot_info = unsafe { multiboot::read(magic, multiboot_ptr) };
+
+	tty::init(boot_info);
+	println!("Boot {NAME} version {VERSION}");
+
 	// Architecture-specific initialization, stage 1
 	arch::init1(true);
 
-	println!("Boot {NAME} version {VERSION}");
-
-	// Read multiboot information
-	let boot_info = unsafe { multiboot::read(magic, multiboot_ptr) };
-
-	// Initialize memory management
 	println!("Setup memory management");
 	memory::memmap::init(boot_info);
 	memory::alloc::init();

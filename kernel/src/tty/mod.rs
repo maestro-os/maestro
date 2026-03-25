@@ -29,8 +29,9 @@ pub mod termios;
 pub mod vga;
 
 use crate::{
-	device::serial,
+	device::{fb::Framebuffer, serial},
 	memory::{user::UserSlice, vmem},
+	multiboot::BootInfo,
 	process::{Process, pid::Pid, signal::Signal},
 	sync::{spin::IntSpin, wait_queue::WaitQueue},
 	tty::{
@@ -123,6 +124,8 @@ pub struct Display {
 	screen_y: usize,
 	/// The content of the TTY's history
 	history: [[vga::Char; vga::WIDTH as usize]; HISTORY_LINES],
+	/// The framebuffer. If `None`, we use text mode
+	framebuffer: Option<Framebuffer>,
 
 	/// Top row of the scrolling region (DECSTBM), in screen-relative coordinates.
 	scroll_top: usize,
@@ -141,32 +144,37 @@ pub struct Display {
 impl Display {
 	/// Updates the TTY's text to the screen.
 	fn update_screen(&self) {
-		unsafe {
-			vmem::write_ro(|| {
-				let screen_end_y = self.screen_y + vga::HEIGHT as usize;
-				if let Some(lines_after) = screen_end_y.checked_sub(HISTORY_LINES) {
-					// Wraps around the TTY's history, we need two copies
-					let lines_before = vga::HEIGHT as usize - lines_after;
-					ptr::copy_nonoverlapping(
-						&self.history[self.screen_y][0],
-						vga::get_buffer_virt(),
-						vga::WIDTH as usize * lines_before,
-					);
-					// Second copy
-					ptr::copy_nonoverlapping(
-						&self.history[0][0],
-						vga::get_buffer_virt().add(vga::WIDTH as usize * lines_before),
-						vga::WIDTH as usize * lines_after,
-					);
-				} else {
-					// We can copy everything at once
-					ptr::copy_nonoverlapping(
-						&self.history[self.screen_y][0],
-						vga::get_buffer_virt(),
-						vga::WIDTH as usize * vga::HEIGHT as usize,
-					);
-				}
-			});
+		if let Some(fb) = &self.framebuffer {
+			// TODO
+		} else {
+			// Text mode
+			unsafe {
+				vmem::write_ro(|| {
+					let screen_end_y = self.screen_y + vga::HEIGHT as usize;
+					if let Some(lines_after) = screen_end_y.checked_sub(HISTORY_LINES) {
+						// Wraps around the TTY's history, we need two copies
+						let lines_before = vga::HEIGHT as usize - lines_after;
+						ptr::copy_nonoverlapping(
+							&self.history[self.screen_y][0],
+							vga::get_buffer_virt(),
+							vga::WIDTH as usize * lines_before,
+						);
+						// Second copy
+						ptr::copy_nonoverlapping(
+							&self.history[0][0],
+							vga::get_buffer_virt().add(vga::WIDTH as usize * lines_before),
+							vga::WIDTH as usize * lines_after,
+						);
+					} else {
+						// We can copy everything at once
+						ptr::copy_nonoverlapping(
+							&self.history[self.screen_y][0],
+							vga::get_buffer_virt(),
+							vga::WIDTH as usize * vga::HEIGHT as usize,
+						);
+					}
+				});
+			}
 		}
 	}
 
@@ -452,6 +460,7 @@ pub static TTY: TTY = TTY {
 
 		screen_y: 0,
 		history: [[EMPTY_CHAR; vga::WIDTH as usize]; HISTORY_LINES],
+		framebuffer: None,
 
 		scroll_top: 0,
 		scroll_bottom: vga::HEIGHT as usize,
@@ -482,8 +491,11 @@ pub static TTY: TTY = TTY {
 
 impl TTY {
 	/// Shows the TTY on screen.
-	pub fn show(&self) {
+	///
+	/// `fb` is the framebuffer. If `None`, text mode is used.
+	pub fn show(&self, fb: Option<Framebuffer>) {
 		let mut disp = self.display.lock();
+		disp.framebuffer = fb;
 		let cursor_visible = disp.cursor_visible;
 		disp.set_cursor_visible(cursor_visible);
 		disp.update_screen();
@@ -795,5 +807,21 @@ impl TTY {
 
 		self.settings.lock().winsize = winsize;
 		send_signal(Signal::SIGWINCH, self.get_pgrp());
+	}
+}
+
+/// Initializes TTY for the initial console
+pub(crate) fn init(boot_info: &BootInfo) {
+	let mut warn = false;
+	let fb = if let Some(fb_info) = boot_info.fb_info.clone() {
+		let fb = Framebuffer::new(fb_info);
+		warn = fb.is_none();
+		fb
+	} else {
+		None
+	};
+	TTY.show(fb);
+	if warn {
+		println!("Warning: could not remap framebuffer, using text mode!");
 	}
 }
