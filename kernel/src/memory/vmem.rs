@@ -24,7 +24,7 @@ use crate::{
 	arch::{
 		x86,
 		x86::{
-			paging::{FLAG_CACHE_DISABLE, FLAG_GLOBAL, FLAG_USER, FLAG_WRITE, FLAG_WRITE_THROUGH},
+			paging::{FLAG_GLOBAL, FLAG_USER, FLAG_WRITE},
 			smp,
 		},
 	},
@@ -34,7 +34,6 @@ use crate::{
 	multiboot::{MEMORY_ACPI_RECLAIMABLE, MEMORY_AVAILABLE, MEMORY_RESERVED},
 	process::scheduler::defer,
 	sync::{once::OnceInit, spin::IntSpin},
-	tty::vga,
 };
 use core::{ptr::NonNull, sync::atomic::Ordering::Release};
 use utils::limits::PAGE_SIZE;
@@ -356,13 +355,6 @@ pub(crate) fn init() {
 			smp::TRAMPOLINE_PHYS_ADDR.kernel_to_virtual().unwrap(),
 			0,
 			0,
-		);
-		// Map VGA buffer
-		kernel_vmem.map_range(
-			vga::BUFFER_PHYS as _,
-			vga::get_buffer_virt().into(),
-			1,
-			FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH | FLAG_WRITE | FLAG_GLOBAL,
 		);
 		// Ensure ACPI RSDP is mapped
 		kernel_vmem.map_range(

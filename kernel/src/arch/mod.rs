@@ -72,6 +72,8 @@ pub(crate) fn init1(first: bool) {
 		unsafe {
 			register_set!("cr4", cr4);
 		}
+		// PAT (replace write-through with write-combining) TODO: check PAT is supported
+		wrmsr(IA32_PAT_MSR, 0x0007040600070106);
 		paging::init();
 	}
 }

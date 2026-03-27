@@ -87,9 +87,9 @@ pub const CURSOR_START: u8 = 0;
 /// The ending scanline for the cursor.
 pub const CURSOR_END: u8 = 15;
 
-/// Returns the virtual address of the VGA text buffer.
+/// Returns a pointer to the VGA text buffer.
 #[inline]
-pub fn get_buffer_virt() -> *mut Char {
+pub fn text_buf() -> *mut Char {
 	BUFFER_PHYS.kernel_to_virtual().unwrap().as_ptr()
 }
 

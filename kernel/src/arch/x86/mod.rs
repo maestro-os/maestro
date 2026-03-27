@@ -37,6 +37,8 @@ use cpuid::cpuid;
 
 /// MSR: APIC base
 pub const IA32_APIC_BASE_MSR: u32 = 0x1b;
+/// MSR: Page Attribute Table
+pub const IA32_PAT_MSR: u32 = 0x277;
 /// MSR: FS base
 pub const IA32_FS_BASE: u32 = 0xc0000100;
 /// MSR: GS base
