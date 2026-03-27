@@ -143,9 +143,6 @@ fn init(init_path: String) -> EResult<IntFrame> {
 fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	let boot_info = unsafe { multiboot::read(magic, multiboot_ptr) };
 
-	tty::init(boot_info);
-	println!("Boot {NAME} version {VERSION}");
-
 	// Architecture-specific initialization, stage 1
 	arch::init1(true);
 
@@ -156,6 +153,9 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 
 	// From now on, the kernel considers that memory management has been fully
 	// initialized
+
+	tty::show(boot_info);
+	println!("Boot {NAME} version {VERSION}");
 
 	// Init kernel symbols map
 	elf::kernel::init().expect("cannot initialize kernel symbols map");

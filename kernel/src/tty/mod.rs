@@ -29,8 +29,8 @@ pub mod termios;
 pub mod vga;
 
 use crate::{
-	device::{fb::Framebuffer, serial},
-	memory::{user::UserSlice, vmem},
+	device::{fb, fb::Framebuffer, serial},
+	memory::{user::UserSlice, vmem, vmem::KERNEL_VMEM},
 	multiboot::BootInfo,
 	process::{Process, pid::Pid, signal::Signal},
 	sync::{spin::IntSpin, wait_queue::WaitQueue},
@@ -156,20 +156,20 @@ impl Display {
 						let lines_before = vga::HEIGHT as usize - lines_after;
 						ptr::copy_nonoverlapping(
 							&self.history[self.screen_y][0],
-							vga::get_buffer_virt(),
+							vga::text_buf(),
 							vga::WIDTH as usize * lines_before,
 						);
 						// Second copy
 						ptr::copy_nonoverlapping(
 							&self.history[0][0],
-							vga::get_buffer_virt().add(vga::WIDTH as usize * lines_before),
+							vga::text_buf().add(vga::WIDTH as usize * lines_before),
 							vga::WIDTH as usize * lines_after,
 						);
 					} else {
 						// We can copy everything at once
 						ptr::copy_nonoverlapping(
 							&self.history[self.screen_y][0],
-							vga::get_buffer_virt(),
+							vga::text_buf(),
 							vga::WIDTH as usize * vga::HEIGHT as usize,
 						);
 					}
@@ -810,8 +810,8 @@ impl TTY {
 	}
 }
 
-/// Initializes TTY for the initial console
-pub(crate) fn init(boot_info: &BootInfo) {
+/// Shows the initialization TTY on screen
+pub(crate) fn show(boot_info: &BootInfo) {
 	let mut warn = false;
 	let fb = if let Some(fb_info) = boot_info.fb_info.clone() {
 		let fb = Framebuffer::new(fb_info);
@@ -820,8 +820,18 @@ pub(crate) fn init(boot_info: &BootInfo) {
 	} else {
 		None
 	};
+	// Map VGA text buffer if using it
+	if fb.is_none() {
+		KERNEL_VMEM.map_range(
+			vga::BUFFER_PHYS as _,
+			vga::text_buf().into(),
+			1,
+			fb::MAP_FLAGS,
+		);
+	}
 	TTY.show(fb);
 	if warn {
+		// TODO panic?
 		println!("Warning: could not remap framebuffer, using text mode!");
 	}
 }

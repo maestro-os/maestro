@@ -19,12 +19,16 @@
 //! A framebuffer is a portion of RAM containing a bitmap that drives a video display
 
 use crate::{
+	arch::x86::paging::{FLAG_CACHE_DISABLE, FLAG_GLOBAL, FLAG_WRITE, FLAG_WRITE_THROUGH},
 	file::{File, fs::FileOps},
-	memory::{PhysAddr, VirtAddr, user::UserSlice},
+	memory::{PhysAddr, VirtAddr, user::UserSlice, vmem::KERNEL_VMEM},
 	multiboot::FramebufferInfo,
 };
 use core::{hint::unlikely, slice};
-use utils::{errno, errno::EResult};
+use utils::{errno, errno::EResult, limits::PAGE_SIZE};
+
+/// Flags used to map a framebuffer
+pub const MAP_FLAGS: usize = FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH | FLAG_WRITE | FLAG_GLOBAL;
 
 /// A framebuffer
 #[derive(Debug)]
@@ -39,7 +43,10 @@ impl Framebuffer {
 		// If the framebuffer is outside reachable memory, stop
 		let physaddr: usize = s.0.framebuffer_addr.try_into().ok()?;
 		physaddr.checked_add(s.len())?;
-		// TODO remap with write-through
+		// Remap
+		let physaddr = PhysAddr(physaddr);
+		let virtaddr = physaddr.kernel_to_virtual()?;
+		KERNEL_VMEM.map_range(physaddr, virtaddr, s.len().div_ceil(PAGE_SIZE), MAP_FLAGS);
 		Some(s)
 	}
 
@@ -56,6 +63,8 @@ impl Framebuffer {
 		self.0.framebuffer_pitch as usize * self.0.framebuffer_height as usize
 	}
 }
+
+// TODO undo memory remap on fb drop? (determine if this is useful)
 
 /// A framebuffer device
 #[derive(Debug)]
@@ -92,5 +101,3 @@ impl FileOps for FramebufferDev {
 		buf.copy_from_user(0, fb_slice)
 	}
 }
-
-// TODO on drop, restore memory remap
