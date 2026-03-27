@@ -120,6 +120,7 @@ struct TagFramebufferInfo {
 }
 
 /// Framebuffer RGB palette information
+#[allow(missing_docs)]
 #[repr(C)]
 #[derive(Clone, Debug)]
 pub struct TagFramebufferRGB {
