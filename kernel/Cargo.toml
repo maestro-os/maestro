@@ -37,7 +37,8 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 	"cfg(config_debug_storage_test)",
 	"cfg(config_debug_qemu)",
 	"cfg(config_debug_malloc_magic)",
-	"cfg(config_debug_malloc_check)"
+	"cfg(config_debug_malloc_check)",
+	"cfg(config_tty_enabled)"
 ] }
 
 [profile.release]

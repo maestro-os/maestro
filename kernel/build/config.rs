@@ -59,10 +59,8 @@ macro_rules! generate_cfg_flag {
 macro_rules! generate_const_file {
 	($value:expr) => {{
 		fn inner<T: std::fmt::Debug + std::fmt::Display>(value: T, name: &str) {
-			let out_dir = std::env::var_os("OUT_DIR").unwrap_or_else(|| {
-				eprintln!("OUT_DIR environment variable not set");
-				exit(1);
-			});
+			let out_dir =
+				std::env::var_os("OUT_DIR").expect("OUT_DIR environment variable not set");
 			let dest_path = std::path::Path::new(&out_dir).join(format!("{name}.rs"));
 
 			let mut file = std::fs::File::create(&dest_path).unwrap_or_else(|e| {
@@ -118,6 +116,15 @@ struct ConfigPanic {
 	callstack_depth: usize,
 }
 
+/// TTY configuration section
+#[derive(Deserialize)]
+pub struct TTYConfig {
+	/// Tells whether the TTY is enabled
+	pub enabled: bool,
+	/// Font path or URL for the TTY
+	pub font: String,
+}
+
 /// The compilation configuration.
 #[derive(Deserialize)]
 pub struct Config {
@@ -127,6 +134,8 @@ pub struct Config {
 	memory: ConfigMemory,
 	/// Kernel panic section
 	panic: ConfigPanic,
+	/// TTY configuration
+	pub tty: TTYConfig,
 }
 
 impl Config {
@@ -157,5 +166,7 @@ impl Config {
 
 		generate_const_file!(self.memory.writeback_timeout);
 		generate_const_file!(self.panic.callstack_depth);
+
+		generate_cfg_flag!(self.tty.enabled);
 	}
 }

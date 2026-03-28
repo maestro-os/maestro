@@ -80,6 +80,7 @@ pub mod selftest;
 pub mod sync;
 pub mod syscall;
 pub mod time;
+#[cfg(config_tty_enabled)]
 pub mod tty;
 
 use crate::{
