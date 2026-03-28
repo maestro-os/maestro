@@ -30,7 +30,7 @@ pub mod vga;
 
 use crate::{
 	device::{fb, fb::Framebuffer, serial},
-	memory::{user::UserSlice, vmem, vmem::KERNEL_VMEM},
+	memory::{user::UserSlice, vmem::KERNEL_VMEM},
 	multiboot::BootInfo,
 	process::{Process, pid::Pid, signal::Signal},
 	sync::{spin::IntSpin, wait_queue::WaitQueue},
@@ -142,40 +142,41 @@ pub struct Display {
 }
 
 impl Display {
-	/// Updates the TTY's text to the screen.
-	fn update_screen(&self) {
-		if let Some(fb) = &self.framebuffer {
-			// TODO
-		} else {
-			// Text mode
-			unsafe {
-				vmem::write_ro(|| {
-					let screen_end_y = self.screen_y + vga::HEIGHT as usize;
-					if let Some(lines_after) = screen_end_y.checked_sub(HISTORY_LINES) {
-						// Wraps around the TTY's history, we need two copies
-						let lines_before = vga::HEIGHT as usize - lines_after;
-						ptr::copy_nonoverlapping(
-							&self.history[self.screen_y][0],
-							vga::text_buf(),
-							vga::WIDTH as usize * lines_before,
-						);
-						// Second copy
-						ptr::copy_nonoverlapping(
-							&self.history[0][0],
-							vga::text_buf().add(vga::WIDTH as usize * lines_before),
-							vga::WIDTH as usize * lines_after,
-						);
-					} else {
-						// We can copy everything at once
-						ptr::copy_nonoverlapping(
-							&self.history[self.screen_y][0],
-							vga::text_buf(),
-							vga::WIDTH as usize * vga::HEIGHT as usize,
-						);
-					}
-				});
+	fn update_screen_text_mode(&self) {
+		unsafe {
+			let screen_end_y = self.screen_y + vga::HEIGHT as usize;
+			if let Some(lines_after) = screen_end_y.checked_sub(HISTORY_LINES) {
+				// Wraps around the TTY's history, we need two copies
+				let lines_before = vga::HEIGHT as usize - lines_after;
+				ptr::copy_nonoverlapping(
+					&self.history[self.screen_y][0],
+					vga::text_buf(),
+					vga::WIDTH as usize * lines_before,
+				);
+				// Second copy
+				ptr::copy_nonoverlapping(
+					&self.history[0][0],
+					vga::text_buf().add(vga::WIDTH as usize * lines_before),
+					vga::WIDTH as usize * lines_after,
+				);
+			} else {
+				// We can copy everything at once
+				ptr::copy_nonoverlapping(
+					&self.history[self.screen_y][0],
+					vga::text_buf(),
+					vga::WIDTH as usize * vga::HEIGHT as usize,
+				);
 			}
 		}
+	}
+
+	/// Updates the TTY's text to the screen.
+	fn update_screen(&self) {
+		let Some(fb) = &self.framebuffer else {
+			self.update_screen_text_mode();
+			return;
+		};
+		// TODO draw characters on screen
 	}
 
 	/// Updates the TTY's cursor to the screen
