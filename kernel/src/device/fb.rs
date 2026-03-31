@@ -50,6 +50,12 @@ impl Framebuffer {
 		Some(s)
 	}
 
+	/// Returns the framebuffer's info
+	#[inline]
+	pub fn info(&self) -> &FramebufferInfo {
+		&self.0
+	}
+
 	/// Returns the virtual address to the beginning of the framebuffer
 	pub fn addr(&self) -> VirtAddr {
 		PhysAddr(self.0.framebuffer_addr as _)

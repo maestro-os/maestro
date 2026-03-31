@@ -616,7 +616,7 @@ pub(super) fn handle(tty: &TTY, disp: &mut Display, buffer: &[u8]) -> usize {
 			ANSIState::Incomplete => break,
 			ANSIState::Invalid => {
 				for i in 0..len {
-					tty.putchar(disp, disp.ansi_buffer.buf[i]);
+					tty.putchar(disp, disp.ansi_buffer.buf[i] as char);
 				}
 				disp.ansi_buffer.pop_front(len);
 			}

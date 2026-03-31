@@ -16,7 +16,7 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::{fs, fs::File, io, io::BufRead, path::PathBuf};
+use std::{fs, fs::File, io, io::BufRead, path::PathBuf, slice};
 
 fn parse_hex_u16(s: &str) -> Option<u16> {
 	let mut val = 0;
@@ -68,17 +68,14 @@ pub fn build(font: &str) -> io::Result<()> {
 		};
 		match val.len() {
 			32 => {
-				let Some(val) = parse_hex_u64(val) else {
-					continue;
-				};
-				font[key as usize] = [val, 0];
-			}
-			64 => {
-				let (a, b) = val.split_at(32);
+				let (a, b) = val.split_at(16);
 				let (Some(a), Some(b)) = (parse_hex_u64(a), parse_hex_u64(b)) else {
 					continue;
 				};
-				font[key as usize] = [a, b];
+				font[key as usize] = [a.to_be(), b.to_be()];
+			}
+			64 => {
+				// TODO
 			}
 			_ => continue,
 		}
@@ -87,8 +84,7 @@ pub fn build(font: &str) -> io::Result<()> {
 	let out_dir = std::env::var_os("OUT_DIR").expect("OUT_DIR environment variable not set");
 	let font_path = PathBuf::from(out_dir).join("font.hex");
 	let bytes = font.as_flattened();
-	let bytes =
-		unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const u8, bytes.len() * 8) };
+	let bytes = unsafe { slice::from_raw_parts(bytes.as_ptr() as *const u8, bytes.len() * 8) };
 	fs::write(&font_path, bytes)?;
 	Ok(())
 }

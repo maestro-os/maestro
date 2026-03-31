@@ -45,8 +45,8 @@ use utils::errno::EResult;
 /// The number of history lines for one TTY.
 const HISTORY_LINES: usize = 128;
 
-/// An empty character.
-const EMPTY_CHAR: vga::Char = (vga::DEFAULT_COLOR as vga::Char) << 8;
+/// Default text color
+pub const DEFAULT_COLOR: vga::Color = vga::COLOR_WHITE | (vga::COLOR_BLACK << 4);
 
 /// The size of a tabulation in space-equivalent.
 const TAB_SIZE: usize = 4;
@@ -113,6 +113,28 @@ fn send_signal(sig: Signal, pgrp: Pid) {
 	}
 }
 
+/// A character on display on a TTY
+#[derive(Clone, Copy)]
+pub struct Char {
+	/// The actual character
+	c: char,
+	/// Character's color information
+	color: vga::Color,
+}
+
+impl Char {
+	const fn empty() -> Char {
+		Char {
+			c: ' ',
+			color: DEFAULT_COLOR,
+		}
+	}
+
+	fn to_vga(self) -> vga::Char {
+		(self.c as u8 as vga::Char) | ((self.color as vga::Char) << 8)
+	}
+}
+
 /// TTY display manager.
 pub struct Display {
 	/// The X position of the cursor in the history
@@ -123,7 +145,7 @@ pub struct Display {
 	/// The Y position of the screen in the history
 	screen_y: usize,
 	/// The content of the TTY's history
-	history: [[vga::Char; vga::WIDTH as usize]; HISTORY_LINES],
+	history: [[Char; vga::WIDTH as usize]; HISTORY_LINES],
 	/// The framebuffer. If `None`, we use text mode
 	framebuffer: Option<Framebuffer>,
 
@@ -143,29 +165,13 @@ pub struct Display {
 
 impl Display {
 	fn update_screen_text_mode(&self) {
-		unsafe {
-			let screen_end_y = self.screen_y + vga::HEIGHT as usize;
-			if let Some(lines_after) = screen_end_y.checked_sub(HISTORY_LINES) {
-				// Wraps around the TTY's history, we need two copies
-				let lines_before = vga::HEIGHT as usize - lines_after;
-				ptr::copy_nonoverlapping(
-					&self.history[self.screen_y][0],
-					vga::text_buf(),
-					vga::WIDTH as usize * lines_before,
-				);
-				// Second copy
-				ptr::copy_nonoverlapping(
-					&self.history[0][0],
-					vga::text_buf().add(vga::WIDTH as usize * lines_before),
-					vga::WIDTH as usize * lines_after,
-				);
-			} else {
-				// We can copy everything at once
-				ptr::copy_nonoverlapping(
-					&self.history[self.screen_y][0],
-					vga::text_buf(),
-					vga::WIDTH as usize * vga::HEIGHT as usize,
-				);
+		for y in 0..vga::HEIGHT as usize {
+			let history_y = (self.screen_y + y) % vga::HEIGHT as usize;
+			for x in 0..vga::WIDTH as usize {
+				unsafe {
+					let ptr = vga::text_buf().add(vga::WIDTH as usize * y + x);
+					ptr::write_volatile(ptr, self.history[history_y][x].to_vga());
+				}
 			}
 		}
 	}
@@ -176,7 +182,52 @@ impl Display {
 			self.update_screen_text_mode();
 			return;
 		};
-		// TODO draw characters on screen
+		let bytes_per_pixel = fb.info().framebuffer_bpp.div_ceil(8) as usize;
+		let pitch = fb.info().framebuffer_pitch as usize;
+		let fb_ptr: *mut u8 = fb.addr().as_ptr();
+		// Clear buffer
+		unsafe {
+			ptr::write_bytes(fb_ptr, 0, fb.len());
+		}
+		let font = include_bytes!(concat!(env!("OUT_DIR"), "/font.hex"));
+		// TODO height and width should be determined in advance and used everywhere
+		let char_height = min(
+			fb.info().framebuffer_height as usize / 16,
+			vga::HEIGHT as usize,
+		);
+		let char_width = min(
+			fb.info().framebuffer_width as usize / 8,
+			vga::WIDTH as usize,
+		);
+		for y in 0..char_height {
+			for x in 0..char_width {
+				let c = self.history[self.screen_y + y][x];
+				let code = c.c as usize;
+				let data_off = code * 16;
+				let data = &font[data_off..data_off + 16];
+				let char_px_off = y * 16 * pitch + x * 8 * bytes_per_pixel;
+				// Draw char
+				for char_y in 0..16 {
+					for char_x in 0..8 {
+						let index = char_y * 8 + char_x;
+						let data_byte = index / 8;
+						let data_bit = index % 8;
+						let set = data[data_byte] & (0x80 >> data_bit) != 0;
+						// TODO colors
+						let mut val = 0;
+						if set {
+							val = !val;
+						}
+						let px_off = char_px_off + char_y * pitch + char_x * bytes_per_pixel;
+						for i in 0..bytes_per_pixel {
+							unsafe {
+								fb_ptr.add(px_off + i).write_volatile(val);
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 
 	/// Updates the TTY's cursor to the screen
@@ -197,7 +248,7 @@ impl Display {
 
 	/// Reinitializes TTY's current attributes.
 	fn reset_attrs(&mut self) {
-		self.current_color = vga::DEFAULT_COLOR;
+		self.current_color = DEFAULT_COLOR;
 	}
 
 	/// Sets the current foreground color `color` for TTY.
@@ -208,7 +259,7 @@ impl Display {
 
 	/// Resets the current foreground color `color` for TTY.
 	fn reset_fgcolor(&mut self) {
-		self.set_fgcolor(vga::DEFAULT_COLOR);
+		self.set_fgcolor(DEFAULT_COLOR);
 	}
 
 	/// Sets the current background color `color` for TTY.
@@ -219,7 +270,7 @@ impl Display {
 
 	/// Resets the current background color `color` for TTY.
 	fn reset_bgcolor(&mut self) {
-		self.set_bgcolor(vga::DEFAULT_COLOR >> 4);
+		self.set_bgcolor(DEFAULT_COLOR >> 4);
 	}
 
 	/// Swaps the foreground and background colors.
@@ -252,16 +303,16 @@ impl Display {
 		let start_y = start_y % HISTORY_LINES;
 		let end_y = end_y % HISTORY_LINES;
 		if start_y == end_y {
-			self.history[start_y][start_x..end_x].fill(EMPTY_CHAR);
+			self.history[start_y][start_x..end_x].fill(Char::empty());
 		} else if start_y < end_y {
 			// Continuous in memory
-			self.history[start_y..end_y].as_flattened_mut()[start_x..].fill(EMPTY_CHAR);
-			self.history[end_y][..end_x].fill(EMPTY_CHAR);
+			self.history[start_y..end_y].as_flattened_mut()[start_x..].fill(Char::empty());
+			self.history[end_y][..end_x].fill(Char::empty());
 		} else {
 			// Wrapping
-			self.history[start_y..].as_flattened_mut()[start_x..].fill(EMPTY_CHAR);
-			self.history[..end_y].as_flattened_mut().fill(EMPTY_CHAR);
-			self.history[end_y][..end_x].fill(EMPTY_CHAR);
+			self.history[start_y..].as_flattened_mut()[start_x..].fill(Char::empty());
+			self.history[..end_y].as_flattened_mut().fill(Char::empty());
+			self.history[end_y][..end_x].fill(Char::empty());
 		}
 		self.update_screen();
 	}
@@ -271,7 +322,7 @@ impl Display {
 		self.cursor_x = 0;
 		self.cursor_y = 0;
 		self.screen_y = 0;
-		self.history.as_flattened_mut().fill(EMPTY_CHAR);
+		self.history.as_flattened_mut().fill(Char::empty());
 		self.update_screen();
 		self.update_cursor();
 	}
@@ -370,14 +421,14 @@ impl Display {
 		if let Some(lines_after) = new_screen_y_end.checked_sub(HISTORY_LINES) {
 			self.history[screen_y_end..]
 				.as_flattened_mut()
-				.fill(EMPTY_CHAR);
+				.fill(Char::empty());
 			self.history[..lines_after]
 				.as_flattened_mut()
-				.fill(EMPTY_CHAR);
+				.fill(Char::empty());
 		} else {
 			self.history[screen_y_end..new_screen_y_end]
 				.as_flattened_mut()
-				.fill(EMPTY_CHAR);
+				.fill(Char::empty());
 		}
 		// Update screen position
 		self.screen_y = (self.screen_y + newlines) % HISTORY_LINES;
@@ -460,7 +511,7 @@ pub static TTY: TTY = TTY {
 		cursor_y: 0,
 
 		screen_y: 0,
-		history: [[EMPTY_CHAR; vga::WIDTH as usize]; HISTORY_LINES],
+		history: [[Char::empty(); vga::WIDTH as usize]; HISTORY_LINES],
 		framebuffer: None,
 
 		scroll_top: 0,
@@ -469,7 +520,7 @@ pub static TTY: TTY = TTY {
 		ansi_buffer: ANSIBuffer::new(),
 
 		cursor_visible: true,
-		current_color: vga::DEFAULT_COLOR,
+		current_color: DEFAULT_COLOR,
 	}),
 	input: IntSpin::new(Input {
 		buf: [0; INPUT_MAX],
@@ -504,30 +555,35 @@ impl TTY {
 	}
 
 	/// Writes the character `c` to the TTY.
-	fn putchar(&self, disp: &mut Display, mut c: u8) {
-		if self.get_termios().c_oflag & OLCUC != 0 && (c as char).is_ascii_uppercase() {
-			c = (c as char).to_ascii_lowercase() as u8;
+	fn putchar(&self, disp: &mut Display, mut c: char) {
+		if self.get_termios().c_oflag & OLCUC != 0 {
+			c = c.to_ascii_lowercase();
 		}
 
 		// TODO Implement ONLCR (Map NL to CR-NL)
 		// TODO Implement ONOCR
 		// TODO Implement ONLRET
 
-		match c {
+		match c as u32 {
 			0x07 => ring_bell(),
-			b'\t' => disp.cursor_forward(get_tab_size(disp.cursor_x)),
-			b'\n' => disp.newline(1),
+			// Tab (\t)
+			0x09 => disp.cursor_forward(get_tab_size(disp.cursor_x)),
+			// New Line (\n)
+			0x0a => disp.newline(1),
 			// Form Feed (^L)
 			0x0c => {
 				// TODO Move printer to a top of page
 			}
-			b'\r' => disp.cursor_x = 0,
+			// Carriage Return (\r)
+			0x0d => disp.cursor_x = 0,
 			0x08 | 0x7f => disp.cursor_backward(1),
 			// SO/SI: G0/G1 character-set switching. We only support a single charset, so ignore
 			0x0e | 0x0f => {}
 			_ => {
-				let tty_char = (c as vga::Char) | ((disp.current_color as vga::Char) << 8);
-				disp.history[disp.cursor_y][disp.cursor_x] = tty_char;
+				disp.history[disp.cursor_y][disp.cursor_x] = Char {
+					c,
+					color: disp.current_color,
+				};
 				disp.cursor_forward(1);
 			}
 		}
@@ -550,7 +606,8 @@ impl TTY {
 					continue;
 				}
 			}
-			self.putchar(&mut display, c);
+			// TODO handle unicode
+			self.putchar(&mut display, c as char);
 			i += 1;
 		}
 		display.update_screen();
@@ -756,7 +813,7 @@ impl TTY {
 			disp.cursor_backward(1);
 			let cursor_x = disp.cursor_x;
 			let cursor_y = disp.cursor_y;
-			disp.history[cursor_y][cursor_x] = EMPTY_CHAR;
+			disp.history[cursor_y][cursor_x] = Char::empty();
 			disp.update_screen();
 			disp.update_cursor();
 		}
