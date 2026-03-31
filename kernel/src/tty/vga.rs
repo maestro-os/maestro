@@ -79,9 +79,6 @@ pub const COLOR_YELLOW: Color = 0xe;
 /// VGA text mode color: White
 pub const COLOR_WHITE: Color = 0xf;
 
-/// VGA text mode default color
-pub const DEFAULT_COLOR: Color = COLOR_WHITE | (COLOR_BLACK << 4);
-
 /// The beginning scanline for the cursor.
 pub const CURSOR_START: u8 = 0;
 /// The ending scanline for the cursor.
