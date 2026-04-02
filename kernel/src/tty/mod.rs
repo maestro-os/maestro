@@ -130,13 +130,18 @@ impl Char {
 		}
 	}
 
-	fn to_vga(self) -> vga::Char {
+	const fn to_vga(self) -> vga::Char {
 		(self.c as u8 as vga::Char) | ((self.color as vga::Char) << 8)
 	}
 }
 
 /// TTY display manager.
 pub struct Display {
+	/// The TTY's width, in characters
+	width: usize,
+	/// The TTY's height, in characters
+	height: usize,
+
 	/// The X position of the cursor in the history
 	cursor_x: usize,
 	/// The Y position of the cursor in the history
@@ -164,67 +169,61 @@ pub struct Display {
 }
 
 impl Display {
-	fn update_screen_text_mode(&self) {
-		for y in 0..vga::HEIGHT as usize {
-			let history_y = (self.screen_y + y) % vga::HEIGHT as usize;
-			for x in 0..vga::WIDTH as usize {
-				unsafe {
-					let ptr = vga::text_buf().add(vga::WIDTH as usize * y + x);
-					ptr::write_volatile(ptr, self.history[history_y][x].to_vga());
+	fn display_char(&self, c: Char, x: usize, y: usize) {
+		// If the character isn't on screen, do nothing
+		if !(self.screen_y..self.screen_y + self.height).contains(&y) {
+			return;
+		}
+		let y = y - self.screen_y;
+		const FONT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/font.hex"));
+		if let Some(fb) = &self.framebuffer {
+			let fb_ptr: *mut u8 = fb.addr().as_ptr();
+			let bytes_per_pixel = fb.info().framebuffer_bpp.div_ceil(8) as usize;
+			let pitch = fb.info().framebuffer_pitch as usize;
+			// Draw char
+			let code = c.c as usize;
+			let data_off = code * 16;
+			let data = &FONT[data_off..data_off + 16];
+			let char_px_off = y * 16 * pitch + x * 8 * bytes_per_pixel;
+			for char_y in 0..16 {
+				for char_x in 0..8 {
+					let index = char_y * 8 + char_x;
+					let data_byte = index / 8;
+					let data_bit = index % 8;
+					let set = data[data_byte] & (0x80 >> data_bit) != 0;
+					// TODO colors
+					let mut val = 0;
+					if set {
+						val = !val;
+					}
+					let px_off = char_px_off + char_y * pitch + char_x * bytes_per_pixel;
+					for i in 0..bytes_per_pixel {
+						unsafe {
+							fb_ptr.add(px_off + i).write_volatile(val);
+						}
+					}
 				}
+			}
+		} else {
+			let pos = y * self.width + x;
+			unsafe {
+				vga::text_buf().add(pos).write(c.to_vga());
 			}
 		}
 	}
 
-	/// Updates the TTY's text to the screen.
-	fn update_screen(&self) {
-		let Some(fb) = &self.framebuffer else {
-			self.update_screen_text_mode();
-			return;
-		};
-		let bytes_per_pixel = fb.info().framebuffer_bpp.div_ceil(8) as usize;
-		let pitch = fb.info().framebuffer_pitch as usize;
-		let fb_ptr: *mut u8 = fb.addr().as_ptr();
-		// Clear buffer
-		unsafe {
-			ptr::write_bytes(fb_ptr, 0, fb.len());
-		}
-		let font = include_bytes!(concat!(env!("OUT_DIR"), "/font.hex"));
-		// TODO height and width should be determined in advance and used everywhere
-		let char_height = min(
-			fb.info().framebuffer_height as usize / 16,
-			vga::HEIGHT as usize,
-		);
-		let char_width = min(
-			fb.info().framebuffer_width as usize / 8,
-			vga::WIDTH as usize,
-		);
-		for y in 0..char_height {
-			for x in 0..char_width {
-				let c = self.history[self.screen_y + y][x];
-				let code = c.c as usize;
-				let data_off = code * 16;
-				let data = &font[data_off..data_off + 16];
-				let char_px_off = y * 16 * pitch + x * 8 * bytes_per_pixel;
-				// Draw char
-				for char_y in 0..16 {
-					for char_x in 0..8 {
-						let index = char_y * 8 + char_x;
-						let data_byte = index / 8;
-						let data_bit = index % 8;
-						let set = data[data_byte] & (0x80 >> data_bit) != 0;
-						// TODO colors
-						let mut val = 0;
-						if set {
-							val = !val;
-						}
-						let px_off = char_px_off + char_y * pitch + char_x * bytes_per_pixel;
-						for i in 0..bytes_per_pixel {
-							unsafe {
-								fb_ptr.add(px_off + i).write_volatile(val);
-							}
-						}
-					}
+	fn clear_screen(&self) {
+		if let Some(fb) = &self.framebuffer {
+			let fb_ptr: *mut u8 = fb.addr().as_ptr();
+			unsafe {
+				ptr::write_bytes(fb_ptr, 0, fb.len());
+			}
+		} else {
+			let ptr = vga::text_buf();
+			let len = self.width * self.height;
+			for i in 0..len {
+				unsafe {
+					ptr.add(i).write(Char::empty().to_vga());
 				}
 			}
 		}
@@ -314,7 +313,7 @@ impl Display {
 			self.history[..end_y].as_flattened_mut().fill(Char::empty());
 			self.history[end_y][..end_x].fill(Char::empty());
 		}
-		self.update_screen();
+		// TODO update on screen
 	}
 
 	/// Clears all TTY's history.
@@ -323,7 +322,7 @@ impl Display {
 		self.cursor_y = 0;
 		self.screen_y = 0;
 		self.history.as_flattened_mut().fill(Char::empty());
-		self.update_screen();
+		self.clear_screen();
 		self.update_cursor();
 	}
 
@@ -411,7 +410,7 @@ impl Display {
 	/// If the cursor is out of the screen, append lines by shifting the screen relative to the
 	/// history buffer, wrapping if the history buffer is exceeded.
 	fn append_lines(&mut self) {
-		let screen_y_end = (self.screen_y + vga::HEIGHT as usize) % HISTORY_LINES;
+		let screen_y_end = (self.screen_y + self.height) % HISTORY_LINES;
 		if is_in_range_wrapping(self.cursor_y, self.screen_y, screen_y_end) {
 			return;
 		}
@@ -438,8 +437,8 @@ impl Display {
 	/// Moves the cursor forward `n` characters.
 	fn cursor_forward(&mut self, n: usize) {
 		let off = self.cursor_x + n;
-		self.cursor_x = off % vga::WIDTH as usize;
-		let newlines = off / vga::WIDTH as usize;
+		self.cursor_x = off % self.width;
+		let newlines = off / self.width;
 		if newlines > 0 {
 			self.cursor_y += newlines;
 			self.append_lines();
@@ -507,6 +506,9 @@ pub struct TTY {
 /// The TTY.
 pub static TTY: TTY = TTY {
 	display: IntSpin::new(Display {
+		width: vga::WIDTH as usize,
+		height: vga::HEIGHT as usize,
+
 		cursor_x: 0,
 		cursor_y: 0,
 
@@ -548,9 +550,15 @@ impl TTY {
 	pub fn show(&self, fb: Option<Framebuffer>) {
 		let mut disp = self.display.lock();
 		disp.framebuffer = fb;
+		// TODO use a dynamically-allocated history buffer to match screen size
+		/*if let Some(fb) = &disp.framebuffer {
+			let width = fb.info().framebuffer_width as usize / 8;
+			let height = fb.info().framebuffer_height as usize / 16;
+			disp.width = width;
+			disp.height = height;
+		}*/
 		let cursor_visible = disp.cursor_visible;
 		disp.set_cursor_visible(cursor_visible);
-		disp.update_screen();
 		disp.update_cursor();
 	}
 
@@ -580,10 +588,12 @@ impl TTY {
 			// SO/SI: G0/G1 character-set switching. We only support a single charset, so ignore
 			0x0e | 0x0f => {}
 			_ => {
-				disp.history[disp.cursor_y][disp.cursor_x] = Char {
+				let c = Char {
 					c,
 					color: disp.current_color,
 				};
+				disp.history[disp.cursor_y][disp.cursor_x] = c;
+				disp.display_char(c, disp.cursor_x, disp.cursor_y);
 				disp.cursor_forward(1);
 			}
 		}
@@ -610,7 +620,6 @@ impl TTY {
 			self.putchar(&mut display, c as char);
 			i += 1;
 		}
-		display.update_screen();
 		display.update_cursor();
 	}
 
@@ -814,7 +823,7 @@ impl TTY {
 			let cursor_x = disp.cursor_x;
 			let cursor_y = disp.cursor_y;
 			disp.history[cursor_y][cursor_x] = Char::empty();
-			disp.update_screen();
+			disp.display_char(Char::empty(), cursor_x, cursor_y);
 			disp.update_cursor();
 		}
 		self.rd_queue.wake_next();

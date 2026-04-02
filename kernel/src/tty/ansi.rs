@@ -546,7 +546,6 @@ fn parse_csi(tty: &TTY, view: &mut ANSIBufferView) -> ANSIState {
 		(seq, b'm') => return parse_sgr(view.tty, seq),
 		_ => return ANSIState::Invalid,
 	}
-	view.tty.update_screen();
 	ANSIState::Valid
 }
 
@@ -622,7 +621,6 @@ pub(super) fn handle(tty: &TTY, disp: &mut Display, buffer: &[u8]) -> usize {
 			}
 		}
 	}
-	disp.update_screen();
 	count
 }
 
