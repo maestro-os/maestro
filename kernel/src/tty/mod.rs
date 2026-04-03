@@ -29,7 +29,7 @@ pub mod termios;
 pub mod vga;
 
 use crate::{
-	device::{fb, fb::Framebuffer, serial},
+	device::{fb, fb::Framebuffer},
 	memory::{user::UserSlice, vmem::KERNEL_VMEM},
 	multiboot::BootInfo,
 	process::{Process, pid::Pid, signal::Signal},
@@ -39,8 +39,12 @@ use crate::{
 		termios::{Termios, consts::*},
 	},
 };
-use core::{cmp::min, ptr};
-use utils::errno::EResult;
+use core::{cmp::min, hint::unlikely, ptr};
+use utils::{
+	collections::vec::Vec,
+	errno::{AllocResult, EResult},
+	vec,
+};
 
 /// The number of history lines for one TTY.
 const HISTORY_LINES: usize = 128;
@@ -55,7 +59,6 @@ const TAB_SIZE: usize = 4;
 const INPUT_MAX: usize = 4096;
 
 // TODO Implement character size mask
-// TODO Full implement serial
 
 /// Structure representing a window size for a terminal.
 #[repr(C)]
@@ -150,7 +153,9 @@ pub struct Display {
 	/// The Y position of the screen in the history
 	screen_y: usize,
 	/// The content of the TTY's history
-	history: [[Char; vga::WIDTH as usize]; HISTORY_LINES],
+	// TODO Vec stores capacity and length. We don't need those since we can determine them from
+	// the size of the history and the width of the screen
+	history: Vec<Char>,
 	/// The framebuffer. If `None`, we use text mode
 	framebuffer: Option<Framebuffer>,
 
@@ -169,6 +174,10 @@ pub struct Display {
 }
 
 impl Display {
+	fn history_off(&self, x: usize, y: usize) -> usize {
+		y * self.width + x
+	}
+
 	fn display_char(&self, c: Char, x: usize, y: usize) {
 		// If the character isn't on screen, do nothing
 		if !(self.screen_y..self.screen_y + self.height).contains(&y) {
@@ -216,7 +225,7 @@ impl Display {
 		for l in 0..self.height {
 			let y = (self.screen_y + l) % HISTORY_LINES;
 			for x in 0..self.width {
-				self.display_char(self.history[y][x], x, y);
+				self.display_char(self.history[self.history_off(x, y)], x, y);
 			}
 		}
 	}
@@ -229,7 +238,11 @@ impl Display {
 			let screen_bytes = self.height * 16 * pitch;
 			unsafe {
 				// Shift lines up
-				ptr::copy(fb_ptr.add(scroll_bytes), fb_ptr, screen_bytes - scroll_bytes);
+				ptr::copy(
+					fb_ptr.add(scroll_bytes),
+					fb_ptr,
+					screen_bytes - scroll_bytes,
+				);
 				// Clear the newly exposed bottom lines
 				ptr::write_bytes(fb_ptr.add(screen_bytes - scroll_bytes), 0, scroll_bytes);
 			}
@@ -334,21 +347,18 @@ impl Display {
 	/// - `end_x` is the ending X coordinate of the history range to clear (excluded)
 	/// - `end_y` is the ending Y coordinate of the history range to clear (included)
 	fn clear_range(&mut self, start_x: usize, start_y: usize, end_x: usize, end_y: usize) {
-		let start_y = start_y % HISTORY_LINES;
-		let end_y = end_y % HISTORY_LINES;
-		if start_y == end_y {
-			self.history[start_y][start_x..end_x].fill(Char::empty());
-		} else if start_y < end_y {
+		let start = self.history_off(start_x, start_y % HISTORY_LINES);
+		let end = self.history_off(end_x, end_y % HISTORY_LINES);
+		if start <= end {
 			// Continuous in memory
-			self.history[start_y..end_y].as_flattened_mut()[start_x..].fill(Char::empty());
-			self.history[end_y][..end_x].fill(Char::empty());
+			self.history[start..end].fill(Char::empty());
 		} else {
 			// Wrapping
-			self.history[start_y..].as_flattened_mut()[start_x..].fill(Char::empty());
-			self.history[..end_y].as_flattened_mut().fill(Char::empty());
-			self.history[end_y][..end_x].fill(Char::empty());
+			self.history[start..].fill(Char::empty());
+			self.history[..end].fill(Char::empty());
 		}
-		// TODO update on screen
+		// Update on screen
+		self.update_display();
 	}
 
 	/// Clears all TTY's history.
@@ -356,7 +366,7 @@ impl Display {
 		self.cursor_x = 0;
 		self.cursor_y = 0;
 		self.screen_y = 0;
-		self.history.as_flattened_mut().fill(Char::empty());
+		self.history.fill(Char::empty());
 		self.clear_display();
 		self.update_cursor();
 	}
@@ -451,18 +461,15 @@ impl Display {
 		}
 		let newlines = relative_y_distance(screen_y_end, self.cursor_y % HISTORY_LINES) + 1;
 		// Clear new lines
+		let clear_start = self.history_off(0, screen_y_end);
 		let new_screen_y_end = screen_y_end + newlines;
 		if let Some(lines_after) = new_screen_y_end.checked_sub(HISTORY_LINES) {
-			self.history[screen_y_end..]
-				.as_flattened_mut()
-				.fill(Char::empty());
-			self.history[..lines_after]
-				.as_flattened_mut()
-				.fill(Char::empty());
+			let clear_end = self.history_off(self.width, lines_after);
+			self.history[clear_start..].fill(Char::empty());
+			self.history[..clear_end].fill(Char::empty());
 		} else {
-			self.history[screen_y_end..new_screen_y_end]
-				.as_flattened_mut()
-				.fill(Char::empty());
+			let clear_end = self.history_off(self.width, new_screen_y_end);
+			self.history[clear_start..clear_end].fill(Char::empty());
 		}
 		// Update screen position
 		self.screen_y = (self.screen_y + newlines) % HISTORY_LINES;
@@ -550,7 +557,7 @@ pub static TTY: TTY = TTY {
 		cursor_y: 0,
 
 		screen_y: 0,
-		history: [[Char::empty(); vga::WIDTH as usize]; HISTORY_LINES],
+		history: Vec::new(),
 		framebuffer: None,
 
 		scroll_top: 0,
@@ -584,20 +591,21 @@ impl TTY {
 	/// Shows the TTY on screen.
 	///
 	/// `fb` is the framebuffer. If `None`, text mode is used.
-	pub fn show(&self, fb: Option<Framebuffer>) {
+	pub fn show(&self, fb: Option<Framebuffer>) -> AllocResult<()> {
 		let mut disp = self.display.lock();
 		disp.framebuffer = fb;
-		// TODO use a dynamically-allocated history buffer to match screen size
-		/*if let Some(fb) = &disp.framebuffer {
+		if let Some(fb) = &disp.framebuffer {
 			let width = fb.info().framebuffer_width as usize / 8;
 			let height = fb.info().framebuffer_height as usize / 16;
 			disp.width = width;
 			disp.height = height;
-		}*/
+		}
+		disp.history = vec![Char::empty(); disp.width * HISTORY_LINES]?;
 		let cursor_visible = disp.cursor_visible;
 		disp.set_cursor_visible(cursor_visible);
 		disp.update_display();
 		disp.update_cursor();
+		Ok(())
 	}
 
 	/// Writes the character `c` to the TTY.
@@ -630,7 +638,8 @@ impl TTY {
 					c,
 					color: disp.current_color,
 				};
-				disp.history[disp.cursor_y][disp.cursor_x] = c;
+				let off = disp.history_off(disp.cursor_x, disp.cursor_y);
+				disp.history[off] = c;
 				disp.display_char(c, disp.cursor_x, disp.cursor_y);
 				disp.cursor_forward(1);
 			}
@@ -639,9 +648,11 @@ impl TTY {
 
 	/// Writes the content of `buf` to the TTY.
 	pub fn write(&self, buf: &[u8]) {
-		// TODO Add a compilation and/or runtime option for this
-		serial::PORTS[0].lock().write(buf);
 		let mut display = self.display.lock();
+		// If not init yet, do nothing
+		if unlikely(display.history.is_empty()) {
+			return;
+		}
 		let mut i = 0;
 		while i < buf.len() {
 			let c = buf[i];
@@ -860,7 +871,8 @@ impl TTY {
 			disp.cursor_backward(1);
 			let cursor_x = disp.cursor_x;
 			let cursor_y = disp.cursor_y;
-			disp.history[cursor_y][cursor_x] = Char::empty();
+			let off = disp.history_off(cursor_x, cursor_y);
+			disp.history[off] = Char::empty();
 			disp.display_char(Char::empty(), cursor_x, cursor_y);
 			disp.update_cursor();
 		}
@@ -934,7 +946,8 @@ pub(crate) fn show(boot_info: &BootInfo) {
 			fb::MAP_FLAGS,
 		);
 	}
-	TTY.show(fb);
+	TTY.show(fb)
+		.expect("Could not allocate memory for TTY history");
 	if warn {
 		// TODO panic?
 		println!("Warning: could not remap framebuffer, using text mode!");

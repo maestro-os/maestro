@@ -21,7 +21,7 @@
 //! If the logger is set as silent, logs will not show up on screen, but will be kept in memory
 //! anyway.
 
-use crate::{sync::spin::IntSpin, tty::TTY};
+use crate::{device::serial, sync::spin::IntSpin, tty::TTY};
 use core::{
 	cmp::{Ordering, min},
 	fmt,
@@ -120,6 +120,8 @@ impl Write for LoggerBuffer {
 	fn write_str(&mut self, s: &str) -> fmt::Result {
 		self.push(s.as_bytes());
 		if !SILENT.load(Relaxed) {
+			// TODO Add a compilation and/or runtime option for this
+			serial::PORTS[0].lock().write(s.as_bytes());
 			TTY.write(s.as_bytes());
 		}
 		Ok(())
