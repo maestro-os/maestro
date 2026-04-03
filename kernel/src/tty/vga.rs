@@ -115,25 +115,13 @@ pub fn disable_cursor() {
 	}
 }
 
-/// Returns the current position of the cursor.
-pub fn get_cursor_position() -> (u16, u16) {
-	let mut pos: u16 = 0;
-	unsafe {
-		outb(0x3d4, 0x0f);
-		pos |= inb(0x3d5) as u16;
-		outb(0x3d4, 0x0e);
-		pos |= (inb(0x3d5) as u16) << 8;
-	}
-	(pos % WIDTH, pos / WIDTH)
-}
-
 /// Moves the VGA text mode cursor to the given position.
 pub fn move_cursor(x: u16, y: u16) {
 	let pos = y * WIDTH + x;
 	unsafe {
 		outb(0x3d4, 0x0f);
-		outb(0x3d5, (pos & 0xff) as u8);
+		outb(0x3d5, pos as u8);
 		outb(0x3d4, 0x0e);
-		outb(0x3d5, ((pos >> 8) & 0xff) as u8);
+		outb(0x3d5, (pos >> 8) as u8);
 	}
 }
