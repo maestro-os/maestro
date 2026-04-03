@@ -212,7 +212,42 @@ impl Display {
 		}
 	}
 
-	fn clear_screen(&self) {
+	fn update_display(&self) {
+		for l in 0..self.height {
+			let y = (self.screen_y + l) % HISTORY_LINES;
+			for x in 0..self.width {
+				self.display_char(self.history[y][x], x, y);
+			}
+		}
+	}
+
+	fn scroll_display(&mut self, newlines: usize) {
+		if let Some(fb) = &self.framebuffer {
+			let fb_ptr: *mut u8 = fb.addr().as_ptr();
+			let pitch = fb.info().framebuffer_pitch as usize;
+			let scroll_bytes = newlines * 16 * pitch;
+			let screen_bytes = self.height * 16 * pitch;
+			unsafe {
+				// Shift lines up
+				ptr::copy(fb_ptr.add(scroll_bytes), fb_ptr, screen_bytes - scroll_bytes);
+				// Clear the newly exposed bottom lines
+				ptr::write_bytes(fb_ptr.add(screen_bytes - scroll_bytes), 0, scroll_bytes);
+			}
+		} else {
+			let ptr = vga::text_buf();
+			let keep = (self.height - newlines) * self.width;
+			unsafe {
+				// Shift lines up
+				ptr::copy(ptr.add(newlines * self.width), ptr, keep);
+				// Clear the newly exposed bottom lines
+				for i in keep..self.height * self.width {
+					ptr.add(i).write(Char::empty().to_vga());
+				}
+			}
+		}
+	}
+
+	fn clear_display(&self) {
 		if let Some(fb) = &self.framebuffer {
 			let fb_ptr: *mut u8 = fb.addr().as_ptr();
 			unsafe {
@@ -322,7 +357,7 @@ impl Display {
 		self.cursor_y = 0;
 		self.screen_y = 0;
 		self.history.as_flattened_mut().fill(Char::empty());
-		self.clear_screen();
+		self.clear_display();
 		self.update_cursor();
 	}
 
@@ -432,6 +467,8 @@ impl Display {
 		// Update screen position
 		self.screen_y = (self.screen_y + newlines) % HISTORY_LINES;
 		self.cursor_y %= HISTORY_LINES;
+		// Update display
+		self.scroll_display(newlines);
 	}
 
 	/// Moves the cursor forward `n` characters.
@@ -559,6 +596,7 @@ impl TTY {
 		}*/
 		let cursor_visible = disp.cursor_visible;
 		disp.set_cursor_visible(cursor_visible);
+		disp.update_display();
 		disp.update_cursor();
 	}
 
