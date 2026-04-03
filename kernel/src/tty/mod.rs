@@ -183,6 +183,7 @@ impl Display {
 		if !(self.screen_y..self.screen_y + self.height).contains(&y) {
 			return;
 		}
+		let history_y = y;
 		let y = y - self.screen_y;
 		const FONT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/font.hex"));
 		if let Some(fb) = &self.framebuffer {
@@ -199,7 +200,11 @@ impl Display {
 					let index = char_y * 8 + char_x;
 					let data_byte = index / 8;
 					let data_bit = index % 8;
-					let set = data[data_byte] & (0x80 >> data_bit) != 0;
+					let mut set = data[data_byte] & (0x80 >> data_bit) != 0;
+					// If the cursor is on the character, invert
+					if self.cursor_visible && x == self.cursor_x && history_y == self.cursor_y {
+						set = !set;
+					}
 					// TODO colors
 					let mut val = 0;
 					if set {
@@ -277,19 +282,39 @@ impl Display {
 		}
 	}
 
-	/// Updates the TTY's cursor to the screen
-	fn update_cursor(&self) {
-		let y = relative_y_distance(self.screen_y, self.cursor_y);
-		vga::move_cursor(self.cursor_x as _, y as _);
+	/// Displays the cursor on screen
+	///
+	/// `old_cursor` is the previous position of the cursor. If set, the function erases the cursor
+	/// at the previous position
+	fn update_cursor(&self, old_cursor: Option<(usize, usize)>) {
+		if self.framebuffer.is_some() {
+			if let Some((old_cursor_x, old_cursor_y)) = old_cursor {
+				// Erase old cursor
+				let off = self.history_off(old_cursor_x, old_cursor_y);
+				self.display_char(self.history[off], old_cursor_x, old_cursor_y);
+			}
+			// Draw new cursor
+			let off = self.history_off(self.cursor_x, self.cursor_y);
+			self.display_char(self.history[off], self.cursor_x, self.cursor_y);
+		} else {
+			let y = relative_y_distance(self.screen_y, self.cursor_y);
+			vga::move_cursor(self.cursor_x as _, y as _);
+		}
 	}
 
 	/// Hides or shows the cursor on screen.
 	fn set_cursor_visible(&mut self, visible: bool) {
 		self.cursor_visible = visible;
-		if visible {
-			vga::enable_cursor();
+		#[allow(clippy::collapsible_else_if)]
+		if self.framebuffer.is_some() {
+			let off = self.history_off(self.cursor_x, self.cursor_y);
+			self.display_char(self.history[off], self.cursor_x, self.cursor_y);
 		} else {
-			vga::disable_cursor();
+			if visible {
+				vga::enable_cursor();
+			} else {
+				vga::disable_cursor();
+			}
 		}
 	}
 
@@ -368,7 +393,7 @@ impl Display {
 		self.screen_y = 0;
 		self.history.fill(Char::empty());
 		self.clear_display();
-		self.update_cursor();
+		self.update_cursor(None);
 	}
 
 	/// Inserts `n` blank lines at the cursor row, shifting rows below it down within the scrolling
@@ -480,6 +505,8 @@ impl Display {
 
 	/// Moves the cursor forward `n` characters.
 	fn cursor_forward(&mut self, n: usize) {
+		let old_cursor_x = self.cursor_x;
+		let old_cursor_y = self.cursor_y;
 		let off = self.cursor_x + n;
 		self.cursor_x = off % self.width;
 		let newlines = off / self.width;
@@ -487,11 +514,15 @@ impl Display {
 			self.cursor_y += newlines;
 			self.append_lines();
 		}
+		self.update_cursor(Some((old_cursor_x, old_cursor_y)));
 	}
 
 	/// Moves the cursor backwards `n` characters.
 	fn cursor_backward(&mut self, n: usize) {
+		let old_cursor_x = self.cursor_x;
+		let old_cursor_y = self.cursor_y;
 		self.cursor_x = self.cursor_x.saturating_sub(n);
+		self.update_cursor(Some((old_cursor_x, old_cursor_y)));
 	}
 
 	/// Moves the cursor `n` lines down.
@@ -500,6 +531,8 @@ impl Display {
 	/// instead of advancing the cursor. Otherwise, advances the cursor and scrolls the screen
 	/// through the history buffer as needed.
 	fn newline(&mut self, n: usize) {
+		let old_cursor_x = self.cursor_x;
+		let old_cursor_y = self.cursor_y;
 		self.cursor_x = 0;
 		let region_partial = self.scroll_top != 0 || self.scroll_bottom != vga::HEIGHT as usize;
 		for _ in 0..n {
@@ -511,6 +544,7 @@ impl Display {
 				self.append_lines();
 			}
 		}
+		self.update_cursor(Some((old_cursor_x, old_cursor_y)));
 	}
 }
 
@@ -604,7 +638,7 @@ impl TTY {
 		let cursor_visible = disp.cursor_visible;
 		disp.set_cursor_visible(cursor_visible);
 		disp.update_display();
-		disp.update_cursor();
+		disp.update_cursor(None);
 		Ok(())
 	}
 
@@ -669,7 +703,6 @@ impl TTY {
 			self.putchar(&mut display, c as char);
 			i += 1;
 		}
-		display.update_cursor();
 	}
 
 	/// Injects bytes directly into the input buffer, bypassing ECHO and canonical mode
@@ -867,6 +900,8 @@ impl TTY {
 		}
 		if visual_erase {
 			let mut disp = self.display.lock();
+			let old_cursor_x = disp.cursor_x;
+			let old_cursor_y = disp.cursor_y;
 			// TODO Handle tab characters
 			disp.cursor_backward(1);
 			let cursor_x = disp.cursor_x;
@@ -874,7 +909,7 @@ impl TTY {
 			let off = disp.history_off(cursor_x, cursor_y);
 			disp.history[off] = Char::empty();
 			disp.display_char(Char::empty(), cursor_x, cursor_y);
-			disp.update_cursor();
+			disp.update_cursor(Some((old_cursor_x, old_cursor_y)));
 		}
 		self.rd_queue.wake_next();
 	}
