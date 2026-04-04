@@ -194,11 +194,15 @@ impl Display {
 
 	fn display_char(&self, c: Char, x: usize, y: usize) {
 		// If the character isn't on screen, do nothing
-		if !(self.screen_y..self.screen_y + self.height).contains(&y) {
+		let history_y = y;
+		let y = if y >= self.screen_y {
+			y - self.screen_y
+		} else {
+			(HISTORY_LINES - self.screen_y) + y
+		};
+		if y >= self.height {
 			return;
 		}
-		let history_y = y;
-		let y = y - self.screen_y;
 		const FONT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/font.hex"));
 		if let Some(fb) = &self.framebuffer {
 			let fb_ptr: *mut u8 = fb.addr().as_ptr();
