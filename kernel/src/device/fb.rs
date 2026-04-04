@@ -20,12 +20,19 @@
 
 use crate::{
 	arch::x86::paging::{FLAG_CACHE_DISABLE, FLAG_GLOBAL, FLAG_WRITE, FLAG_WRITE_THROUGH},
+	device::{CharDev, DeviceID, DeviceType, id::MajorBlock, register_char},
 	file::{File, fs::FileOps},
 	memory::{PhysAddr, VirtAddr, user::UserSlice, vmem::KERNEL_VMEM},
 	multiboot::FramebufferInfo,
 };
-use core::{hint::unlikely, slice};
-use utils::{errno, errno::EResult, limits::PAGE_SIZE};
+use core::{hint::unlikely, mem::ManuallyDrop};
+use utils::{
+	collections::path::PathBuf,
+	errno,
+	errno::{AllocResult, EResult},
+	limits::PAGE_SIZE,
+	ptr::arc::Arc,
+};
 
 /// Flags used to map a framebuffer
 pub const MAP_FLAGS: usize = FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH | FLAG_WRITE | FLAG_GLOBAL;
@@ -35,19 +42,27 @@ pub const MAP_FLAGS: usize = FLAG_CACHE_DISABLE | FLAG_WRITE_THROUGH | FLAG_WRIT
 pub struct Framebuffer(FramebufferInfo);
 
 impl Framebuffer {
-	/// Creates a new instance
-	///
-	/// If the framebuffer is outside reachable memory, the function returns `None`.
-	pub fn new(info: FramebufferInfo) -> Option<Self> {
-		let s = Self(info);
+	fn remap(fb: &Self) -> Option<()> {
 		// If the framebuffer is outside reachable memory, stop
-		let physaddr: usize = s.0.framebuffer_addr.try_into().ok()?;
-		physaddr.checked_add(s.len())?;
+		let physaddr: usize = fb.0.framebuffer_addr.try_into().ok()?;
+		physaddr.checked_add(fb.len())?;
 		// Remap
 		let physaddr = PhysAddr(physaddr);
 		let virtaddr = physaddr.kernel_to_virtual()?;
-		KERNEL_VMEM.map_range(physaddr, virtaddr, s.len().div_ceil(PAGE_SIZE), MAP_FLAGS);
-		Some(s)
+		KERNEL_VMEM.map_range(physaddr, virtaddr, fb.len().div_ceil(PAGE_SIZE), MAP_FLAGS);
+		Some(())
+	}
+
+	/// Creates a new instance
+	///
+	/// If the framebuffer is outside reachable memory, the function returns `None`.
+	pub fn new(info: FramebufferInfo) -> AllocResult<Option<Arc<Self>>> {
+		let fb = Self(info);
+		if Self::remap(&fb).is_some() {
+			Ok(Some(Arc::new(fb)?))
+		} else {
+			Ok(None)
+		}
 	}
 
 	/// Returns the framebuffer's info
@@ -74,36 +89,49 @@ impl Framebuffer {
 
 /// A framebuffer device
 #[derive(Debug)]
-pub struct FramebufferDev(Framebuffer);
+pub struct FramebufferDev(Arc<Framebuffer>);
 
 impl FileOps for FramebufferDev {
 	fn read(&self, _file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		let off: usize = off.try_into().map_err(|_| errno!(EINVAL))?;
 		let fb_len = self.0.len();
-		let oob = off.checked_add(buf.len()).is_none_or(|l| l < fb_len);
+		let oob = off.checked_add(buf.len()).is_none_or(|l| l > fb_len);
 		if unlikely(oob) {
 			return Err(errno!(EINVAL));
 		}
-		let fb_slice = unsafe {
+		unsafe {
 			let ptr = self.0.addr().as_ptr::<u8>().add(off);
-			let len = buf.len() - off;
-			slice::from_raw_parts_mut(ptr, len)
-		};
-		buf.copy_to_user(0, fb_slice)
+			buf.copy_to_user_raw(0, ptr, buf.len())
+		}
 	}
 
 	fn write(&self, _file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		let off: usize = off.try_into().map_err(|_| errno!(EINVAL))?;
 		let fb_len = self.0.len();
-		let oob = off.checked_add(buf.len()).is_none_or(|l| l < fb_len);
+		let oob = off.checked_add(buf.len()).is_none_or(|l| l > fb_len);
 		if unlikely(oob) {
 			return Err(errno!(EINVAL));
 		}
-		let fb_slice = unsafe {
+		unsafe {
 			let ptr = self.0.addr().as_ptr::<u8>().add(off);
-			let len = buf.len() - off;
-			slice::from_raw_parts_mut(ptr, len)
-		};
-		buf.copy_from_user(0, fb_slice)
+			buf.copy_from_user_raw(0, ptr, buf.len())
+		}
 	}
+}
+
+/// Creates framebuffer device.
+pub(crate) fn create(fb: Arc<Framebuffer>) -> EResult<()> {
+	// TODO store somewhere for dynamic allocations when we have display hotplug
+	let mut fb_major = ManuallyDrop::new(MajorBlock::new_fixed(DeviceType::Char, 29)?);
+	let minor = fb_major.alloc_minor(None)?;
+	register_char(CharDev::new(
+		DeviceID {
+			major: fb_major.get_major(),
+			minor,
+		},
+		PathBuf::try_from(b"/dev/fb0")?,
+		0o660,
+		FramebufferDev(fb),
+	)?)?;
+	Ok(())
 }

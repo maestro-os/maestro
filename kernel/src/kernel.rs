@@ -155,7 +155,7 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	// From now on, the kernel considers that memory management has been fully
 	// initialized
 
-	tty::show(boot_info);
+	let fb = tty::show(boot_info).expect("TTY initialization failed");
 	println!("Boot {NAME} version {VERSION}");
 
 	// Init kernel symbols map
@@ -200,7 +200,7 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	}
 
 	process::init2().expect("process initialization stage 2 failed");
-	device::stage2().expect("device files creation failure");
+	device::stage2(fb).expect("device files creation failure");
 	process::init3().expect("process initialization stage 3 failed");
 
 	let init_path = args_parser.get_init_path().unwrap_or(INIT_PATH);
