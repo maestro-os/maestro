@@ -18,6 +18,7 @@ path = "src/bin.rs"
 
 [dependencies]
 macros = { path = "../macros" }
+rustc-demangle = "0.1.27"
 utils = { path = "../utils" }
 
 [build-dependencies]
