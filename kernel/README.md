@@ -45,6 +45,32 @@ ls -1 arch/
 
 
 
+## Built-in modules
+
+Kernel modules can be compiled directly into the kernel binary so they are available
+at boot without needing files on the filesystem.
+
+**1. Configure** — edit (or create from the default) `build-config.toml` and list the
+modules to embed:
+
+```toml
+[modules]
+builtin = ["ps2", "e1000"]
+```
+
+**2. Build** — use `cargo xtask build-kernel` from the **repository root** instead of
+plain `cargo build`. It runs two passes under the hood to handle the chicken-and-egg
+dependency between the kernel and its modules:
+
+```sh
+cargo xtask build-kernel              # debug
+cargo xtask build-kernel --release    # release
+```
+
+See [`xtask/README.md`](../xtask/README.md) for details on why two passes are needed.
+
+
+
 ## Run
 
 ### With QEMU

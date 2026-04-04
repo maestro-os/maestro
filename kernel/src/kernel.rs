@@ -191,6 +191,9 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	net::osi::init().expect("network initialization failed");
 	rand::init().expect("entropy pool initialization failed");
 
+	println!("Load built-in modules");
+	module::load_builtin_modules();
+
 	let root = args_parser.get_root_dev();
 	println!("Setup files management");
 	file::init(root).expect("files management initialization failed");
