@@ -44,6 +44,7 @@ pub mod tty;
 
 use crate::{
 	device::{
+		fb::Framebuffer,
 		manager::DeviceManager,
 		storage::{PartitionOps, partition::Partition},
 	},
@@ -474,8 +475,11 @@ pub(crate) fn init() -> EResult<()> {
 /// Switches to stage 2, creating device files of devices that are already registered.
 ///
 /// This function must be used only once at boot, after files management has been initialized.
-pub(crate) fn stage2() -> EResult<()> {
+pub(crate) fn stage2(fb: Option<Arc<Framebuffer>>) -> EResult<()> {
 	default::create().unwrap_or_else(|e| panic!("Failed to create default devices! ({e})"));
+	if let Some(fb) = fb {
+		fb::create(fb)?;
+	}
 	// Create device files
 	let devs = BLK_DEVICES.lock();
 	for (id, dev) in devs.iter() {

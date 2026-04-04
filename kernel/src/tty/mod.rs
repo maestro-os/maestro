@@ -44,6 +44,7 @@ use core::{cmp::min, hint::unlikely, mem, ptr};
 use utils::{
 	collections::vec::Vec,
 	errno::{AllocResult, EResult},
+	ptr::arc::Arc,
 	vec,
 };
 
@@ -174,7 +175,7 @@ pub struct Display {
 	// the size of the history and the width of the screen
 	history: Vec<Char>,
 	/// The framebuffer. If `None`, we use text mode
-	framebuffer: Option<Framebuffer>,
+	framebuffer: Option<Arc<Framebuffer>>,
 
 	/// Top row of the scrolling region (DECSTBM), in screen-relative coordinates.
 	scroll_top: usize,
@@ -634,7 +635,7 @@ impl TTY {
 	/// Shows the TTY on screen.
 	///
 	/// `fb` is the framebuffer. If `None`, text mode is used.
-	pub fn show(&self, fb: Option<Framebuffer>) -> AllocResult<()> {
+	pub fn show(&self, fb: Option<Arc<Framebuffer>>) -> AllocResult<()> {
 		let mut disp = self.display.lock();
 		disp.framebuffer = fb;
 		if let Some(fb) = &disp.framebuffer {
@@ -973,10 +974,10 @@ impl TTY {
 }
 
 /// Shows the initialization TTY on screen
-pub(crate) fn show(boot_info: &BootInfo) {
+pub(crate) fn show(boot_info: &BootInfo) -> AllocResult<Option<Arc<Framebuffer>>> {
 	let mut warn = false;
 	let fb = if let Some(fb_info) = boot_info.fb_info.clone() {
-		let fb = Framebuffer::new(fb_info);
+		let fb = Framebuffer::new(fb_info)?;
 		warn = fb.is_none();
 		fb
 	} else {
@@ -991,10 +992,10 @@ pub(crate) fn show(boot_info: &BootInfo) {
 			fb::MAP_FLAGS,
 		);
 	}
-	TTY.show(fb)
-		.expect("Could not allocate memory for TTY history");
+	TTY.show(fb.clone())?;
 	if warn {
 		// TODO panic?
 		println!("Warning: could not remap framebuffer, using text mode!");
 	}
+	Ok(fb)
 }
