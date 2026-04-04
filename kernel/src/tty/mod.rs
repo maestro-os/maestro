@@ -58,6 +58,11 @@ pub const DEFAULT_FG_COLOR: Rgb = (0xff, 0xff, 0xff);
 /// Default background color
 pub const DEFAULT_BG_COLOR: Rgb = (0x00, 0x00, 0x00);
 
+/// Width of a character, in pixels
+const CHAR_WIDTH: usize = 8;
+/// Height of a character, in pixels
+const CHAR_HEIGHT: usize = 16;
+
 /// The size of a tabulation in space-equivalent.
 const TAB_SIZE: usize = 4;
 
@@ -203,16 +208,16 @@ impl Display {
 		if y >= self.height {
 			return;
 		}
-		const FONT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/font.hex"));
+		const FONT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/font.bin"));
 		if let Some(fb) = &self.framebuffer {
 			let fb_ptr: *mut u8 = fb.addr().as_ptr();
 			let bytes_per_pixel = fb.info().framebuffer_bpp.div_ceil(8) as usize;
 			let pitch = fb.info().framebuffer_pitch as usize;
 			// Draw char
 			let code = c.c as usize;
-			let data_off = code * 16;
+			let data_off = code * CHAR_HEIGHT;
 			let data = &FONT[data_off..data_off + 16];
-			let char_px_off = y * 16 * pitch + x * 8 * bytes_per_pixel;
+			let char_px_off = y * CHAR_HEIGHT * pitch + x * CHAR_WIDTH * bytes_per_pixel;
 			// Swap fg/bg if the cursor is on this cell
 			let (fg, bg) =
 				if self.cursor_visible && x == self.cursor_x && history_y == self.cursor_y {
@@ -224,25 +229,27 @@ impl Display {
 			let pack = |val: u8, pos: u8, size: u8| -> u32 { (val as u32 >> (8 - size)) << pos };
 			let to_pixel = |(r, g, b): Rgb| -> [u8; 4] {
 				let rgb = &fb.info().framebuffer_rgb;
-				(pack(
+				let r = pack(
 					r,
 					rgb.framebuffer_red_field_position,
 					rgb.framebuffer_red_mask_size,
-				) | pack(
+				);
+				let g = pack(
 					g,
 					rgb.framebuffer_green_field_position,
 					rgb.framebuffer_green_mask_size,
-				) | pack(
+				);
+				let b = pack(
 					b,
 					rgb.framebuffer_blue_field_position,
 					rgb.framebuffer_blue_mask_size,
-				))
-				.to_le_bytes()
+				);
+				(r | g | b).to_le_bytes()
 			};
 			let fg_pixel = to_pixel(fg);
 			let bg_pixel = to_pixel(bg);
-			for char_y in 0..16 {
-				for char_x in 0..8 {
+			for char_y in 0..CHAR_HEIGHT {
+				for char_x in 0..CHAR_WIDTH {
 					let index = char_y * 8 + char_x;
 					let set = data[index / 8] & (0x80 >> (index % 8)) != 0;
 					let pixel = if set { fg_pixel } else { bg_pixel };
@@ -275,8 +282,8 @@ impl Display {
 		if let Some(fb) = &self.framebuffer {
 			let fb_ptr: *mut u8 = fb.addr().as_ptr();
 			let pitch = fb.info().framebuffer_pitch as usize;
-			let scroll_bytes = newlines * 16 * pitch;
-			let screen_bytes = self.height * 16 * pitch;
+			let scroll_bytes = newlines * CHAR_HEIGHT * pitch;
+			let screen_bytes = self.height * CHAR_HEIGHT * pitch;
 			unsafe {
 				// Shift lines up
 				ptr::copy(
@@ -631,8 +638,8 @@ impl TTY {
 		let mut disp = self.display.lock();
 		disp.framebuffer = fb;
 		if let Some(fb) = &disp.framebuffer {
-			let width = fb.info().framebuffer_width as usize / 8;
-			let height = fb.info().framebuffer_height as usize / 16;
+			let width = fb.info().framebuffer_width as usize / CHAR_WIDTH;
+			let height = fb.info().framebuffer_height as usize / CHAR_HEIGHT;
 			disp.width = width;
 			disp.height = height;
 		}
