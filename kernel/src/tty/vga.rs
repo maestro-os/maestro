@@ -26,6 +26,7 @@
 use crate::{
 	arch::x86::io::{inb, outb},
 	memory::PhysAddr,
+	tty::Rgb,
 };
 
 /// Type representing a VGA text mode character.
@@ -46,39 +47,6 @@ pub const PIXEL_WIDTH: u32 = 640;
 /// Height of the screen in pixels under the VGA text mode.
 pub const PIXEL_HEIGHT: u32 = 480;
 
-/// VGA text mode color: Black
-pub const COLOR_BLACK: Color = 0x0;
-/// VGA text mode color: Blue
-pub const COLOR_BLUE: Color = 0x1;
-/// VGA text mode color: Green
-pub const COLOR_GREEN: Color = 0x2;
-/// VGA text mode color: Cyan
-pub const COLOR_CYAN: Color = 0x3;
-/// VGA text mode color: Red
-pub const COLOR_RED: Color = 0x4;
-/// VGA text mode color: Magenta
-pub const COLOR_MAGENTA: Color = 0x5;
-/// VGA text mode color: Brown
-pub const COLOR_BROWN: Color = 0x6;
-/// VGA text mode color: Light Grey
-pub const COLOR_LIGHT_GREY: Color = 0x7;
-/// VGA text mode color: Dark Grey
-pub const COLOR_DARK_GREY: Color = 0x8;
-/// VGA text mode color: Light Blue
-pub const COLOR_LIGHT_BLUE: Color = 0x9;
-/// VGA text mode color: Light Green
-pub const COLOR_LIGHT_GREEN: Color = 0xa;
-/// VGA text mode color: Light Cyan
-pub const COLOR_LIGHT_CYAN: Color = 0xb;
-/// VGA text mode color: Light Red
-pub const COLOR_LIGHT_RED: Color = 0xc;
-/// VGA text mode color: Light Magenta
-pub const COLOR_LIGHT_MAGENTA: Color = 0xd;
-/// VGA text mode color: Yellow
-pub const COLOR_YELLOW: Color = 0xe;
-/// VGA text mode color: White
-pub const COLOR_WHITE: Color = 0xf;
-
 /// The beginning scanline for the cursor.
 pub const CURSOR_START: u8 = 0;
 /// The ending scanline for the cursor.
@@ -90,11 +58,29 @@ pub fn text_buf() -> *mut Char {
 	BUFFER_PHYS.kernel_to_virtual().unwrap().as_ptr()
 }
 
-/// Returns the value for the given foreground color `fg` and background color
-/// `bg`.
-#[inline]
-pub fn entry_color(fg: Color, bg: Color) -> Color {
-	fg | (bg << 4)
+/// Converts an RGB color to the nearest VGA color
+pub fn nearest_color((r, g, b): Rgb) -> Color {
+	let round = |v: u8| -> u8 {
+		if v < 43 {
+			0
+		} else if v < 128 {
+			85
+		} else if v < 213 {
+			170
+		} else {
+			255
+		}
+	};
+	let (r, g, b) = (round(r), round(g), round(b));
+	// Brown
+	if r == 170 && g == 85 && b == 0 {
+		return 0x6;
+	}
+	let bright = r == 85 || r == 255 || g == 85 || g == 255 || b == 85 || b == 255;
+	let b2 = r >= 128;
+	let b1 = g >= 128;
+	let b0 = b >= 128;
+	(bright as Color) << 3 | (b2 as Color) << 2 | (b1 as Color) << 1 | (b0 as Color)
 }
 
 /// Enables the VGA text mode cursor.

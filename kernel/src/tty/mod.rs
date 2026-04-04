@@ -37,9 +37,10 @@ use crate::{
 	tty::{
 		ansi::{ANSIBuffer, ESCAPE},
 		termios::{Termios, consts::*},
+		vga::nearest_color,
 	},
 };
-use core::{cmp::min, hint::unlikely, ptr};
+use core::{cmp::min, hint::unlikely, mem, ptr};
 use utils::{
 	collections::vec::Vec,
 	errno::{AllocResult, EResult},
@@ -49,8 +50,13 @@ use utils::{
 /// The number of history lines for one TTY.
 const HISTORY_LINES: usize = 128;
 
-/// Default text color
-pub const DEFAULT_COLOR: vga::Color = vga::COLOR_WHITE | (vga::COLOR_BLACK << 4);
+/// Color
+pub type Rgb = (u8, u8, u8);
+
+/// Default foreground color
+pub const DEFAULT_FG_COLOR: Rgb = (0xff, 0xff, 0xff);
+/// Default background color
+pub const DEFAULT_BG_COLOR: Rgb = (0x00, 0x00, 0x00);
 
 /// The size of a tabulation in space-equivalent.
 const TAB_SIZE: usize = 4;
@@ -121,20 +127,26 @@ fn send_signal(sig: Signal, pgrp: Pid) {
 pub struct Char {
 	/// The actual character
 	c: char,
-	/// Character's color information
-	color: vga::Color,
+
+	/// Foreground color
+	fg: Rgb,
+	/// Background color
+	bg: Rgb,
 }
 
 impl Char {
 	const fn empty() -> Char {
 		Char {
 			c: ' ',
-			color: DEFAULT_COLOR,
+			fg: DEFAULT_FG_COLOR,
+			bg: DEFAULT_BG_COLOR,
 		}
 	}
 
-	const fn to_vga(self) -> vga::Char {
-		(self.c as u8 as vga::Char) | ((self.color as vga::Char) << 8)
+	fn to_vga(self) -> vga::Char {
+		(self.c as u8 as vga::Char)
+			| ((nearest_color(self.fg) as vga::Char) << 8)
+			| ((nearest_color(self.bg) as vga::Char) << 12)
 	}
 }
 
@@ -169,8 +181,10 @@ pub struct Display {
 
 	/// Tells whether the cursor is currently visible on screen.
 	cursor_visible: bool,
-	/// The current color for the text to be written
-	current_color: vga::Color,
+	/// The current foreground color for the text to be written
+	fg_color: Rgb,
+	/// The current background color for the text to be written
+	bg_color: Rgb,
 }
 
 impl Display {
@@ -195,25 +209,43 @@ impl Display {
 			let data_off = code * 16;
 			let data = &FONT[data_off..data_off + 16];
 			let char_px_off = y * 16 * pitch + x * 8 * bytes_per_pixel;
+			// Swap fg/bg if the cursor is on this cell
+			let (fg, bg) =
+				if self.cursor_visible && x == self.cursor_x && history_y == self.cursor_y {
+					(c.bg, c.fg)
+				} else {
+					(c.fg, c.bg)
+				};
+			// Pack a Rgb triple into a pixel word using the framebuffer channel layout
+			let pack = |val: u8, pos: u8, size: u8| -> u32 { (val as u32 >> (8 - size)) << pos };
+			let to_pixel = |(r, g, b): Rgb| -> [u8; 4] {
+				let rgb = &fb.info().framebuffer_rgb;
+				(pack(
+					r,
+					rgb.framebuffer_red_field_position,
+					rgb.framebuffer_red_mask_size,
+				) | pack(
+					g,
+					rgb.framebuffer_green_field_position,
+					rgb.framebuffer_green_mask_size,
+				) | pack(
+					b,
+					rgb.framebuffer_blue_field_position,
+					rgb.framebuffer_blue_mask_size,
+				))
+				.to_le_bytes()
+			};
+			let fg_pixel = to_pixel(fg);
+			let bg_pixel = to_pixel(bg);
 			for char_y in 0..16 {
 				for char_x in 0..8 {
 					let index = char_y * 8 + char_x;
-					let data_byte = index / 8;
-					let data_bit = index % 8;
-					let mut set = data[data_byte] & (0x80 >> data_bit) != 0;
-					// If the cursor is on the character, invert
-					if self.cursor_visible && x == self.cursor_x && history_y == self.cursor_y {
-						set = !set;
-					}
-					// TODO colors
-					let mut val = 0;
-					if set {
-						val = !val;
-					}
+					let set = data[index / 8] & (0x80 >> (index % 8)) != 0;
+					let pixel = if set { fg_pixel } else { bg_pixel };
 					let px_off = char_px_off + char_y * pitch + char_x * bytes_per_pixel;
-					for i in 0..bytes_per_pixel {
+					for (i, &c) in pixel.iter().enumerate().take(bytes_per_pixel) {
 						unsafe {
-							fb_ptr.add(px_off + i).write_volatile(val);
+							fb_ptr.add(px_off + i).write_volatile(c);
 						}
 					}
 				}
@@ -320,48 +352,13 @@ impl Display {
 
 	/// Reinitializes TTY's current attributes.
 	fn reset_attrs(&mut self) {
-		self.current_color = DEFAULT_COLOR;
-	}
-
-	/// Sets the current foreground color `color` for TTY.
-	fn set_fgcolor(&mut self, color: vga::Color) {
-		self.current_color &= !0x0f;
-		self.current_color |= color & 0x0f;
-	}
-
-	/// Resets the current foreground color `color` for TTY.
-	fn reset_fgcolor(&mut self) {
-		self.set_fgcolor(DEFAULT_COLOR);
-	}
-
-	/// Sets the current background color `color` for TTY.
-	fn set_bgcolor(&mut self, color: vga::Color) {
-		self.current_color &= !0x70;
-		self.current_color |= (color & 0x07) << 4;
-	}
-
-	/// Resets the current background color `color` for TTY.
-	fn reset_bgcolor(&mut self) {
-		self.set_bgcolor(DEFAULT_COLOR >> 4);
+		self.fg_color = DEFAULT_FG_COLOR;
+		self.bg_color = DEFAULT_BG_COLOR;
 	}
 
 	/// Swaps the foreground and background colors.
 	fn swap_colors(&mut self) {
-		let fg = self.current_color & 0x0f;
-		let bg = (self.current_color >> 4) & 0x0f;
-		self.set_fgcolor(bg);
-		self.set_bgcolor(fg);
-	}
-
-	/// Sets the blinking state of the text for TTY.
-	///
-	/// If set to `true`, new text will blink. If set to `false`, new text will not blink.
-	fn set_blinking(&mut self, blinking: bool) {
-		if blinking {
-			self.current_color |= 0x80;
-		} else {
-			self.current_color &= !0x80;
-		}
+		mem::swap(&mut self.fg_color, &mut self.bg_color);
 	}
 
 	/// Clears a range of the TTY's history.
@@ -600,7 +597,8 @@ pub static TTY: TTY = TTY {
 		ansi_buffer: ANSIBuffer::new(),
 
 		cursor_visible: true,
-		current_color: DEFAULT_COLOR,
+		fg_color: DEFAULT_FG_COLOR,
+		bg_color: DEFAULT_BG_COLOR,
 	}),
 	input: IntSpin::new(Input {
 		buf: [0; INPUT_MAX],
@@ -670,7 +668,8 @@ impl TTY {
 			_ => {
 				let c = Char {
 					c,
-					color: disp.current_color,
+					fg: disp.fg_color,
+					bg: disp.bg_color,
 				};
 				let off = disp.history_off(disp.cursor_x, disp.cursor_y);
 				disp.history[off] = c;
