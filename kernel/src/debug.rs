@@ -62,7 +62,11 @@ pub fn print_callstack(stack: &[VirtAddr]) {
 			break;
 		}
 		let name = elf::kernel::get_function_name(*pc).unwrap_or(b"???");
-		println!(" <{pc:?}>: {}", DisplayableStr(name));
+		if let Ok(name_str) = str::from_utf8(name) {
+			println!(" <{pc:?}>: {}", rustc_demangle::demangle(name_str));
+		} else {
+			println!(" <{pc:?}>: {}", DisplayableStr(name));
+		}
 	}
 }
 

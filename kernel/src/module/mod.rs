@@ -166,10 +166,17 @@ fn get_symbol_value(
 	let name = parser.get_symbol_name(&strtab, &sym)?;
 	// Look inside the kernel image or other modules
 	let Some(other_sym) = resolve_symbol(name) else {
-		println!(
-			"Symbol `{}` not found in kernel or other loaded modules",
-			DisplayableStr(name)
-		);
+		if let Ok(name_str) = str::from_utf8(name) {
+			println!(
+				"Symbol `{}` not found in kernel or other loaded modules",
+				rustc_demangle::demangle(name_str)
+			);
+		} else {
+			println!(
+				"Symbol `{}` not found in kernel or other loaded modules",
+				DisplayableStr(name)
+			);
+		}
 		return None;
 	};
 	Some(other_sym.st_value as usize)
