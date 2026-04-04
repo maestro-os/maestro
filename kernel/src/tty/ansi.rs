@@ -19,11 +19,7 @@
 //! ANSI escape sequences allow to control the terminal by specifying commands in standard output
 //! of the terminal.
 
-use super::{Display, TTY};
-use crate::tty::{
-	vga,
-	vga::{Color, HEIGHT, WIDTH},
-};
+use super::{DEFAULT_BG_COLOR, DEFAULT_FG_COLOR, Display, Rgb, TTY};
 use core::{cmp::min, str};
 
 /// The character used to initialize ANSI escape sequences.
@@ -40,7 +36,8 @@ const BEL: u8 = 0x07;
 /// The size of the buffer used to parse ANSI escape codes.
 pub const BUFFER_SIZE: usize = 128;
 /// The maximum number of elements in a sequence.
-pub const SEQ_MAX: usize = 5;
+/// 8 covers the worst case: two attributes before a true-color spec, e.g. `0;1;38;2;R;G;B`.
+pub const SEQ_MAX: usize = 8;
 
 /// Enumeration of possible states of the ANSI parser.
 pub(super) enum ANSIState {
@@ -200,48 +197,48 @@ impl<'tty> ANSIBufferView<'tty> {
 }
 
 /// Returns the VGA color associated with the given command.
-fn get_vga_color_from_cmd(cmd: u8) -> Color {
+fn color_from_cmd(cmd: u8) -> Rgb {
 	match cmd {
-		30 | 40 => vga::COLOR_BLACK,
-		31 | 41 => vga::COLOR_RED,
-		32 | 42 => vga::COLOR_GREEN,
-		33 | 43 => vga::COLOR_BROWN,
-		34 | 44 => vga::COLOR_BLUE,
-		35 | 45 => vga::COLOR_MAGENTA,
-		36 | 46 => vga::COLOR_CYAN,
-		37 | 47 => vga::COLOR_LIGHT_GREY,
-		90 | 100 => vga::COLOR_DARK_GREY,
-		91 | 101 => vga::COLOR_LIGHT_RED,
-		92 | 102 => vga::COLOR_LIGHT_GREEN,
-		93 | 103 => vga::COLOR_YELLOW,
-		94 | 104 => vga::COLOR_LIGHT_BLUE,
-		95 | 105 => vga::COLOR_LIGHT_MAGENTA,
-		96 | 106 => vga::COLOR_LIGHT_CYAN,
-		97 | 107 => vga::COLOR_WHITE,
-		_ => vga::COLOR_BLACK,
+		30 | 40 => (0x00, 0x00, 0x00),
+		31 | 41 => (0xaa, 0x00, 0x00),
+		32 | 42 => (0x00, 0xaa, 0x00),
+		33 | 43 => (0xaa, 0x55, 0x00),
+		34 | 44 => (0x00, 0x00, 0xaa),
+		35 | 45 => (0xaa, 0x00, 0xaa),
+		36 | 46 => (0x00, 0xaa, 0xaa),
+		37 | 47 => (0xaa, 0xaa, 0xaa),
+		90 | 100 => (0x55, 0x55, 0x55),
+		91 | 101 => (0xff, 0x55, 0x55),
+		92 | 102 => (0x55, 0xff, 0x55),
+		93 | 103 => (0xff, 0xff, 0x55),
+		94 | 104 => (0x55, 0x55, 0xff),
+		95 | 105 => (0xff, 0x55, 0xff),
+		96 | 106 => (0x55, 0xff, 0xff),
+		97 | 107 => (0xff, 0xff, 0xff),
+		_ => (0x00, 0x00, 0x00),
 	}
 }
 
 /// Returns the VGA color associated with the given ID.
-fn get_vga_color_from_id(id: u8) -> Color {
+fn color_from_id(id: u8) -> Rgb {
 	match id {
-		0 => vga::COLOR_BLACK,
-		1 => vga::COLOR_RED,
-		2 => vga::COLOR_GREEN,
-		3 => vga::COLOR_BROWN,
-		4 => vga::COLOR_BLUE,
-		5 => vga::COLOR_MAGENTA,
-		6 => vga::COLOR_CYAN,
-		7 => vga::COLOR_LIGHT_GREY,
-		8 => vga::COLOR_DARK_GREY,
-		9 => vga::COLOR_LIGHT_RED,
-		10 => vga::COLOR_LIGHT_GREEN,
-		11 => vga::COLOR_YELLOW,
-		12 => vga::COLOR_LIGHT_BLUE,
-		13 => vga::COLOR_LIGHT_MAGENTA,
-		14 => vga::COLOR_LIGHT_CYAN,
-		15 => vga::COLOR_WHITE,
-		_ => vga::COLOR_BLACK,
+		0 => (0x00, 0x00, 0x00),
+		1 => (0xaa, 0x00, 0x00),
+		2 => (0x00, 0xaa, 0x00),
+		3 => (0xaa, 0x55, 0x00),
+		4 => (0x00, 0x00, 0xaa),
+		5 => (0xaa, 0x00, 0xaa),
+		6 => (0x00, 0xaa, 0xaa),
+		7 => (0xaa, 0xaa, 0xaa),
+		8 => (0x55, 0x55, 0x55),
+		9 => (0xff, 0x55, 0x55),
+		10 => (0x55, 0xff, 0x55),
+		11 => (0xff, 0xff, 0x55),
+		12 => (0x55, 0x55, 0xff),
+		13 => (0xff, 0x55, 0xff),
+		14 => (0x55, 0xff, 0xff),
+		15 => (0xff, 0xff, 0xff),
+		_ => (0x00, 0x00, 0x00),
 	}
 }
 
@@ -255,12 +252,12 @@ fn move_cursor(tty: &mut Display, d: u8, n: usize) -> ANSIState {
 	match d {
 		b'A' => tty.cursor_y = tty.cursor_y.saturating_sub(n),
 		b'B' => {
-			let n = tty.cursor_y.checked_add(n).unwrap_or(HEIGHT as usize - 1);
-			tty.cursor_y = min(n, HEIGHT as usize - 1);
+			let n = tty.cursor_y.checked_add(n).unwrap_or(tty.height - 1);
+			tty.cursor_y = min(n, tty.height - 1);
 		}
 		b'C' => {
-			let n = tty.cursor_x.checked_add(n).unwrap_or(WIDTH as usize - 1);
-			tty.cursor_x = min(n, WIDTH as usize - 1);
+			let n = tty.cursor_x.checked_add(n).unwrap_or(tty.width - 1);
+			tty.cursor_x = min(n, tty.width - 1);
 		}
 		b'D' => tty.cursor_x = tty.cursor_x.saturating_sub(n),
 		_ => return ANSIState::Invalid,
@@ -280,11 +277,11 @@ fn parse_sgr(tty: &mut Display, seq: &[usize]) -> ANSIState {
 	while let Some(cmd) = iter.next() {
 		match *cmd {
 			0 => tty.reset_attrs(),
-			1 => {} // TODO Bold
-			2 => {} // TODO Faint
-			3 => {} // TODO Italic
-			4 => {} // TODO Underline
-			5 | 6 => tty.set_blinking(true),
+			1 => {}     // TODO Bold
+			2 => {}     // TODO Faint
+			3 => {}     // TODO Italic
+			4 => {}     // TODO Underline
+			5 | 6 => {} // TODO Blinking on
 			7 => tty.swap_colors(),
 			8 => {}
 			9 => {}  // TODO Crossed-out
@@ -302,43 +299,51 @@ fn parse_sgr(tty: &mut Display, seq: &[usize]) -> ANSIState {
 			22 => {} // TODO Normal intensity
 			23 => {} // TODO Not italic
 			24 => {} // TODO Not underlined
-			25 => tty.set_blinking(false),
+			25 => {} // TODO Blinking off
 			26 => {}
 			27 => {} // TODO Not reversed
 			28 => {}
 			29 => {} // TODO Not crossed-out
 			c @ (30..=37 | 90..=97) => {
-				tty.set_fgcolor(get_vga_color_from_cmd(c as _));
+				tty.fg_color = color_from_cmd(c as _);
 			}
 			38 => match iter.next() {
 				Some(2) => {
-					// TODO with VGA, use closest color
+					let (Some(&r), Some(&g), Some(&b)) = (iter.next(), iter.next(), iter.next())
+					else {
+						return ANSIState::Invalid;
+					};
+					tty.fg_color = (r as u8, g as u8, b as u8);
 				}
 				Some(5) => {
 					let Some(nbr) = iter.next() else {
 						return ANSIState::Invalid;
 					};
-					tty.set_fgcolor(get_vga_color_from_id(*nbr as _));
+					tty.fg_color = color_from_id(*nbr as _);
 				}
 				_ => return ANSIState::Invalid,
 			},
-			39 => tty.reset_fgcolor(),
+			39 => tty.fg_color = DEFAULT_FG_COLOR,
 			c @ (40..=47 | 100..=107) => {
-				tty.set_bgcolor(get_vga_color_from_cmd(c as _));
+				tty.bg_color = color_from_cmd(c as _);
 			}
 			48 => match iter.next() {
 				Some(2) => {
-					// TODO with VGA, use closest color
+					let (Some(&r), Some(&g), Some(&b)) = (iter.next(), iter.next(), iter.next())
+					else {
+						return ANSIState::Invalid;
+					};
+					tty.bg_color = (r as u8, g as u8, b as u8);
 				}
 				Some(5) => {
 					let Some(nbr) = iter.next() else {
 						return ANSIState::Invalid;
 					};
-					tty.set_bgcolor(get_vga_color_from_id(*nbr as _));
+					tty.bg_color = color_from_id(*nbr as _);
 				}
 				_ => return ANSIState::Invalid,
 			},
-			49 => tty.reset_bgcolor(),
+			49 => tty.bg_color = DEFAULT_BG_COLOR,
 			50..=107 => {}
 			_ => return ANSIState::Invalid,
 		}
@@ -433,13 +438,13 @@ fn parse_csi(tty: &TTY, view: &mut ANSIBufferView) -> ANSIState {
 			// TODO Previous line
 		}
 		(seq, b'G') => {
-			let x = seq.first().cloned().unwrap_or(1).clamp(1, WIDTH as usize) - 1;
+			let x = seq.first().cloned().unwrap_or(1).clamp(1, view.tty.width as usize) - 1;
 			view.tty.cursor_x = x;
 		}
 		(seq, b'H' | b'f') => {
 			// `CSI <row> ; <col> H` (CUP). Both default to 1 when omitted
-			let row = seq.first().cloned().unwrap_or(1).clamp(1, HEIGHT as usize) - 1;
-			let col = seq.get(1).cloned().unwrap_or(1).clamp(1, WIDTH as usize) - 1;
+			let row = seq.first().cloned().unwrap_or(1).clamp(1, view.tty.height as usize) - 1;
+			let col = seq.get(1).cloned().unwrap_or(1).clamp(1, view.tty.width as usize) - 1;
 			view.tty.cursor_x = col;
 			view.tty.cursor_y = view.tty.screen_y + row;
 		}
@@ -449,8 +454,8 @@ fn parse_csi(tty: &TTY, view: &mut ANSIBufferView) -> ANSIState {
 				0 => view.tty.clear_range(
 					view.tty.cursor_x,
 					view.tty.cursor_y,
-					WIDTH as usize,
-					view.tty.screen_y + HEIGHT as usize - 1,
+					view.tty.width,
+					view.tty.screen_y + view.tty.height - 1,
 				),
 				1 => view.tty.clear_range(
 					0,
@@ -461,8 +466,8 @@ fn parse_csi(tty: &TTY, view: &mut ANSIBufferView) -> ANSIState {
 				2 => view.tty.clear_range(
 					0,
 					view.tty.screen_y,
-					WIDTH as usize,
-					view.tty.screen_y + HEIGHT as usize - 1,
+					view.tty.width,
+					view.tty.screen_y + view.tty.height - 1,
 				),
 				3 => view.tty.clear_all(),
 				_ => return ANSIState::Invalid,
@@ -474,7 +479,7 @@ fn parse_csi(tty: &TTY, view: &mut ANSIBufferView) -> ANSIState {
 				0 => view.tty.clear_range(
 					view.tty.cursor_x,
 					view.tty.cursor_y,
-					WIDTH as usize,
+					view.tty.width,
 					view.tty.cursor_y,
 				),
 				1 => view.tty.clear_range(
@@ -485,7 +490,7 @@ fn parse_csi(tty: &TTY, view: &mut ANSIBufferView) -> ANSIState {
 				),
 				2 => view
 					.tty
-					.clear_range(0, view.tty.cursor_y, WIDTH as usize, view.tty.cursor_y),
+					.clear_range(0, view.tty.cursor_y, view.tty.width, view.tty.cursor_y),
 				_ => return ANSIState::Invalid,
 			}
 		}
@@ -514,7 +519,7 @@ fn parse_csi(tty: &TTY, view: &mut ANSIBufferView) -> ANSIState {
 		}
 		(seq, b'd') => {
 			// VPA: move cursor to absolute row
-			let row = seq.first().cloned().unwrap_or(1).clamp(1, HEIGHT as usize) - 1;
+			let row = seq.first().cloned().unwrap_or(1).clamp(1, view.tty.height as usize) - 1;
 			view.tty.cursor_y = view.tty.screen_y + row;
 		}
 		(seq, b'n') => {
