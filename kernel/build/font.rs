@@ -16,9 +16,13 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::{fs, fs::File, io, io::BufRead, path::PathBuf, slice};
+use flate2::read::GzDecoder;
+use std::{env, fs, fs::File, io, io::BufRead, path::PathBuf, slice};
 
 fn parse_hex_u16(s: &str) -> Option<u16> {
+	if s.len() > 4 {
+		return None;
+	}
 	let mut val = 0;
 	let mut mul = 1;
 	for c in s.bytes().rev() {
@@ -50,12 +54,35 @@ fn parse_hex_u64(s: &str) -> Option<u64> {
 	Some(val)
 }
 
+/// If `font` is a URL, downloads it and returns the local path.
+///
+/// Otherwise, returns the path as-is.
+fn resolve_font(font: &str) -> io::Result<PathBuf> {
+	if !font.starts_with("https://") {
+		return Ok(PathBuf::from(font));
+	}
+	let out_dir = env::var_os("OUT_DIR").expect("OUT_DIR environment variable not set");
+	let dest = PathBuf::from(out_dir).join("font.hex");
+	if !dest.exists() {
+		let response = ureq::get(font).call().map_err(io::Error::other)?;
+		let mut body = response.into_body();
+		let mut file = File::create(&dest)?;
+		io::copy(&mut body.as_reader(), &mut file)?;
+	}
+	Ok(dest)
+}
+
 /// Turns the font in a version usable in the kernel.
 pub fn build(font: &str) -> io::Result<()> {
-	// TODO download font if an URL is passed
-	// Open file
-	let file = File::open(font)?;
-	let reader = io::BufReader::new(file);
+	let gz = font.ends_with(".gz");
+	let font_path = resolve_font(font)?;
+	let file = File::open(&font_path)?;
+	let reader: Box<dyn io::Read> = if gz {
+		Box::new(GzDecoder::new(file))
+	} else {
+		Box::new(file)
+	};
+	let reader = io::BufReader::new(reader);
 	// Parse
 	let mut font = vec![[0u64; 2]; u16::MAX as usize];
 	for line in reader.lines() {
@@ -81,8 +108,8 @@ pub fn build(font: &str) -> io::Result<()> {
 		}
 	}
 	// Write font file
-	let out_dir = std::env::var_os("OUT_DIR").expect("OUT_DIR environment variable not set");
-	let font_path = PathBuf::from(out_dir).join("font.hex");
+	let out_dir = env::var_os("OUT_DIR").expect("OUT_DIR environment variable not set");
+	let font_path = PathBuf::from(out_dir).join("font.bin");
 	let bytes = font.as_flattened();
 	let bytes = unsafe { slice::from_raw_parts(bytes.as_ptr() as *const u8, bytes.len() * 8) };
 	fs::write(&font_path, bytes)?;
