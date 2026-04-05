@@ -21,7 +21,7 @@
 use super::{Ext2Fs, Superblock, bgd::BlockGroupDescriptor, dirent, dirent::Dirent, zero_block};
 use crate::{
 	file::{FileType, INode, Mode, Stat, fs::ext2::dirent::DirentIterator, vfs::node::Node},
-	memory::cache::{RcPageVal, RcPage},
+	memory::cache::{RcPage, RcPageVal},
 	sync::mutex::{Mutex, MutexGuard},
 };
 use core::{
@@ -88,7 +88,7 @@ pub const ROOT_DIRECTORY_INODE: u32 = 2;
 /// Container for an inode, locking its associated spinlock to avoid concurrency issues
 pub(super) struct INodeWrap<'n> {
 	_guard: MutexGuard<'n, (), false>,
-	inode: RcBlockVal<Ext2INode>,
+	inode: RcPageVal<Ext2INode>,
 }
 
 impl INodeWrap<'_> {
@@ -282,7 +282,7 @@ impl Ext2INode {
 		let off = i as u64 % (blk_size / inode_size);
 		// Adapt to the size of an inode
 		let off = off * (inode_size / 128);
-		Ok(RcBlockVal::new(blk, off as _))
+		Ok(RcPageVal::new(blk, off as _))
 	}
 
 	/// Returns filesystem's inode associated with `node`.
@@ -706,7 +706,7 @@ impl Ext2INode {
 		let Some(disk_blk_off) = self.off_to_blk(fs, off)? else {
 			return Ok(());
 		};
-		let blk = read_block(fs, disk_blk_off.get() as _)?;
+		let blk = fs.dev.ops.read_page(&fs.dev, disk_blk_off.get() as _)?;
 		// Read entry
 		let slice = unsafe { blk.slice_mut() };
 		let inner_off = (off % fs.sp.get_block_size() as u64) as usize;
@@ -747,7 +747,7 @@ impl Ext2INode {
 		let blk_size = fs.sp.get_block_size();
 		if old_disk_blk_off == new_disk_blk_off {
 			// Same block, read only one
-			let blk = read_block(fs, old_disk_blk_off.get() as _)?;
+			let blk = fs.dev.ops.read_page(&fs.dev, old_disk_blk_off.get() as _)?;
 			let old_inner_off = (old_disk_blk_off.get() % blk_size) as usize;
 			let new_inner_off = (new_disk_blk_off.get() % blk_size) as usize;
 			// Split slice to avoid double mutable borrow issue
@@ -772,8 +772,8 @@ impl Ext2INode {
 			Ok(())
 		} else {
 			// Different blocks, read both
-			let old_blk = read_block(fs, old_disk_blk_off.get() as _)?;
-			let new_blk = read_block(fs, new_disk_blk_off.get() as _)?;
+			let old_blk = fs.dev.ops.read_page(&fs.dev, old_disk_blk_off.get() as _)?;
+			let new_blk = fs.dev.ops.read_page(&fs.dev, new_disk_blk_off.get() as _)?;
 			let old_inner_off = (old_disk_blk_off.get() % blk_size) as usize;
 			let new_inner_off = (new_disk_blk_off.get() % blk_size) as usize;
 			let old_slice = unsafe { old_blk.slice_mut() };

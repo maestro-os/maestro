@@ -250,23 +250,16 @@ impl FileOps for RegularOps {
 }
 
 impl NodeOps for RegularOps {
-	fn read_page(&self, node: &Arc<Node>, off: u64) -> EResult<RcFrame> {
-		node.mapped.get_or_insert_frame(off, 0, || {
+	fn read_page(&self, node: &Arc<Node>, off: u64) -> EResult<RcPage> {
+		node.mapped.get_or_insert_page(off, || {
 			let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
 			let inode = Ext2INode::lock(node, fs)?;
 			let off: u32 = off.try_into().map_err(|_| errno!(EOVERFLOW))?;
 			let blk_off = inode
 				.translate_blk_off(off, fs)?
 				.ok_or_else(|| errno!(EOVERFLOW))?;
-			fs.dev
-				.ops
-				.read_frame(blk_off.get() as _, 0, FrameOwner::Node(node.clone()))
+			fs.dev.ops.read_page(&fs.dev, blk_off.get() as _)
 		})
-	}
-
-	fn write_frame(&self, node: &Node, frame: &RcFrame) -> EResult<()> {
-		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		fs.dev.ops.write_pages(frame.dev_offset(), frame.slice())
 	}
 
 	#[inline]
@@ -441,7 +434,7 @@ impl NodeOps for DirOps {
 			// Allocate a block
 			let blk_off = inode.alloc_content_blk(0, fs)?;
 			inode.i_block[0] = blk_off;
-			let blk = read_block(fs, blk_off as _)?;
+			let blk = fs.dev.ops.read_page(&fs.dev, blk_off as _)?;
 			// No one else can access the block since we just allocated it
 			let dst = unsafe { blk.slice_mut() };
 			// Copy
@@ -626,7 +619,7 @@ impl NodeOps for LinkOps {
 			// The target is stored like in regular files
 			let blk =
 				inode::check_blk_off(inode.i_block[0], &fs.sp)?.ok_or_else(|| errno!(EUCLEAN))?;
-			let blk = read_block(fs, blk.get() as _)?;
+			let blk = fs.dev.ops.read_page(&fs.dev, blk.get() as _)?;
 			let len = buf.copy_to_user(0, &blk.slice()[..size as usize])?;
 			Ok(len)
 		}
@@ -734,9 +727,9 @@ pub struct Superblock {
 
 impl Superblock {
 	/// Creates a new instance by reading from the given device.
-	fn read(dev: &Arc<BlkDev>) -> EResult<RcBlockVal<Self>> {
+	fn read(dev: &Arc<BlkDev>) -> EResult<RcPageVal<Self>> {
 		let page = dev.ops.read_page(dev, 0)?;
-		Ok(RcBlockVal::new(page, 1))
+		Ok(RcPageVal::new(page, 1))
 	}
 
 	/// Tells whether the superblock is valid.
@@ -785,7 +778,7 @@ struct Ext2Fs {
 	/// The device on which the filesystem is located
 	dev: Arc<BlkDev>,
 	/// The filesystem's superblock
-	sp: RcFrameVal<Superblock>,
+	sp: RcPageVal<Superblock>,
 }
 
 impl Ext2Fs {
