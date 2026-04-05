@@ -57,13 +57,9 @@ use utils::{
 struct RegularContent(Mutex<Vec<RcPage>, false>);
 
 impl NodeOps for RegularContent {
-	fn read_page(&self, _node: &Arc<Node>, off: u64) -> EResult<RcFrame> {
+	fn read_page(&self, _node: &Arc<Node>, off: u64) -> EResult<RcPage> {
 		let i: usize = off.try_into().map_err(|_| errno!(EOVERFLOW))?;
 		self.0.lock().get(i).cloned().ok_or_else(|| errno!(EINVAL))
-	}
-
-	fn write_frame(&self, _node: &Node, _frame: &RcFrame) -> EResult<()> {
-		Ok(())
 	}
 }
 
