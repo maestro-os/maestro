@@ -33,7 +33,7 @@ use crate::{
 		},
 		perm::{ROOT_GID, ROOT_UID},
 		vfs,
-		vfs::{CachePolicy, RENAME_EXCHANGE, RENAME_NOREPLACE, node::Node},
+		vfs::{CachePolicy, node::Node},
 	},
 	memory::{
 		cache::RcPage,
@@ -42,7 +42,7 @@ use crate::{
 	sync::{atomic::AtomicU64, mutex::Mutex},
 	time::clock::{Clock, current_time_sec},
 };
-use core::{any::Any, ffi::c_int, hint::unlikely, mem, sync::atomic::Ordering::Release};
+use core::{any::Any, ffi::c_int, hint::unlikely, sync::atomic::Ordering::Release};
 use utils::{
 	boxed::Box,
 	collections::{path::PathBuf, string::String, vec::Vec},
@@ -260,23 +260,11 @@ impl NodeOps for DirectoryContent {
 		old_entry: &vfs::Entry,
 		new_parent: &vfs::Entry,
 		new_entry: &vfs::Entry,
-		flags: c_int,
+		_flags: c_int,
 	) -> EResult<()> {
-		let old_node = old_entry.node();
 		let old_parent_node = old_parent.node();
 		let new_parent_node = new_parent.node();
 		let fs = downcast_fs::<TmpFS>(&*old_parent_node.fs.ops);
-		if unlikely(fs.readonly) {
-			return Err(errno!(EROFS));
-		}
-		let old_parent_ops = NodeContent::from_ops(&*old_parent_node.node_ops);
-		let NodeContent::Directory(old_parent_inner) = old_parent_ops else {
-			unreachable!();
-		};
-		let new_parent_ops = NodeContent::from_ops(&*new_parent_node.node_ops);
-		let NodeContent::Directory(new_parent_inner) = new_parent_ops else {
-			return Err(errno!(ENOTDIR));
-		};
 		// If source and destination parent are the same
 		if old_parent_node.inode == new_parent_node.inode {
 			// No need to check for cycles, hence no need to lock the rename mutex
@@ -288,59 +276,9 @@ impl NodeOps for DirectoryContent {
 		if unlikely(new_entry.is_child_of(old_entry)) {
 			return Err(errno!(EINVAL));
 		}
-		let (mut old_parent_inner, mut new_parent_inner) =
-			Mutex::lock_two(old_parent_inner, new_parent_inner);
-		let old_node_ops = NodeContent::from_ops(&*old_node.node_ops);
-		if let Some(new_ent) = new_parent_inner.find_entry_mut(&new_entry.name) {
-			// Update entry
-			let prev = mem::replace(&mut new_ent.node, old_node.clone());
-			if flags & RENAME_EXCHANGE != 0 {
-				// Set entry in the old directory. We are guaranteed that the entry already exists
-				let old_ent = old_parent_inner
-					.find_entry_mut(&old_entry.name)
-					.ok_or_else(|| errno!(EUCLEAN))?;
-				old_ent.node = prev;
-			} else {
-				// Decrement reference counter to the previous inode
-				let stat = prev.stat.lock();
-				stat.nlink = stat.nlink.saturating_sub(1);
-			}
-		} else {
-			// Insert entry
-			let ent = TmpfsDirEntry {
-				name: Cow::Owned(new_entry.name.try_to_owned()?),
-				node: node.clone(),
-			};
-			// TODO
-		}
-		if let NodeContent::Directory(inner) = old_node_ops {
-			// Update the `..` entry
-			inner.lock().set_inode(b"..", new_parent_node.clone());
-			// Update links count
-			let mut new_parent_stat = new_parent_node.stat.lock();
-			if unlikely(new_parent_stat.nlink == u16::MAX) {
-				return Err(errno!(EMFILE));
-			}
-			new_parent_stat.nlink += 1;
-		}
-		if let Some(new_ent) = new_ent {
-			*new_ent = tmpfs_ent;
-			// TODO update links count on previous entry
-		} else {
-			new_parent_inner.insert(tmpfs_ent)?;
-		}
-		drop(new_parent_inner);
-		// Remove old entry
-		let old_parent = entry.parent.as_ref().unwrap();
-		old_parent_inner.lock().remove(&entry.name);
-		// Update links count
-		if let NodeContent::Directory(_) = old_node_ops {
-			let mut old_parent_stat = old_parent_node.stat.lock();
-			old_parent_stat.nlink = old_parent_stat.nlink.saturating_sub(1);
-		}
-		Ok(())
+		let _nodes_guards = Mutex::lock_two(&old_parent_node.lock, &new_parent_node.lock);
+		todo!()
 	}
-
 }
 
 #[derive(Debug)]
@@ -359,6 +297,9 @@ impl NodeOps for LinkContent {
 pub struct TmpFS {
 	/// Inode ID bump allocator
 	next_inode: AtomicU64,
+
+	/// Lock when renaming a file, to avoid concurrency issues when looking for cycles.
+	rename_lock: Mutex<()>,
 }
 
 impl FilesystemOps for TmpFS {
@@ -436,6 +377,7 @@ impl FilesystemType for TmpFsType {
 			0,
 			Box::new(TmpFS {
 				next_inode: AtomicU64::new(2),
+				rename_lock: Mutex::new(()),
 			})?,
 			mount_flags,
 		)?;
