@@ -64,7 +64,7 @@ use crate::{
 			generic_file_read, generic_file_write,
 		},
 		vfs,
-		vfs::{CachePolicy, RENAME_EXCHANGE, RENAME_NOREPLACE, mountpoint, node::Node},
+		vfs::{CachePolicy, RENAME_EXCHANGE, mountpoint, node::Node},
 	},
 	memory::{
 		cache::{RcPage, RcPageVal},
@@ -298,9 +298,10 @@ impl NodeOps for DirOps {
 		Ok(())
 	}
 
-	fn iter_entries(&self, dir: &Node, ctx: &mut DirContext) -> EResult<()> {
-		let fs = downcast_fs::<Ext2Fs>(&*dir.fs.ops);
-		let inode = Ext2INode::lock(dir, fs)?;
+	fn iter_entries(&self, dir: &vfs::Entry, ctx: &mut DirContext) -> EResult<()> {
+		let node = dir.node();
+		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
+		let inode = Ext2INode::lock(node, fs)?;
 		// Iterate on entries
 		let mut blk = None;
 		for ent in DirentIterator::new(fs, &inode, &mut blk, ctx.off)? {
@@ -485,40 +486,6 @@ impl NodeOps for DirOps {
 		Ok(())
 	}
 
-	fn writelink(&self, node: &Node, buf: &[u8]) -> EResult<()> {
-		if unlikely(buf.len() > SYMLINK_MAX) {
-			return Err(errno!(ENAMETOOLONG));
-		}
-		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-		let mut inode_ = Ext2INode::lock(node, fs)?;
-		if inode_.get_type() != FileType::Link {
-			return Err(errno!(EINVAL));
-		}
-		// Get storage slice
-		let inline = buf.len() <= inode::SYMLINK_INLINE_LIMIT as usize;
-		if inline {
-			// Store inline
-			let dst = bytes::as_bytes_mut(&mut inode_.i_block);
-			dst[..buf.len()].copy_from_slice(buf);
-			dst[buf.len()..].fill(0);
-		} else {
-			// Allocate a block
-			let blk_off = inode_.alloc_content_blk(0, fs)?;
-			inode_.i_block[0] = blk_off;
-			let blk = fs.dev.ops.read_page(&fs.dev, blk_off as _)?;
-			// No one else can access the block since we just allocated it
-			let dst = unsafe { blk.slice_mut() };
-			// Copy
-			dst[..buf.len()].copy_from_slice(buf);
-			dst[buf.len()..].fill(0);
-		}
-		// Update size
-		inode_.set_size(&fs.sp, buf.len() as _, inline);
-		node.stat.lock().size = buf.len() as _;
-		inode_.mark_dirty();
-		Ok(())
-	}
-
 	fn rename(
 		&self,
 		old_parent: &vfs::Entry,
@@ -529,9 +496,6 @@ impl NodeOps for DirOps {
 	) -> EResult<()> {
 		let old_node = old_entry.node();
 		let fs = downcast_fs::<Ext2Fs>(&*old_node.fs.ops);
-		if unlikely(fs.readonly) {
-			return Err(errno!(EROFS));
-		}
 		let old_parent_node = old_parent.node();
 		let new_parent_node = new_parent.node();
 		// If source and destination parent are the same

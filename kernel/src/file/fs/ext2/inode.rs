@@ -703,46 +703,12 @@ impl Ext2INode {
 			.get_dirent(old_name, fs)?
 			.ok_or_else(|| errno!(ENOENT))?;
 		// Read block
-		let Some(disk_blk_off) = self.off_to_blk(fs, off)? else {
-			return Ok(());
-		};
-		let blk = fs.dev.ops.read_page(&fs.dev, disk_blk_off.get() as _)?;
-		// Read entry
-		let slice = unsafe { blk.slice_mut() };
-		let inner_off = (off % fs.sp.get_block_size() as u64) as usize;
-		let ent = Dirent::from_slice(&mut slice[inner_off..], &fs.sp)?;
-		// Attempt to reuse the same entry
-		if ent.set_name(&fs.sp, new_name) {
-			return Ok(());
-		}
-		// The entry cannot fit the new name. Create a new entry and free the previous one
-		self.add_dirent(fs, ent.inode, ent.get_name(&fs.sp), ent.get_type(&fs.sp))?;
-		ent.inode = 0; // FIXME: double borrow of `slice`
-		blk.mark_dirty();
-		Ok(())
-	}
-
-	/// Changes the name of a directory entry.
-	///
-	/// Arguments:
-	/// - `old_name` is the name of the entry to update
-	/// - `new_name` is the new name for the entry
-	///
-	/// If the entry is not large enough to fit the new name, a new entry shall be created and the
-	/// previous entry is deleted
-	pub fn rename_dirent(&mut self, fs: &Ext2Fs, old_name: &[u8], new_name: &[u8]) -> EResult<()> {
-		debug_assert_eq!(self.get_type(), FileType::Directory);
-		// Get entry offset
-		let (_, off) = self
-			.get_dirent(old_name, fs)?
-			.ok_or_else(|| errno!(ENOENT))?;
-		// Read block
 		let blk_size = fs.sp.get_block_size();
 		let file_blk_off = off / blk_size as u64;
 		let Some(disk_blk_off) = self.translate_blk_off(file_blk_off as _, fs)? else {
 			return Ok(());
 		};
-		let blk = read_block(fs, disk_blk_off.get() as _)?;
+		let blk = fs.dev.ops.read_page(&fs.dev, disk_blk_off.get() as _)?;
 		// Read entry
 		let slice = unsafe { blk.slice_mut() };
 		let inner_off = (off % blk_size as u64) as usize;
