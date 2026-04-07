@@ -215,18 +215,23 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	/// Returns the entry for the given key.
 	pub fn entry(&mut self, key: K) -> Entry<'_, K, V, H> {
 		let hash = hash::<_, H>(&key);
-		match self.inner.find_slot(&key, hash, true) {
-			Some((slot_off, true)) => Entry::Occupied(OccupiedEntry {
+		// First check if the key exists without stopping at deleted slots, to avoid
+		// returning a false vacant result for a key that exists past a deleted entry
+		if let Some((slot_off, true)) = self.inner.find_slot(&key, hash, false) {
+			return Entry::Occupied(OccupiedEntry {
 				key,
 				inner: self.inner.get_slot_mut(slot_off),
-			}),
+			});
+		}
+		// Key not found; find an insertion slot, reusing deleted slots if available
+		match self.inner.find_slot(&key, hash, true) {
 			Some((slot_off, false)) => Entry::Vacant(VacantEntry {
 				hm: self,
 				key,
 				hash,
 				slot_off: Some(slot_off),
 			}),
-			None => Entry::Vacant(VacantEntry {
+			_ => Entry::Vacant(VacantEntry {
 				hm: self,
 				key,
 				hash,
