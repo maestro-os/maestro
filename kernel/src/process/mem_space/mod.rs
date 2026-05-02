@@ -663,6 +663,7 @@ impl MemSpace {
 	/// If a mapping to be modified is associated with a file, and the file doesn't have the
 	/// matching permissions, the function returns an error.
 	pub fn set_prot(&self, mut addr: VirtAddr, pages: usize, prot: u8) -> EResult<()> {
+		let start = addr;
 		let end = pages
 			.checked_mul(PAGE_SIZE)
 			.and_then(|len| addr.0.checked_add(len))
@@ -676,38 +677,36 @@ impl MemSpace {
 				.ok_or_else(|| errno!(ENOMEM))?;
 			check_write_perm(mapping.file.as_ref(), prot)?;
 			let mapping_addr = mapping.addr;
-			let mapping_len = mapping.size.get() * PAGE_SIZE;
-			let mapping_end = mapping_addr + mapping_len;
-			if addr <= mapping_addr && end >= mapping_end.0 {
+			let mapping_pages = mapping.size.get();
+			let mapping_end = mapping_addr.0 + mapping_pages * PAGE_SIZE;
+			// Slice of this mapping covered by [addr, end)
+			let inner_off = (addr.0 - mapping_addr.0) / PAGE_SIZE;
+			let slice_pages = (min(end, mapping_end) - addr.0) / PAGE_SIZE;
+			if inner_off == 0 && slice_pages == mapping_pages {
 				// The mapping is entirely contained within the range, just change its protection
 				mapping.prot = prot;
-				addr.0 += mapping_len;
 			} else {
-				// The mapping has to be split
-				let (off, prot_next) = if addr >= mapping_addr {
-					(mapping_addr.0 - addr.0, true)
-				} else {
-					(end - mapping_addr.0, false)
-				};
-				let (prev, _, next) = mapping.split(off / PAGE_SIZE, 0)?;
-				// Remove the old mapping and insert new ones
+				// Cut off the head [mapping_addr, addr) which keeps its old protection
+				let (head, _, tail) = mapping.split(inner_off, 0)?;
 				transaction.remove_mapping(mapping_addr)?;
-				if let Some(mut m) = prev {
-					if !prot_next {
-						m.prot = prot;
-					}
+				if let Some(m) = head {
 					transaction.insert_mapping(m)?;
 				}
-				if let Some(mut m) = next {
-					if prot_next {
+				// Split the tail into the protected slice and the unchanged remainder
+				if let Some(tail) = tail {
+					let (mid, _, rest) = tail.split(slice_pages, 0)?;
+					if let Some(mut m) = mid {
 						m.prot = prot;
+						transaction.insert_mapping(m)?;
 					}
-					transaction.insert_mapping(m)?;
+					if let Some(m) = rest {
+						transaction.insert_mapping(m)?;
+					}
 				}
-				addr.0 += off;
 			}
+			addr.0 = min(end, mapping_end);
 		}
-		shootdown_range(addr, pages, self.bound_cpus());
+		shootdown_range(start, pages, self.bound_cpus());
 		Ok(())
 	}
 
