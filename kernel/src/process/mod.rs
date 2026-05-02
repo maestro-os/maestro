@@ -750,11 +750,12 @@ impl Process {
 			let old_state = this.lock_state();
 			if from_mask & old_state as u8 != 0 {
 				this.state.store(STATE_LOCK | State::Running as u8, Release);
-				#[cfg(feature = "strace")]
+				// FIXME: deadlock
+				/*#[cfg(feature = "strace")]
 				println!(
 					"[strace {pid}] changed state: {old_state:?} -> Running",
 					pid = this.get_pid()
-				);
+				);*/
 				enqueue(this);
 				// If the woken up process has a higher priority than the current, preempt
 				if Process::current().cmp_priority(this) == Ordering::Less {
@@ -1077,11 +1078,12 @@ pub fn set_state(new_state: State) {
 		}
 		// Update state
 		proc.state.store(STATE_LOCK | new_state as u8, Release);
-		#[cfg(feature = "strace")]
+		// FIXME: deadlock
+		/*#[cfg(feature = "strace")]
 		println!(
 			"[strace {pid}] changed state: {old_state:?} -> {new_state:?}",
 			pid = proc.get_pid()
-		);
+		);*/
 		// Enqueue or dequeue the process
 		if new_state == State::Running {
 			enqueue(&proc);

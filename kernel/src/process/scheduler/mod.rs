@@ -166,13 +166,14 @@ pub(crate) fn enqueue(proc: &Arc<Process>) {
 		})
 		// There is at least one CPU on the system
 		.unwrap();
-	// Enqueue
-	#[cfg(feature = "strace")]
+	// FIXME: deadlock
+	/*#[cfg(feature = "strace")]
 	println!(
 		"[strace {}] enqueue on core {}",
 		proc.get_pid(),
 		cpu.apic_id
-	);
+	);*/
+	// Enqueue
 	let mut run_queue = cpu.sched.run_queue.lock();
 	run_queue.queue.insert_back(proc.clone());
 	run_queue.len += 1;
@@ -187,9 +188,10 @@ pub(crate) fn dequeue(proc: &Arc<Process>) {
 	let Some(cpu) = proc.links.lock().cur_cpu else {
 		return;
 	};
+	// FIXME: deadlock
+	/*#[cfg(feature = "strace")]
+	println!("[strace {}] dequeue", proc.get_pid());*/
 	// Remove from queue
-	#[cfg(feature = "strace")]
-	println!("[strace {}] dequeue", proc.get_pid());
 	let mut run_queue = cpu.sched.run_queue.lock();
 	unsafe {
 		run_queue.queue.remove(proc);
