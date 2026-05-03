@@ -22,6 +22,7 @@ use crate::{
 	file::{
 		FileType, INode, Stat,
 		fs::{FileOps, Filesystem, NodeOps},
+		lock::Flock,
 	},
 	memory::{cache::MappedNode, user::UserSlice},
 	sync::{mutex::Mutex, spin::Spin},
@@ -59,6 +60,9 @@ pub struct Node {
 	/// The node as mapped
 	pub mapped: MappedNode,
 
+	/// BSD flavour advisory lock state
+	pub flock: Flock,
+
 	/// LRU node
 	lru: ListNode,
 }
@@ -90,6 +94,8 @@ impl Node {
 
 			lock: Default::default(),
 			mapped: Default::default(),
+
+			flock: Default::default(),
 
 			lru: Default::default(),
 		}

@@ -26,6 +26,7 @@
 
 pub mod fd;
 pub mod fs;
+pub mod lock;
 pub mod perm;
 pub mod pipe;
 pub mod socket;
@@ -36,6 +37,7 @@ use crate::{
 	device::{BLK_DEVICES, BlkDev, BlkDevFileOps, CHAR_DEVICES, DeviceID, DeviceType},
 	file::{
 		fs::FileOps,
+		lock::FlockMode,
 		perm::{Gid, Uid},
 		pipe::PipeBuffer,
 		socket::Socket,
@@ -44,7 +46,7 @@ use crate::{
 	memory::user::UserSlice,
 	net::{SocketDesc, SocketDomain, SocketType},
 	println,
-	sync::{atomic::AtomicU64, once::OnceInit, spin::Spin},
+	sync::{atomic::AtomicU64, mutex::Mutex, once::OnceInit, spin::Spin},
 	time::{
 		clock::{Clock, current_time_sec},
 		unit::Timestamp,
@@ -347,6 +349,9 @@ pub struct File {
 	flags: Spin<i32>,
 	/// The current offset in the file
 	pub off: AtomicU64,
+
+	/// `flock` mode currently held by this open file description.
+	pub flock_mode: Mutex<FlockMode, false>,
 }
 
 impl File {
@@ -392,6 +397,8 @@ impl File {
 			ops,
 			flags: Spin::new(flags),
 			off: Default::default(),
+
+			flock_mode: Default::default(),
 		};
 		file.ops.acquire(&file);
 		Ok(Arc::new(file)?)
@@ -406,6 +413,8 @@ impl File {
 			ops,
 			flags: Spin::new(flags),
 			off: Default::default(),
+
+			flock_mode: Default::default(),
 		};
 		file.ops.acquire(&file);
 		Ok(Arc::new(file)?)
@@ -527,6 +536,13 @@ impl File {
 	/// Closes the file, removing the underlying node if no link remain and this was the last
 	/// use of it.
 	pub fn close(self) -> EResult<()> {
+		// Release any flock lease held
+		let mode = *self.flock_mode.lock();
+		if mode != FlockMode::None
+			&& let Some(node) = self.vfs_entry.node.as_ref()
+		{
+			node.flock.release(mode);
+		}
 		self.ops.release(&self);
 		vfs::Entry::release(self.vfs_entry)
 	}

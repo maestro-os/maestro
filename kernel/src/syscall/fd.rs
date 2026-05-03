@@ -19,7 +19,10 @@
 //! File descriptors handling system calls.
 
 use crate::{
-	file::fd::{NewFDConstraint, fd_to_file},
+	file::{
+		fd::{NewFDConstraint, fd_to_file},
+		lock::FlockMode,
+	},
 	memory::user::{UserIOVec, UserPtr, UserSlice},
 	process::Process,
 };
@@ -37,6 +40,15 @@ const SEEK_SET: u32 = 0;
 const SEEK_CUR: u32 = 1;
 /// Sets the offset relative to the end of the file.
 const SEEK_END: u32 = 2;
+
+/// `flock`: Shared lock
+const LOCK_SH: c_int = 1;
+/// `flock`: Exclusive lock
+const LOCK_EX: c_int = 2;
+/// `flock`: Non-blocking
+const LOCK_NB: c_int = 4;
+/// `flock`: Unlock
+const LOCK_UN: c_int = 8;
 
 pub fn read(fd: c_int, buf: *mut u8, count: usize) -> EResult<usize> {
 	let buf = UserSlice::from_user(buf, count)?;
@@ -339,6 +351,50 @@ pub fn dup2(oldfd: c_int, newfd: c_int) -> EResult<usize> {
 		false,
 	)?;
 	Ok(newfd_id as _)
+}
+
+pub fn flock(fd: c_int, op: c_int) -> EResult<usize> {
+	let non_blocking = op & LOCK_NB != 0;
+	let op = match op & !LOCK_NB {
+		LOCK_SH => FlockMode::Shared,
+		LOCK_EX => FlockMode::Exclusive,
+		LOCK_UN => FlockMode::None,
+		_ => return Err(errno!(EINVAL)),
+	};
+	// Resolve the OFD, then drop the fd-table lock before potentially blocking
+	let open_file = Process::current()
+		.file_descriptors()
+		.lock()
+		.get_fd(fd)?
+		.get_file()
+		.clone();
+	let Some(node) = open_file.vfs_entry.node.as_ref() else {
+		return Err(errno!(EBADF));
+	};
+	let mut cur = open_file.flock_mode.lock();
+	if *cur == op {
+		return Ok(0);
+	}
+	match (*cur, op) {
+		(FlockMode::None, FlockMode::Shared) => node.flock.acquire(false, non_blocking)?,
+		(FlockMode::None, FlockMode::Exclusive) => node.flock.acquire(true, non_blocking)?,
+		(_, FlockMode::None) => node.flock.release(*cur),
+		// Conversions: release the current lease, then acquire the new one. Linux semantics does
+		// not require this to be atomic
+		(FlockMode::Shared, FlockMode::Exclusive) => {
+			node.flock.release(FlockMode::Shared);
+			*cur = FlockMode::None;
+			node.flock.acquire(true, non_blocking)?;
+		}
+		(FlockMode::Exclusive, FlockMode::Shared) => {
+			node.flock.release(FlockMode::Exclusive);
+			*cur = FlockMode::None;
+			node.flock.acquire(false, non_blocking)?;
+		}
+		_ => unreachable!(),
+	}
+	*cur = op;
+	Ok(0)
 }
 
 pub fn close(fd: c_int) -> EResult<usize> {

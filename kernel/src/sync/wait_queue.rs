@@ -24,7 +24,7 @@ use crate::{
 	sync::spin::IntSpin,
 };
 use core::{fmt, fmt::Formatter};
-use utils::{errno, errno::EResult, list, list_type};
+use utils::{errno, errno::EResult, list, list_type, ptr::arc::Arc};
 
 /// Queue of processes waiting on a resource.
 ///
@@ -44,20 +44,23 @@ impl WaitQueue {
 		Self(IntSpin::new(list!(Process, wait_queue)))
 	}
 
-	/// Makes the current process wait (sleep) until woken up.
-	///
-	/// If the process has been interrupted while waiting, the function returns [`errno::EINTR`].
-	pub fn wait(&self) -> EResult<()> {
-		// Enqueue and put the process to sleep
-		self.0.lock().insert_back(Process::current());
+	fn enqueue(&self) {
+		let mut queue = self.0.lock();
+		queue.insert_back(Process::current());
 		process::set_state(State::IntSleeping);
-		// Switch context
+	}
+
+	fn dequeue(&self, proc: &Arc<Process>) {
+		unsafe {
+			self.0.lock().remove(proc);
+		}
+	}
+
+	fn sleep(&self) -> EResult<()> {
 		schedule();
 		// Make sure the process is dequeued
 		let proc = Process::current();
-		unsafe {
-			self.0.lock().remove(&proc);
-		}
+		self.dequeue(&proc);
 		// If woken up by a signal
 		if proc.has_pending_signal() {
 			return Err(errno!(EINTR));
@@ -65,15 +68,27 @@ impl WaitQueue {
 		Ok(())
 	}
 
+	/// Makes the current process wait (sleep) until woken up.
+	///
+	/// If the process has been interrupted while waiting, the function returns [`errno::EINTR`].
+	pub fn wait(&self) -> EResult<()> {
+		self.enqueue();
+		self.sleep()
+	}
+
 	/// Makes the current process wait until the given closure returns `Some`.
 	///
 	/// If waiting is interrupted by a signal handler, the function returns [`errno::EINTR`].
 	pub fn wait_until<F: FnMut() -> Option<T>, T>(&self, mut f: F) -> EResult<T> {
 		loop {
+			self.enqueue();
 			if let Some(val) = f() {
+				let proc = Process::current();
+				self.dequeue(&proc);
+				process::cancel_sleep();
 				break Ok(val);
 			}
-			self.wait()?;
+			self.sleep()?;
 		}
 	}
 

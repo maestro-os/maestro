@@ -1127,6 +1127,17 @@ pub fn set_state(new_state: State) {
 	});
 }
 
+/// Cancels sleeping state for the current process.
+///
+/// **Important**: the function assumes the current process is in locked [`State::IntSleeping`] or
+/// [`State::Sleeping`] state.
+pub fn cancel_sleep() {
+	let proc = Process::current();
+	proc.state.store(State::Running as u8, Release);
+	// `set_state` has dequeued the process
+	enqueue(&proc);
+}
+
 /// Exits the current process with the given `status`.
 ///
 /// This function changes the process's status to `Zombie`.
