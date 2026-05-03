@@ -60,7 +60,7 @@ use crate::{
 		execve::execveat,
 		fcntl::{fcntl, fcntl64},
 		fd::{
-			_llseek, close, dup, dup2, lseek, pread64, preadv, preadv2, pwrite64, pwritev,
+			_llseek, close, dup, dup2, flock, lseek, pread64, preadv, preadv2, pwrite64, pwritev,
 			pwritev2, read, readv, write, writev,
 		},
 		fs::{
@@ -397,7 +397,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		0x08c => syscall!(_llseek, frame),
 		0x08d => syscall!(getdents, frame),
 		0x08e => syscall!(_newselect, frame),
-		// TODO 0x08f => syscall!(flock, frame),
+		0x08f => syscall!(flock, frame),
 		0x090 => syscall!(msync, frame),
 		0x091 => syscall!(readv, frame),
 		0x092 => syscall!(writev, frame),
@@ -775,7 +775,7 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		// TODO 0x046 => syscall!(msgrcv, frame),
 		// TODO 0x047 => syscall!(msgctl, frame),
 		0x048 => syscall!(fcntl, frame),
-		// TODO 0x049 => syscall!(flock, frame),
+		0x049 => syscall!(flock, frame),
 		0x04a => syscall!(fsync, frame),
 		0x04b => syscall!(fdatasync, frame),
 		0x04c => syscall!(truncate, frame),
