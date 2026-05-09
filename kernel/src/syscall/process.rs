@@ -29,7 +29,10 @@ use crate::{
 		ForkOptions, PROCESS_FLAG_LINUX, Process, State,
 		pid::Pid,
 		rusage::Rusage,
-		scheduler::{cpu::CPU, schedule},
+		scheduler::{
+			cpu::{CPU, iter_online},
+			defer, schedule,
+		},
 		user_desc::UserDesc,
 	},
 };
@@ -38,8 +41,9 @@ use core::{
 	hint::unlikely,
 	ptr::null_mut,
 	sync::atomic::{
-		AtomicUsize,
+		AtomicUsize, Ordering,
 		Ordering::{Acquire, Release},
+		fence,
 	},
 };
 use utils::{errno, errno::EResult};
@@ -169,6 +173,29 @@ const PRIO_PROCESS: c_int = 0;
 const PRIO_PGRP: c_int = 1;
 /// Process priority type: User
 const PRIO_USER: c_int = 2;
+
+/// `membarrier`: Query the supported commands. Returns a bitmask of supported commands.
+const MEMBARRIER_CMD_QUERY: c_int = 0;
+/// `membarrier`: Issue a memory barrier on all running threads in the system.
+const MEMBARRIER_CMD_GLOBAL: c_int = 1 << 0;
+/// `membarrier`: Expedited version of [`MEMBARRIER_CMD_GLOBAL`].
+const MEMBARRIER_CMD_GLOBAL_EXPEDITED: c_int = 1 << 1;
+/// `membarrier`: Register intent to use [`MEMBARRIER_CMD_GLOBAL_EXPEDITED`].
+const MEMBARRIER_CMD_REGISTER_GLOBAL_EXPEDITED: c_int = 1 << 2;
+/// `membarrier`: Issue a memory barrier on all running threads of the calling process.
+const MEMBARRIER_CMD_PRIVATE_EXPEDITED: c_int = 1 << 3;
+/// `membarrier`: Register intent to use [`MEMBARRIER_CMD_PRIVATE_EXPEDITED`].
+const MEMBARRIER_CMD_REGISTER_PRIVATE_EXPEDITED: c_int = 1 << 4;
+
+/// `membarrier`: Restricts the barrier to a single CPU, given by `cpu_id`.
+const MEMBARRIER_CMD_FLAG_CPU: c_int = 1 << 0;
+
+/// Bitmask of commands supported by [`membarrier`].
+const MEMBARRIER_SUPPORTED: c_int = MEMBARRIER_CMD_GLOBAL
+	| MEMBARRIER_CMD_GLOBAL_EXPEDITED
+	| MEMBARRIER_CMD_REGISTER_GLOBAL_EXPEDITED
+	| MEMBARRIER_CMD_PRIVATE_EXPEDITED
+	| MEMBARRIER_CMD_REGISTER_PRIVATE_EXPEDITED;
 
 pub fn getpid() -> EResult<usize> {
 	Ok(Process::current().get_pid() as _)
@@ -574,4 +601,28 @@ pub fn _exit(status: c_int) -> EResult<usize> {
 
 pub fn exit_group(status: c_int) -> EResult<usize> {
 	do_exit(status as _, true);
+}
+
+pub fn membarrier(cmd: c_int, flags: c_int, _cpu_id: c_int) -> EResult<usize> {
+	if unlikely(flags & !MEMBARRIER_CMD_FLAG_CPU != 0) {
+		return Err(errno!(EINVAL));
+	}
+	match cmd {
+		MEMBARRIER_CMD_QUERY => Ok(MEMBARRIER_SUPPORTED as usize),
+		MEMBARRIER_CMD_GLOBAL | MEMBARRIER_CMD_GLOBAL_EXPEDITED => {
+			defer::synchronous_multiple(iter_online(), || fence(Ordering::SeqCst));
+			Ok(0)
+		}
+		MEMBARRIER_CMD_PRIVATE_EXPEDITED => {
+			let proc = Process::current();
+			let mem_space = proc.mem_space();
+			defer::synchronous_multiple(mem_space.bound_cpus(), || fence(Ordering::SeqCst));
+			Ok(0)
+		}
+		MEMBARRIER_CMD_REGISTER_GLOBAL_EXPEDITED | MEMBARRIER_CMD_REGISTER_PRIVATE_EXPEDITED => {
+			// TODO
+			Ok(0)
+		}
+		_ => Err(errno!(EINVAL)),
+	}
 }
