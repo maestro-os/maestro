@@ -706,6 +706,7 @@ impl MemSpace {
 			}
 			addr.0 = min(end, mapping_end);
 		}
+		transaction.commit();
 		shootdown_range(start, pages, self.bound_cpus());
 		Ok(())
 	}
