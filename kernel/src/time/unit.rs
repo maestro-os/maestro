@@ -34,7 +34,7 @@ pub type UTimestamp = u64;
 pub type ClockIdT = c_int;
 // FIXME: size must match the size of a pointer in userspace
 /// Equivalent of POSIX `timer_t`.
-pub type TimerT = usize;
+pub type TimerT = c_int;
 
 /// A structure describing a timestamp in userspace.
 pub trait TimeUnit: Sized + Clone + Copy + Debug {
@@ -229,7 +229,7 @@ impl PartialOrd for Timespec32 {
 	}
 }
 
-/// A timer's state.
+/// A timer's state, 32-bit ABI.
 #[derive(Clone, Copy, Debug, Default)]
 #[repr(C)]
 pub struct ITimerspec32 {
@@ -237,6 +237,16 @@ pub struct ITimerspec32 {
 	pub it_interval: Timespec32,
 	/// Start value of the timer.
 	pub it_value: Timespec32,
+}
+
+/// A timer's state, 64-bit ABI.
+#[derive(Clone, Copy, Debug, Default)]
+#[repr(C)]
+pub struct ITimerspec {
+	/// The interval between each firing of the timer.
+	pub it_interval: Timespec,
+	/// Start value of the timer.
+	pub it_value: Timespec,
 }
 
 /// Legacy structure for `utime`

@@ -26,6 +26,7 @@ mod execve;
 mod fcntl;
 mod fd;
 mod fs;
+mod futex;
 mod getrandom;
 mod host;
 pub mod ioctl;
@@ -70,6 +71,7 @@ use crate::{
 			umask, unlink, unlinkat, utimensat,
 		},
 		fs::{futimesat, mkdirat, mknodat, readlinkat, renameat, utime, utimes},
+		futex::{futex, futex_time64},
 		getrandom::getrandom,
 		host::{reboot, sethostname, sysinfo, uname},
 		ioctl::ioctl,
@@ -99,7 +101,7 @@ use crate::{
 		sync::{fdatasync, fsync, msync, sync, syncfs},
 		time::{
 			clock_gettime, clock_gettime64, nanosleep32, nanosleep64, time32, time64,
-			timer_create, timer_delete, timer_settime,
+			timer_create, timer_delete, timer_settime, timer_settime64,
 		},
 		user::{
 			getegid, geteuid, getgid, getgroups, getgroups32, getresgid, getresuid, getuid,
@@ -492,7 +494,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		// TODO 0x0ed => syscall!(fremovexattr, frame),
 		0x0ee => syscall!(tkill, frame),
 		// TODO 0x0ef => syscall!(sendfile64, frame),
-		// TODO 0x0f0 => syscall!(futex, frame),
+		0x0f0 => syscall!(futex, frame),
 		0x0f1 => syscall!(sched_setaffinity, frame),
 		0x0f2 => syscall!(sched_getaffinity, frame),
 		0x0f3 => syscall!(set_thread_area, frame),
@@ -653,7 +655,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		// TODO 0x196 => syscall!(clock_getres_time64, frame),
 		// TODO 0x197 => syscall!(clock_nanosleep_time64, frame),
 		// TODO 0x198 => syscall!(timer_gettime64, frame),
-		// TODO 0x199 => syscall!(timer_settime64, frame),
+		0x199 => syscall!(timer_settime64, frame),
 		// TODO 0x19a => syscall!(timerfd_gettime64, frame),
 		// TODO 0x19b => syscall!(timerfd_settime64, frame),
 		// TODO 0x19c => syscall!(utimensat_time64, frame),
@@ -665,7 +667,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		// TODO 0x1a3 => syscall!(mq_timedreceive_time64, frame),
 		// TODO 0x1a4 => syscall!(semtimedop_time64, frame),
 		// TODO 0x1a5 => syscall!(rt_sigtimedwait_time64, frame),
-		// TODO 0x1a6 => syscall!(futex_time64, frame),
+		0x1a6 => syscall!(futex_time64, frame),
 		// TODO 0x1a7 => syscall!(sched_rr_get_interval_time64, frame),
 		// TODO 0x1a8 => syscall!(pidfd_send_signal, frame),
 		// TODO 0x1a9 => syscall!(io_uring_setup, frame),
@@ -904,7 +906,7 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		// TODO 0x0c7 => syscall!(fremovexattr, frame),
 		0x0c8 => syscall!(tkill, frame),
 		0x0c9 => syscall!(time64, frame),
-		// TODO 0x0ca => syscall!(futex, frame),
+		0x0ca => syscall!(futex_time64, frame),
 		0x0cb => syscall!(sched_setaffinity, frame),
 		0x0cc => syscall!(sched_getaffinity, frame),
 		0x0cd => syscall!(set_thread_area, frame),
@@ -925,7 +927,7 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		// TODO 0x0dc => syscall!(semtimedop, frame),
 		// TODO 0x0dd => syscall!(fadvise64, frame),
 		0x0de => syscall!(timer_create, frame),
-		0x0df => syscall!(timer_settime, frame),
+		0x0df => syscall!(timer_settime64, frame),
 		// TODO 0x0e0 => syscall!(timer_gettime, frame),
 		// TODO 0x0e1 => syscall!(timer_getoverrun, frame),
 		0x0e2 => syscall!(timer_delete, frame),

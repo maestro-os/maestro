@@ -92,11 +92,47 @@ impl WaitQueue {
 		}
 	}
 
+	/// Atomically enqueues the current process, then runs `check`.
+	///
+	/// If `check` returns an error, the process is dequeued without sleeping and the error is
+	/// propagated. Otherwise the process sleeps until woken.
+	///
+	/// If sleeping is interrupted by a signal handler, the function returns [`errno::EINTR`].
+	pub fn wait_check<F: FnOnce() -> EResult<()>>(&self, check: F) -> EResult<()> {
+		self.enqueue();
+		if let Err(e) = check() {
+			let proc = Process::current();
+			self.dequeue(&proc);
+			process::cancel_sleep();
+			return Err(e);
+		}
+		self.sleep()
+	}
+
+	/// Returns whether the queue has no pending waiters.
+	pub fn is_empty(&self) -> bool {
+		self.0.lock().is_empty()
+	}
+
 	/// Wakes the next process in queue, if any.
 	pub fn wake_next(&self) {
 		if let Some(proc) = self.0.lock().remove_front() {
 			Process::wake_from(&proc, State::IntSleeping as u8);
 		}
+	}
+
+	/// Wakes up to `n` processes in queue. Returns the number of processes woken up.
+	pub fn wake_n(&self, n: usize) -> usize {
+		let mut queue = self.0.lock();
+		let mut count = 0;
+		while count < n {
+			let Some(proc) = queue.remove_front() else {
+				break;
+			};
+			Process::wake_from(&proc, State::IntSleeping as u8);
+			count += 1;
+		}
+		count
 	}
 
 	/// Wakes all processes in queue, if any.

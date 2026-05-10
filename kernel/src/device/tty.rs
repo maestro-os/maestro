@@ -58,7 +58,7 @@ impl TTYDeviceHandle {
 			return Err(errno!(EIO));
 		}
 		if matches!(
-			proc.sig_handlers.lock()[Signal::SIGTTIN as usize],
+			proc.sig_handlers.lock()[Signal::SIGTTIN.0 as usize],
 			SignalHandler::Ignore
 		) {
 			return Err(errno!(EIO));
@@ -81,7 +81,7 @@ impl TTYDeviceHandle {
 			return Err(errno!(EIO));
 		}
 		if matches!(
-			proc.sig_handlers.lock()[Signal::SIGTTOU as usize],
+			proc.sig_handlers.lock()[Signal::SIGTTOU.0 as usize],
 			SignalHandler::Ignore
 		) {
 			return Err(errno!(EIO));

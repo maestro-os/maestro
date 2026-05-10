@@ -425,8 +425,10 @@ impl TTY {
 		let mut i = 0;
 		while i < buf.len() {
 			let c = buf[i];
-			if c == ESCAPE {
-				let j = ansi::handle(self, &mut display, &buf[i..buf.len()]);
+			// Route through the ANSI handler when starting a new escape sequence OR continuing
+			// one that was left partial by a previous `write()` call.
+			if c == ESCAPE || !display.ansi_buffer.is_empty() {
+				let j = ansi::handle(self, &mut display, &buf[i..]);
 				if j > 0 {
 					i += j;
 					continue;
@@ -437,6 +439,21 @@ impl TTY {
 		}
 		display.update_screen();
 		display.update_cursor();
+	}
+
+	/// Injects bytes directly into the input buffer, bypassing ECHO and canonical mode
+	/// processing.
+	pub(crate) fn inject_input(&self, buffer: &[u8]) {
+		{
+			let mut input = self.input.lock();
+			let off = input.input_size;
+			let avail = input.buf.len() - off;
+			let len = min(buffer.len(), avail);
+			input.buf[off..off + len].copy_from_slice(&buffer[..len]);
+			input.input_size += len;
+			input.available_size += len;
+		}
+		self.rd_queue.wake_next();
 	}
 
 	// TODO Implement IUTF8
@@ -512,96 +529,78 @@ impl TTY {
 	/// terminal input.
 	pub fn input(&self, buffer: &[u8]) {
 		let termios = self.get_termios().clone();
-		let mut input = self.input.lock();
-		// The length to write to the input buffer
-		let len = min(buffer.len(), input.buf.len() - input.input_size);
-		// The slice containing the input
-		let buffer = &buffer[..len];
 
+		// Echo without holding the input lock to avoid display -> input vs input -> display lock
+		// inversion against `write` (which holds `display` and may call `inject_input`)
 		if termios.c_lflag & ECHO != 0 {
-			// Write onto the TTY
 			self.write(buffer);
 		}
 		// TODO If ECHO is disabled but ICANON and ECHONL are set, print newlines
 
 		// TODO Implement IGNBRK and BRKINT
 		// TODO Implement parity checking
+		// TODO IXON / IXANY / IXOFF
 
-		// Writing to the input buffer
-		// TODO Put in a different function
+		// Mutate the input buffer under the input lock only.
+		let mut erase_count = 0usize;
+		let stored_len;
 		{
+			let mut input = self.input.lock();
+			let len = min(buffer.len(), input.buf.len() - input.input_size);
+			stored_len = len;
+			let buffer = &buffer[..len];
 			let input_size = input.input_size;
 			utils::slice_copy(buffer, &mut input.buf[input_size..]);
 			let new_bytes = &mut input.buf[input_size..(input_size + len)];
-
 			for b in new_bytes {
 				if termios.c_iflag & ISTRIP != 0 {
-					// Stripping eighth bit
 					*b &= 1 << 7;
 				}
-
 				// TODO Implement IGNCR (ignore carriage return)
-
-				if termios.c_iflag & INLCR != 0 {
-					// Translating NL to CR
-					if *b == b'\n' {
-						*b = b'\r';
-					}
+				if termios.c_iflag & INLCR != 0 && *b == b'\n' {
+					*b = b'\r';
 				}
-
-				if termios.c_iflag & ICRNL != 0 {
-					// Translating CR to NL
-					if *b == b'\r' {
-						*b = b'\n';
-					}
+				if termios.c_iflag & ICRNL != 0 && *b == b'\r' {
+					*b = b'\n';
 				}
-
-				if termios.c_iflag & IUCLC != 0 {
-					// Translating uppercase characters to lowercase
-					if (*b as char).is_ascii_uppercase() {
-						*b = (*b as char).to_ascii_uppercase() as u8;
-					}
+				if termios.c_iflag & IUCLC != 0 && (*b as char).is_ascii_uppercase() {
+					*b = (*b as char).to_ascii_uppercase() as u8;
 				}
 			}
 			input.input_size += len;
-		}
-
-		// TODO IXON
-		// TODO IXANY
-		// TODO IXOFF
-
-		if termios.c_lflag & ICANON != 0 {
-			// Processing input
-			let mut i = input.input_size - len;
-			while i < input.input_size {
-				let b = input.buf[i];
-
-				if b == termios.c_cc[VEOF] || b == b'\n' {
-					// Making the input available for reading
-					input.available_size = i + 1;
-
-					i += 1;
-				} else if b == 0xf7 {
-					self.erase();
-				} else {
-					i += 1;
+			if termios.c_lflag & ICANON != 0 {
+				let mut i = input.input_size - len;
+				while i < input.input_size {
+					let b = input.buf[i];
+					if b == termios.c_cc[VEOF] || b == b'\n' {
+						input.available_size = i + 1;
+						i += 1;
+					} else if b == 0xf7 {
+						// Drop the 0xf7 byte from the input buffer
+						let end = input.input_size;
+						input.buf.copy_within((i + 1)..end, i);
+						input.input_size -= 1;
+						erase_count += 1;
+					} else {
+						i += 1;
+					}
 				}
+			} else {
+				input.available_size = input.input_size;
 			}
-		} else {
-			// Making the input available for reading
-			input.available_size = input.input_size;
 		}
 
-		// Sending signals if enabled
+		// Now-lock-free post-processing: visual erase, ECHOCTL printing, signal delivery.
+		for _ in 0..erase_count {
+			self.erase();
+		}
 		if termios.c_lflag & ISIG != 0 {
-			for b in buffer {
-				// Printing special control characters if enabled
+			let pgrp = self.get_pgrp();
+			for b in &buffer[..stored_len] {
 				if termios.c_lflag & (ECHO | ECHOCTL) == ECHO | ECHOCTL && *b >= 1 && *b < 32 {
 					self.write(b"^A");
 				}
-
 				// TODO Handle every special characters
-				let pgrp = self.get_pgrp();
 				if *b == termios.c_cc[VINTR] {
 					send_signal(Signal::SIGINT, pgrp);
 				} else if *b == termios.c_cc[VQUIT] {
@@ -618,24 +617,32 @@ impl TTY {
 	/// Erases `count` characters in TTY.
 	pub fn erase(&self) {
 		let termios = self.get_termios();
-		let mut input = self.input.lock();
-		if termios.c_lflag & ICANON != 0 {
-			if input.input_size == 0 {
+		// Release the input lock before taking the display lock so we don't form a cycle
+		// against `write` -> `inject_input` (display -> input)
+		let visual_erase;
+		{
+			let mut input = self.input.lock();
+			if termios.c_lflag & ICANON != 0 {
+				if input.input_size == 0 {
+					return;
+				}
+				input.input_size -= 1;
+				visual_erase = termios.c_lflag & ECHOE != 0;
+			} else {
+				drop(input);
+				self.input(&[0x7f]);
 				return;
 			}
-			if termios.c_lflag & ECHOE != 0 {
-				let mut disp = self.display.lock();
-				// TODO Handle tab characters
-				disp.cursor_backward(1);
-				let cursor_x = disp.cursor_x;
-				let cursor_y = disp.cursor_y;
-				disp.history[cursor_y][cursor_x] = EMPTY_CHAR;
-				disp.update_screen();
-				disp.update_cursor();
-			}
-			input.input_size -= 1;
-		} else {
-			self.input(&[0x7f]);
+		}
+		if visual_erase {
+			let mut disp = self.display.lock();
+			// TODO Handle tab characters
+			disp.cursor_backward(1);
+			let cursor_x = disp.cursor_x;
+			let cursor_y = disp.cursor_y;
+			disp.history[cursor_y][cursor_x] = EMPTY_CHAR;
+			disp.update_screen();
+			disp.update_cursor();
 		}
 		self.rd_queue.wake_next();
 	}

@@ -80,7 +80,7 @@ pub fn signal(signum: c_int, handler: *const c_void) -> EResult<usize> {
 	let proc = Process::current();
 	let signal = Signal::try_from(signum)?;
 	let new_handler = SignalHandler::from_legacy(handler);
-	let old_handler = mem::replace(&mut proc.sig_handlers.lock()[signal as usize], new_handler);
+	let old_handler = mem::replace(&mut proc.sig_handlers.lock()[signal.0 as usize], new_handler);
 	Ok(old_handler.to_legacy() as _)
 }
 
@@ -93,11 +93,11 @@ fn do_rt_sigaction<S: fmt::Debug + From<SigAction> + Into<SigAction>>(
 	let proc = Process::current();
 	let mut handlers = proc.sig_handlers.lock();
 	// Save the old structure
-	let old = handlers[signal as usize].get_action().into();
+	let old = handlers[signal.0 as usize].get_action().into();
 	oldact.copy_to_user(&old)?;
 	// Set the new structure
 	if let Some(new) = act.copy_from_user()? {
-		handlers[signal as usize] = SignalHandler::from(new.into());
+		handlers[signal.0 as usize] = SignalHandler::from(new.into());
 	}
 	Ok(0)
 }

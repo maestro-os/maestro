@@ -28,8 +28,14 @@ use core::{cmp::min, str};
 
 /// The character used to initialize ANSI escape sequences.
 pub const ESCAPE: u8 = 0x1b;
-/// The Control Sequence Introducer character.
+/// Control Sequence Introducer ("ESC [").
 const CSI: u8 = b'[';
+/// Device Control String introducer ("ESC P", terminated by ESC \\ or BEL).
+const DCS: u8 = b'P';
+/// Operating System Command introducer ("ESC ]", terminated by ESC \\ or BEL).
+const OSC: u8 = b']';
+/// Bell.
+const BEL: u8 = 0x07;
 
 /// The size of the buffer used to parse ANSI escape codes.
 pub const BUFFER_SIZE: usize = 128;
@@ -340,13 +346,64 @@ fn parse_sgr(tty: &mut Display, seq: &[usize]) -> ANSIState {
 	ANSIState::Valid
 }
 
+/// Writes a `usize` as decimal ASCII into `out`, returning the number of bytes written.
+fn write_dec(mut n: usize, out: &mut [u8]) -> usize {
+	if n == 0 {
+		out[0] = b'0';
+		return 1;
+	}
+	let mut digits = [0u8; 20];
+	let mut i = 0;
+	while n > 0 {
+		digits[i] = b'0' + (n % 10) as u8;
+		n /= 10;
+		i += 1;
+	}
+	let len = i;
+	for j in 0..len {
+		out[j] = digits[len - 1 - j];
+	}
+	len
+}
+
+/// Sends a Device Status Report response (`ESC [ row ; col R`) for `[6n`.
+fn send_dsr_cursor(tty: &TTY, disp: &Display) {
+	let row = disp.cursor_y.saturating_sub(disp.screen_y) + 1;
+	let col = disp.cursor_x + 1;
+	let mut buf = [0u8; 32];
+	buf[0] = ESCAPE;
+	buf[1] = b'[';
+	let mut len = 2;
+	len += write_dec(row, &mut buf[len..]);
+	buf[len] = b';';
+	len += 1;
+	len += write_dec(col, &mut buf[len..]);
+	buf[len] = b'R';
+	len += 1;
+	tty.inject_input(&buf[..len]);
+}
+
+/// Sends a Device Attributes response (`ESC [ ? 6 c`, identifying as VT102).
+fn send_da(tty: &TTY) {
+	tty.inject_input(b"\x1b[?6c");
+}
+
 /// Parses the CSI sequence in the given buffer view.
 ///
 /// The function returns the state of the sequence. If valid, the length of the
 /// sequence is also returned.
-fn parse_csi(view: &mut ANSIBufferView) -> ANSIState {
+fn parse_csi(tty: &TTY, view: &mut ANSIBufferView) -> ANSIState {
 	let mut seq_buf: [usize; SEQ_MAX] = [0; SEQ_MAX];
 	let seq = view.next_nbr_sequence(&mut seq_buf);
+	// Skip any intermediate bytes (0x20-0x2F) between params and the final byte
+	loop {
+		match view.peek_char() {
+			Some(b) if (0x20..=0x2f).contains(&b) => {
+				view.next_char();
+			}
+			_ => break,
+		}
+	}
 	let Some(cmd) = view.next_char() else {
 		return ANSIState::Incomplete;
 	};
@@ -354,6 +411,12 @@ fn parse_csi(view: &mut ANSIBufferView) -> ANSIState {
 		(_, b'?') => match (view.next_nbr(), view.next_char()) {
 			(Some(7 | 25), Some(b'h')) => view.tty.set_cursor_visible(true),
 			(Some(7 | 25), Some(b'l')) => view.tty.set_cursor_visible(false),
+			// `CSI ? <Pn> h/l` (DECSET/DECRST) for unknown modes: silently consume
+			(Some(_), Some(b'h' | b'l')) => {}
+			// `CSI ? <Pn> n` (private DSR): consume
+			(_, Some(b'n')) => {}
+			// `CSI ? <Pn> c` (private DA): consume; the conformance level is unused
+			(_, Some(b'c')) => {}
 			_ => return ANSIState::Invalid,
 		},
 		(seq, b'A'..=b'D') => {
@@ -364,29 +427,15 @@ fn parse_csi(view: &mut ANSIBufferView) -> ANSIState {
 			// TODO Previous line
 		}
 		(seq, b'G') => {
-			let y = seq
-				.first()
-				.cloned()
-				.unwrap_or(1)
-				.clamp(1, WIDTH as usize + 1)
-				- 1;
-			view.tty.cursor_y = y;
-		}
-		(seq, b'H') => {
-			let x = seq
-				.first()
-				.cloned()
-				.unwrap_or(1)
-				.clamp(1, WIDTH as usize + 1)
-				- 1;
-			let y = seq
-				.get(1)
-				.cloned()
-				.unwrap_or(1)
-				.clamp(1, HEIGHT as usize + 1)
-				- 1;
+			let x = seq.first().cloned().unwrap_or(1).clamp(1, WIDTH as usize) - 1;
 			view.tty.cursor_x = x;
-			view.tty.cursor_y = view.tty.screen_y + y;
+		}
+		(seq, b'H' | b'f') => {
+			// `CSI <row> ; <col> H` (CUP). Both default to 1 when omitted
+			let row = seq.first().cloned().unwrap_or(1).clamp(1, HEIGHT as usize) - 1;
+			let col = seq.get(1).cloned().unwrap_or(1).clamp(1, WIDTH as usize) - 1;
+			view.tty.cursor_x = col;
+			view.tty.cursor_y = view.tty.screen_y + row;
 		}
 		(seq, b'J') => {
 			// Erase in display
@@ -434,11 +483,54 @@ fn parse_csi(view: &mut ANSIBufferView) -> ANSIState {
 				_ => return ANSIState::Invalid,
 			}
 		}
+		(_seq, b'L') => {
+			// TODO IL: Insert lines
+		}
+		(_seq, b'M') => {
+			// TODO DL: Delete lines
+		}
+		(_seq, b'P') => {
+			// TODO DCH: Delete characters
+		}
 		(_seq, b'S') => {
 			// TODO Scroll up
 		}
 		(_seq, b'T') => {
 			// TODO Scroll down
+		}
+		(_seq, b'X') => {
+			// TODO ECH: Erase characters
+		}
+		(_seq, b'@') => {
+			// TODO ICH: Insert blank characters
+		}
+		(seq, b'd') => {
+			// VPA: move cursor to absolute row
+			let row = seq.first().cloned().unwrap_or(1).clamp(1, HEIGHT as usize) - 1;
+			view.tty.cursor_y = view.tty.screen_y + row;
+		}
+		(seq, b'n') => {
+			// DSR: only `[6n` (cursor position report) is meaningful here.
+			if seq.first() == Some(&6) {
+				send_dsr_cursor(tty, view.tty);
+			}
+		}
+		(_seq, b'c') => send_da(tty),
+		(_seq, b'r') => {
+			// TODO DECSTBM: Set top and bottom margins (scrolling region)
+		}
+		(_seq, b's' | b'u') => {
+			// TODO Save / restore cursor
+		}
+		(_seq, b'g') => {
+			// TODO TBC: Tab Clear
+		}
+		(_seq, b'h' | b'l') => {
+			// CSI Pn h/l (SM/RM): set/reset modes other than `?`-prefixed
+		}
+		(_seq, b'~') => {
+			// CSI <Pn> ~: typically used for function key codes (input only). Some apps
+			// emit these accidentally; consume to avoid printing as text.
 		}
 		(seq, b'm') => return parse_sgr(view.tty, seq),
 		_ => return ANSIState::Invalid,
@@ -447,55 +539,80 @@ fn parse_csi(view: &mut ANSIBufferView) -> ANSIState {
 	ANSIState::Valid
 }
 
+/// Parses a string-terminated sequence (DCS or OSC).
+fn parse_string_terminated(view: &mut ANSIBufferView) -> ANSIState {
+	loop {
+		let Some(c) = view.next_char() else {
+			return ANSIState::Incomplete;
+		};
+		if c == BEL {
+			return ANSIState::Valid;
+		}
+		if c == ESCAPE {
+			let Some(next) = view.next_char() else {
+				return ANSIState::Incomplete;
+			};
+			if next == b'\\' {
+				return ANSIState::Valid;
+			}
+		}
+	}
+}
+
 /// Parses the sequence in the given buffer.
 ///
 /// The function returns the state of the sequence. If valid, the length of the
 /// sequence is also returned.
-fn parse(view: &mut ANSIBufferView) -> ANSIState {
+fn parse(tty: &TTY, view: &mut ANSIBufferView) -> ANSIState {
 	if view.next_char() != Some(ESCAPE) {
 		return ANSIState::Invalid;
 	}
 	match view.next_char() {
-		Some(CSI) => parse_csi(view),
-		// TODO
+		Some(CSI) => parse_csi(tty, view),
+		Some(DCS | OSC) => parse_string_terminated(view),
+		Some(b'7' | b'8' | b'D' | b'E' | b'H' | b'M' | b'c' | b'=' | b'>') => ANSIState::Valid,
+		Some(b'(' | b')' | b'*' | b'+' | b'%') => {
+			if view.next_char().is_none() {
+				ANSIState::Incomplete
+			} else {
+				ANSIState::Valid
+			}
+		}
 		None => ANSIState::Incomplete,
 		_ => ANSIState::Invalid,
 	}
 }
 
-/// Handles an ANSI escape sequences stored into the buffer `buffer` on the TTY `tty`.
+/// Pushes bytes from `buffer` into the per-TTY ANSI buffer and processes any complete
+/// escape sequences found there.
 ///
-/// If the buffer doesn't begin with the ANSI escape character, the behaviour is
-/// undefined.
-///
-/// The function returns the number of bytes consumed by the function.
+/// Returns the number of bytes consumed from `buffer`
 pub(super) fn handle(tty: &TTY, disp: &mut Display, buffer: &[u8]) -> usize {
-	disp.ansi_buffer.push_back(buffer);
-	let mut n = 0;
+	let count = disp.ansi_buffer.push_back(buffer);
 	while !disp.ansi_buffer.is_empty() {
-		let mut view = ANSIBufferView::new(disp);
-		if view.peek_char() != Some(ESCAPE) {
-			disp.ansi_buffer.clear();
-			break;
+		if disp.ansi_buffer.buf[0] != ESCAPE {
+			tty.putchar(disp, disp.ansi_buffer.buf[0]);
+			disp.ansi_buffer.pop_front(1);
+			continue;
 		}
-
-		let state = parse(&mut view);
+		let mut view = ANSIBufferView::new(disp);
+		let state = parse(tty, &mut view);
 		let len = view.consumed_count();
 		match state {
-			ANSIState::Valid => {}
+			ANSIState::Valid => {
+				disp.ansi_buffer.pop_front(len);
+			}
 			ANSIState::Incomplete => break,
 			ANSIState::Invalid => {
-				// using an index to avoid double-borrow issues
 				for i in 0..len {
 					tty.putchar(disp, disp.ansi_buffer.buf[i]);
 				}
+				disp.ansi_buffer.pop_front(len);
 			}
 		}
-		disp.ansi_buffer.pop_front(len);
-		n += len;
 	}
 	disp.update_screen();
-	n
+	count
 }
 
 // TODO unit tests

@@ -38,7 +38,6 @@ use crate::{
 	time::{
 		clock::{Clock, current_time_ns},
 		timer::Timer,
-		unit::TimeUnit,
 	},
 };
 use core::hint::unlikely;
@@ -66,7 +65,7 @@ pub fn sleep_for(clock: Clock, delay: Timestamp, remain: &mut Timestamp) -> ERes
 		}
 		// The timer has not expired, we need to sleep
 		if unlikely(Process::current().has_pending_signal()) {
-			*remain = timer.get_time().it_value.to_nano();
+			*remain = timer.get_time().1;
 			return Err(errno!(EINTR));
 		}
 		process::set_state(State::IntSleeping);

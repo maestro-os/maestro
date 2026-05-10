@@ -56,21 +56,10 @@ use crate::{
 	syscall::{FromSyscallArg, wait::WEXITED},
 	time::timer::TimerManager,
 };
-use core::{
-	cmp::Ordering,
-	ffi::{c_int, c_void},
-	fmt,
-	fmt::Formatter,
-	hint,
-	hint::unlikely,
-	mem,
-	ops::Deref,
-	ptr::NonNull,
-	sync::atomic::{
-		AtomicBool, AtomicI8, AtomicPtr, AtomicU8, AtomicU16, AtomicU32,
-		Ordering::{Acquire, Relaxed, Release},
-	},
-};
+use core::{array, cmp::Ordering, ffi::{c_int, c_void}, fmt, fmt::Formatter, hint, hint::unlikely, mem, ops::Deref, ptr::NonNull, sync::atomic::{
+	AtomicBool, AtomicI8, AtomicPtr, AtomicU8, AtomicU16, AtomicU32,
+	Ordering::{Acquire, Relaxed, Release},
+}};
 use mem_space::MemSpace;
 use pid::Pid;
 use scheduler::cpu::{PerCpu, per_cpu};
@@ -266,7 +255,7 @@ impl ProcessSignal {
 
 	/// Tells whether the given signal is blocked by the process.
 	pub fn is_signal_blocked(&self, sig: Signal) -> bool {
-		self.sigmask.is_set(sig as _)
+		self.sigmask.is_set(sig.0 as usize)
 	}
 
 	/// Returns the ID of the next signal to be handled, clearing it from the pending signals mask.
@@ -287,7 +276,7 @@ impl ProcessSignal {
 			})
 			.next();
 		if let Some(id) = sig {
-			self.sigpending.clear(id as _);
+			self.sigpending.clear(id.0 as usize);
 		}
 		sig
 	}
@@ -559,7 +548,9 @@ impl Process {
 			umask: Default::default(),
 			fd_table: Default::default(),
 			timer_manager: Arc::new(Spin::new(TimerManager::new()?))?,
-			sig_handlers: UnsafeMut::new(Arc::new(Default::default())?),
+			sig_handlers: UnsafeMut::new(Arc::new(Spin::new(array::from_fn(|_| {
+				Default::default()
+			})))?),
 			signal: Spin::new(ProcessSignal::new()?),
 			parent_event: Default::default(),
 
@@ -616,7 +607,9 @@ impl Process {
 			umask: AtomicU32::new(DEFAULT_UMASK),
 			fd_table: UnsafeMut::new(Some(Arc::new(Default::default())?)),
 			timer_manager: Arc::new(Spin::new(TimerManager::new()?))?,
-			sig_handlers: UnsafeMut::new(Arc::new(Default::default())?),
+			sig_handlers: UnsafeMut::new(Arc::new(Spin::new(array::from_fn(|_| {
+				Default::default()
+			})))?),
 			signal: Spin::new(ProcessSignal {
 				altstack: Default::default(),
 				sigmask: Default::default(),
@@ -973,7 +966,7 @@ impl Process {
 	pub fn kill(this: &Arc<Self>, sig: Signal) {
 		let mut s = this.signal.lock();
 		// Ignore blocked signals
-		if sig.can_catch() && s.sigmask.is_set(sig as _) {
+		if sig.can_catch() && s.sigmask.is_set(sig.0 as usize) {
 			return;
 		}
 		// Statistics
@@ -982,9 +975,9 @@ impl Process {
 		println!(
 			"[strace {pid}] received signal `{sig}`",
 			pid = this.get_pid(),
-			sig = sig as c_int
+			sig = sig.0
 		);
-		s.sigpending.set(sig as _);
+		s.sigpending.set(sig.0 as usize);
 		// Change state so that the process can handle the signal
 		let mut mask = State::IntSleeping as u8;
 		if sig.get_default_action() == SignalAction::Continue {

@@ -29,7 +29,7 @@ use crate::{
 		clock::{Clock, current_time_ns, current_time_sec},
 		sleep_for,
 		timer::TimerManager,
-		unit::{ClockIdT, ITimerspec32, TimeUnit, TimerT, Timespec, Timespec32},
+		unit::{ClockIdT, ITimerspec, ITimerspec32, TimeUnit, TimerT, Timespec, Timespec32},
 	},
 };
 use core::ffi::c_int;
@@ -106,8 +106,8 @@ pub fn timer_create(
 	let timerid_val = timerid.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
 	let sevp_val = sevp.copy_from_user()?.unwrap_or_else(|| SigEvent {
 		sigev_notify: SIGEV_SIGNAL,
-		sigev_signo: Signal::SIGALRM as _,
-		sigev_value: timerid_val,
+		sigev_signo: Signal::SIGALRM.0,
+		sigev_value: timerid_val as _,
 		sigev_notify_function: None,
 		sigev_notify_attributes: None,
 		sigev_notify_thread_id: Process::current().tid,
@@ -122,29 +122,76 @@ pub fn timer_delete(timerid: TimerT) -> EResult<usize> {
 	Ok(0)
 }
 
+/// Common implementation of `timer_settime` parameterized over the timespec ABI.
+///
+/// `interval_ns` and `value_ns` are the new interval and initial-value of the timer in
+/// nanoseconds (caller must have decoded them from the appropriate `itimerspec` flavor).
+fn do_timer_settime(
+	timerid: TimerT,
+	flags: c_int,
+	interval_ns: u64,
+	value_ns: u64,
+	on_old: impl FnOnce(u64, u64) -> EResult<()>,
+) -> EResult<usize> {
+	let proc = Process::current();
+	let mut manager = proc.timer_manager.lock();
+	let timer = manager
+		.get_timer_mut(timerid)
+		.ok_or_else(|| errno!(EINVAL))?;
+	let (old_interval, old_value_ns) = timer.get_time();
+	on_old(old_interval, old_value_ns)?;
+	// Convert absolute timeouts (TIMER_ABSTIME) to a relative delay; relative timeouts pass
+	// through unchanged.
+	let value = if flags & TIMER_ABSTIME != 0 {
+		let now = current_time_ns(Clock::Monotonic);
+		value_ns.saturating_sub(now)
+	} else {
+		value_ns
+	};
+	timer.set_time(interval_ns, value)?;
+	Ok(0)
+}
+
+/// 32-bit ABI: `itimerspec` uses 32-bit `time_t` (`Timespec32`).
 pub fn timer_settime(
 	timerid: TimerT,
 	flags: c_int,
 	new_value: UserPtr<ITimerspec32>,
 	old_value: UserPtr<ITimerspec32>,
 ) -> EResult<usize> {
-	let proc = Process::current();
-	// Get timer
-	let mut manager = proc.timer_manager.lock();
-	let timer = manager
-		.get_timer_mut(timerid)
-		.ok_or_else(|| errno!(EINVAL))?;
-	// Write old value
-	let old = timer.get_time();
-	old_value.copy_to_user(&old)?;
-	// Set new value
-	let mut new_value_val = new_value.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-	if (flags & TIMER_ABSTIME) == 0 {
-		new_value_val.it_value = new_value_val.it_value + old.it_value;
-	}
-	timer.set_time(
-		new_value_val.it_interval.to_nano(),
-		new_value_val.it_value.to_nano(),
-	)?;
-	Ok(0)
+	let new = new_value.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	do_timer_settime(
+		timerid,
+		flags,
+		new.it_interval.to_nano(),
+		new.it_value.to_nano(),
+		|old_interval, old_value_ns| {
+			old_value.copy_to_user(&ITimerspec32 {
+				it_interval: Timespec32::from_nano(old_interval),
+				it_value: Timespec32::from_nano(old_value_ns),
+			})
+		},
+	)
+}
+
+/// 64-bit ABI: `itimerspec` uses 64-bit `time_t` (`Timespec`).
+pub fn timer_settime64(
+	timerid: TimerT,
+	flags: c_int,
+	new_value: UserPtr<ITimerspec>,
+	old_value: UserPtr<ITimerspec>,
+) -> EResult<usize> {
+	let new = new_value.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	do_timer_settime(
+		timerid,
+		flags,
+		new.it_interval.to_nano(),
+		new.it_value.to_nano(),
+		|old_interval, old_value_ns| {
+			old_value.copy_to_user(&ITimerspec {
+				it_interval: Timespec::from_nano(old_interval),
+				it_value: Timespec::from_nano(old_value_ns),
+			})
+		},
+	)
 }
