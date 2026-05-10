@@ -18,7 +18,7 @@
 
 //! Timers implementation.
 
-use super::unit::{ITimerspec32, TimerT};
+use super::unit::TimerT;
 use crate::{
 	memory::oom,
 	process::{
@@ -28,7 +28,7 @@ use crate::{
 	sync::spin::IntSpin,
 	time::{
 		clock::{Clock, current_time_ns},
-		unit::{TimeUnit, Timespec32, Timestamp},
+		unit::Timestamp,
 	},
 };
 use core::hint::unlikely;
@@ -126,18 +126,16 @@ impl Timer {
 		})?))
 	}
 
-	/// Returns the current state of the timer.
+	/// Returns the current state of the timer as `(interval_ns, value_ns)` where `value_ns`
+	/// is the nanoseconds remaining until the next firing (`0` if disarmed).
 	#[inline]
-	pub fn get_time(&self) -> ITimerspec32 {
+	pub fn get_time(&self) -> (Timestamp, Timestamp) {
 		let spec = self.0.spec.lock();
 		let value = spec
 			.next
 			.map(|next| next.saturating_sub(current_time_ns(self.0.clock)))
 			.unwrap_or(0);
-		ITimerspec32 {
-			it_interval: Timespec32::from_nano(spec.interval),
-			it_value: Timespec32::from_nano(value),
-		}
+		(spec.interval, value)
 	}
 
 	/// Sets the timer's state.

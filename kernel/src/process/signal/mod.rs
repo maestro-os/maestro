@@ -36,7 +36,7 @@ use crate::{
 use core::{
 	ffi::{c_int, c_void},
 	hint::{likely, unlikely},
-	mem::{size_of, transmute},
+	mem::size_of,
 	ptr::NonNull,
 };
 use ucontext::UContext32;
@@ -78,7 +78,7 @@ pub const SIGEV_THREAD: c_int = 2;
 
 /// The size of the signal handlers table (the number of signals + 1, since
 /// indexing begins at 1 instead of 0).
-pub const SIGNALS_COUNT: usize = 32;
+pub const SIGNALS_COUNT: usize = 65;
 
 /// 32-bit version of `stack_t`
 #[repr(C)]
@@ -173,13 +173,13 @@ impl SignalAction {
 		match self {
 			// TODO when `Abort`ing, dump core
 			SignalAction::Terminate | SignalAction::Abort => {
-				proc.signal.lock().termsig = sig as u8;
+				proc.signal.lock().termsig = sig.0 as u8;
 				process::set_state(State::Zombie);
 				proc.notify_parent(WEXITED as u8);
 			}
 			SignalAction::Ignore => {}
 			SignalAction::Stop => {
-				proc.signal.lock().termsig = sig as u8;
+				proc.signal.lock().termsig = sig.0 as u8;
 				process::set_state(State::Stopped);
 				proc.notify_parent(WUNTRACED as u8);
 			}
@@ -259,19 +259,19 @@ impl SigSet {
 	/// Tells whether the `n`th bit is set.
 	#[inline]
 	pub fn is_set(&self, n: usize) -> bool {
-		self.0 & (1 << n) != 0
+		self.0 & (1u64 << n) != 0
 	}
 
 	/// Sets the `n`th bit.
 	#[inline]
 	pub fn set(&mut self, n: usize) {
-		self.0 |= (1 << n) as u64;
+		self.0 |= 1u64 << n;
 	}
 
 	/// Sets the `n`th bit.
 	#[inline]
 	pub fn clear(&mut self, n: usize) {
-		self.0 &= !((1 << n) as u64);
+		self.0 &= !(1u64 << n);
 	}
 
 	/// Returns an iterator over the bitset's values
@@ -490,7 +490,7 @@ impl SignalHandler {
 				// Return pointer
 				action.sa_restorer as _,
 				// Argument
-				signal as _,
+				signal.0 as _,
 			]);
 			if unlikely(res.is_err()) {
 				Signal::SIGSEGV.get_default_action().exec(Signal::SIGSEGV);
@@ -519,7 +519,7 @@ impl SignalHandler {
 			let mut signals_manager = proc.signal.lock();
 			signals_manager.sigmask.0 |= action.sa_mask.0;
 			if action.sa_flags & SA_NODEFER == 0 {
-				signals_manager.sigmask.set(signal as _);
+				signals_manager.sigmask.set(signal.0 as usize);
 			}
 		}
 		// Prepare registers for the trampoline
@@ -530,130 +530,124 @@ impl SignalHandler {
 		if !frame.is_compat() {
 			frame.rcx = frame.rip;
 			// Argument
-			frame.rdi = signal as _;
+			frame.rdi = signal.0 as _;
 		}
 	}
 }
 
-/// Enumeration of signal types.
-#[repr(i32)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Signal {
+/// A POSIX signal.
+///
+/// This is a thin wrapper around the raw signal number so that POSIX realtime signals (32
+/// through `SIGRTMAX`) — which are valid but don't have a named identifier — round-trip
+/// through the kernel without requiring an enum variant per number.
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub struct Signal(pub i32);
+
+impl Signal {
 	/// Hangup.
-	SIGHUP = 1,
+	pub const SIGHUP: Self = Self(1);
 	/// Terminal interrupt.
-	SIGINT = 2,
+	pub const SIGINT: Self = Self(2);
 	/// Terminal quit.
-	SIGQUIT = 3,
+	pub const SIGQUIT: Self = Self(3);
 	/// Illegal instruction.
-	SIGILL = 4,
+	pub const SIGILL: Self = Self(4);
 	/// Trace/breakpoint trap.
-	SIGTRAP = 5,
+	pub const SIGTRAP: Self = Self(5);
 	/// Process abort.
-	SIGABRT = 6,
+	pub const SIGABRT: Self = Self(6);
 	/// Access to an undefined portion of a memory object.
-	SIGBUS = 7,
+	pub const SIGBUS: Self = Self(7);
 	/// Erroneous arithmetic operation.
-	SIGFPE = 8,
+	pub const SIGFPE: Self = Self(8);
 	/// Kill.
-	SIGKILL = 9,
+	pub const SIGKILL: Self = Self(9);
 	/// User-defined signal 1.
-	SIGUSR1 = 10,
+	pub const SIGUSR1: Self = Self(10);
 	/// Invalid memory reference.
-	SIGSEGV = 11,
+	pub const SIGSEGV: Self = Self(11);
 	/// User-defined signal 2.
-	SIGUSR2 = 12,
+	pub const SIGUSR2: Self = Self(12);
 	/// Write on a pipe with no one to read it.
-	SIGPIPE = 13,
+	pub const SIGPIPE: Self = Self(13);
 	/// Alarm clock.
-	SIGALRM = 14,
+	pub const SIGALRM: Self = Self(14);
 	/// Termination.
-	SIGTERM = 15,
+	pub const SIGTERM: Self = Self(15);
 	/// Child process terminated.
-	SIGCHLD = 17,
+	pub const SIGCHLD: Self = Self(17);
 	/// Continue executing.
-	SIGCONT = 18,
+	pub const SIGCONT: Self = Self(18);
 	/// Stop executing.
-	SIGSTOP = 19,
+	pub const SIGSTOP: Self = Self(19);
 	/// Terminal stop.
-	SIGTSTP = 20,
+	pub const SIGTSTP: Self = Self(20);
 	/// Background process attempting to read.
-	SIGTTIN = 21,
+	pub const SIGTTIN: Self = Self(21);
 	/// Background process attempting to write.
-	SIGTTOU = 22,
+	pub const SIGTTOU: Self = Self(22);
 	/// High bandwidth data is available at a socket.
-	SIGURG = 23,
+	pub const SIGURG: Self = Self(23);
 	/// CPU time limit exceeded.
-	SIGXCPU = 24,
+	pub const SIGXCPU: Self = Self(24);
 	/// File size limit exceeded.
-	SIGXFSZ = 25,
+	pub const SIGXFSZ: Self = Self(25);
 	/// Virtual timer expired.
-	SIGVTALRM = 26,
+	pub const SIGVTALRM: Self = Self(26);
 	/// Profiling timer expired.
-	SIGPROF = 27,
+	pub const SIGPROF: Self = Self(27);
 	/// Window resize.
-	SIGWINCH = 28,
+	pub const SIGWINCH: Self = Self(28);
 	/// Pollable event.
-	SIGPOLL = 29,
+	pub const SIGPOLL: Self = Self(29);
 	/// Bad system call.
-	SIGSYS = 31,
+	pub const SIGSYS: Self = Self(31);
+
+	/// First POSIX realtime signal.
+	pub const SIGRTMIN: Self = Self(32);
+	/// Last POSIX realtime signal.
+	pub const SIGRTMAX: Self = Self(64);
+
+	/// Returns the default action for the signal.
+	pub fn get_default_action(self) -> SignalAction {
+		match self.0 {
+			1 | 2 => SignalAction::Terminate, // SIGHUP, SIGINT
+			3 => SignalAction::Abort,         // SIGQUIT
+			4..=8 => SignalAction::Abort,     // SIGILL, SIGTRAP, SIGABRT, SIGBUS, SIGFPE
+			9 => SignalAction::Terminate,     // SIGKILL
+			10 => SignalAction::Terminate,    // SIGUSR1
+			11 => SignalAction::Abort,        // SIGSEGV
+			12..=15 => SignalAction::Terminate, // SIGUSR2, SIGPIPE, SIGALRM, SIGTERM
+			17 => SignalAction::Ignore,       // SIGCHLD
+			18 => SignalAction::Continue,     // SIGCONT
+			19..=22 => SignalAction::Stop,    // SIGSTOP, SIGTSTP, SIGTTIN, SIGTTOU
+			23 => SignalAction::Ignore,       // SIGURG
+			24 | 25 => SignalAction::Abort,   // SIGXCPU, SIGXFSZ
+			26 | 27 => SignalAction::Terminate, // SIGVTALRM, SIGPROF
+			28 => SignalAction::Ignore,       // SIGWINCH
+			29 => SignalAction::Terminate,    // SIGPOLL
+			31 => SignalAction::Abort,        // SIGSYS
+			32..=64 => SignalAction::Terminate, // POSIX realtime signals
+			_ => SignalAction::Terminate,
+		}
+	}
+
+	/// Tells whether the signal can be caught.
+	pub fn can_catch(self) -> bool {
+		!matches!(self.0, 9 | 11 | 19 | 31) // SIGKILL, SIGSEGV, SIGSTOP, SIGSYS
+	}
 }
 
 impl TryFrom<i32> for Signal {
 	type Error = Errno;
 
-	/// `id` is the signal ID.
 	fn try_from(id: i32) -> Result<Self, Self::Error> {
-		if matches!(id, (1..=15) | (17..=29) | 31) {
-			// Safe because the value is in range
-			unsafe { Ok(transmute::<i32, Self>(id)) }
+		// Standard signals (1-15, 17-29, 31) plus POSIX realtime signals (32-64).
+		if matches!(id, 1..=15 | 17..=29 | 31 | 32..=64) {
+			Ok(Self(id))
 		} else {
 			Err(errno!(EINVAL))
 		}
-	}
-}
-
-impl Signal {
-	/// Returns the default action for the signal.
-	pub fn get_default_action(&self) -> SignalAction {
-		match self {
-			Self::SIGHUP => SignalAction::Terminate,
-			Self::SIGINT => SignalAction::Terminate,
-			Self::SIGQUIT => SignalAction::Abort,
-			Self::SIGILL => SignalAction::Abort,
-			Self::SIGTRAP => SignalAction::Abort,
-			Self::SIGABRT => SignalAction::Abort,
-			Self::SIGBUS => SignalAction::Abort,
-			Self::SIGFPE => SignalAction::Abort,
-			Self::SIGKILL => SignalAction::Terminate,
-			Self::SIGUSR1 => SignalAction::Terminate,
-			Self::SIGSEGV => SignalAction::Abort,
-			Self::SIGUSR2 => SignalAction::Terminate,
-			Self::SIGPIPE => SignalAction::Terminate,
-			Self::SIGALRM => SignalAction::Terminate,
-			Self::SIGTERM => SignalAction::Terminate,
-			Self::SIGCHLD => SignalAction::Ignore,
-			Self::SIGCONT => SignalAction::Continue,
-			Self::SIGSTOP => SignalAction::Stop,
-			Self::SIGTSTP => SignalAction::Stop,
-			Self::SIGTTIN => SignalAction::Stop,
-			Self::SIGTTOU => SignalAction::Stop,
-			Self::SIGURG => SignalAction::Ignore,
-			Self::SIGXCPU => SignalAction::Abort,
-			Self::SIGXFSZ => SignalAction::Abort,
-			Self::SIGVTALRM => SignalAction::Terminate,
-			Self::SIGPROF => SignalAction::Terminate,
-			Self::SIGWINCH => SignalAction::Ignore,
-			Self::SIGPOLL => SignalAction::Terminate,
-			Self::SIGSYS => SignalAction::Abort,
-		}
-	}
-
-	/// Tells whether the signal can be caught.
-	pub fn can_catch(&self) -> bool {
-		!matches!(
-			self,
-			Self::SIGKILL | Self::SIGSEGV | Self::SIGSTOP | Self::SIGSYS
-		)
 	}
 }

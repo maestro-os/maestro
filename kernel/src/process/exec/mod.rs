@@ -27,6 +27,7 @@
 pub mod elf;
 pub mod vdso;
 
+use core::array;
 use crate::{
 	arch::x86::idt::IntFrame,
 	memory::VirtAddr,
@@ -64,7 +65,7 @@ pub fn exec(frame: &mut IntFrame, image: ProgramImage) -> EResult<()> {
 			Ok(Arc::new(Spin::new(new_fds))?)
 		})
 		.transpose()?;
-	let signal_handlers = Arc::new(Default::default())?;
+	let signal_handlers = Arc::new(Spin::new(array::from_fn(|_| Default::default())))?;
 	// All fallible operations succeeded, flush to process
 	MemSpace::bind(&image.mem_space);
 	// Safe because no other thread can execute this function at the same time for the same process

@@ -408,7 +408,7 @@ fn alter_flow_impl(frame: &mut IntFrame) -> bool {
 		return false;
 	};
 	// Prepare for execution of signal handler
-	proc.sig_handlers.lock()[sig as usize].exec(sig, frame);
+	proc.sig_handlers.lock()[sig.0 as usize].exec(sig, frame);
 	// If the process is still running, continue execution
 	proc.get_state() != State::Running
 }
