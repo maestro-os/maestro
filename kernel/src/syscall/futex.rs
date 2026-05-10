@@ -29,12 +29,7 @@ use crate::{
 	},
 };
 use core::{ffi::c_int, hint::unlikely, ptr::NonNull};
-use utils::{
-	collections::hashmap::HashMap,
-	errno,
-	errno::EResult,
-	ptr::arc::Arc,
-};
+use utils::{collections::hashmap::HashMap, errno, errno::EResult, ptr::arc::Arc};
 
 /// Wait if `*uaddr == val`.
 const FUTEX_WAIT: c_int = 0;

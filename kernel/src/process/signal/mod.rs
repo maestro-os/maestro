@@ -194,9 +194,10 @@ pub type SigVal = usize;
 // FIXME: fields are incorrect (check musl source)
 /// Signal information.
 #[repr(C)]
+#[derive(Debug)]
 pub struct SigInfo {
 	/// Signal number.
-	si_signo: i32,
+	pub si_signo: i32,
 	/// An errno value.
 	si_errno: i32,
 	/// Signal code.
@@ -544,6 +545,7 @@ impl SignalHandler {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct Signal(pub i32);
 
+#[rustfmt::skip]
 impl Signal {
 	/// Hangup.
 	pub const SIGHUP: Self = Self(1);
@@ -608,27 +610,29 @@ impl Signal {
 	pub const SIGRTMIN: Self = Self(32);
 	/// Last POSIX realtime signal.
 	pub const SIGRTMAX: Self = Self(64);
+}
 
+impl Signal {
 	/// Returns the default action for the signal.
 	pub fn get_default_action(self) -> SignalAction {
 		match self.0 {
-			1 | 2 => SignalAction::Terminate, // SIGHUP, SIGINT
-			3 => SignalAction::Abort,         // SIGQUIT
-			4..=8 => SignalAction::Abort,     // SIGILL, SIGTRAP, SIGABRT, SIGBUS, SIGFPE
-			9 => SignalAction::Terminate,     // SIGKILL
-			10 => SignalAction::Terminate,    // SIGUSR1
-			11 => SignalAction::Abort,        // SIGSEGV
-			12..=15 => SignalAction::Terminate, // SIGUSR2, SIGPIPE, SIGALRM, SIGTERM
-			17 => SignalAction::Ignore,       // SIGCHLD
-			18 => SignalAction::Continue,     // SIGCONT
-			19..=22 => SignalAction::Stop,    // SIGSTOP, SIGTSTP, SIGTTIN, SIGTTOU
-			23 => SignalAction::Ignore,       // SIGURG
-			24 | 25 => SignalAction::Abort,   // SIGXCPU, SIGXFSZ
-			26 | 27 => SignalAction::Terminate, // SIGVTALRM, SIGPROF
-			28 => SignalAction::Ignore,       // SIGWINCH
-			29 => SignalAction::Terminate,    // SIGPOLL
-			31 => SignalAction::Abort,        // SIGSYS
-			32..=64 => SignalAction::Terminate, // POSIX realtime signals
+			1 | 2 => SignalAction::Terminate,
+			3 => SignalAction::Abort,
+			4..=8 => SignalAction::Abort,
+			9 => SignalAction::Terminate,
+			10 => SignalAction::Terminate,
+			11 => SignalAction::Abort,
+			12..=15 => SignalAction::Terminate,
+			17 => SignalAction::Ignore,
+			18 => SignalAction::Continue,
+			19..=22 => SignalAction::Stop,
+			23 => SignalAction::Ignore,
+			24 | 25 => SignalAction::Abort,
+			26 | 27 => SignalAction::Terminate,
+			28 => SignalAction::Ignore,
+			29 => SignalAction::Terminate,
+			31 => SignalAction::Abort,
+			32..=64 => SignalAction::Terminate,
 			_ => SignalAction::Terminate,
 		}
 	}
