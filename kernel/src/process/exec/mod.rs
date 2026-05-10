@@ -27,13 +27,13 @@
 pub mod elf;
 pub mod vdso;
 
-use core::array;
 use crate::{
 	arch::x86::idt::IntFrame,
 	memory::VirtAddr,
 	process::{Process, mem_space::MemSpace, scheduler::cpu::per_cpu},
 	sync::spin::Spin,
 };
+use core::array;
 use utils::{errno::EResult, ptr::arc::Arc};
 
 /// A built program image.

@@ -56,10 +56,22 @@ use crate::{
 	syscall::{FromSyscallArg, wait::WEXITED},
 	time::timer::TimerManager,
 };
-use core::{array, cmp::Ordering, ffi::{c_int, c_void}, fmt, fmt::Formatter, hint, hint::unlikely, mem, ops::Deref, ptr::NonNull, sync::atomic::{
-	AtomicBool, AtomicI8, AtomicPtr, AtomicU8, AtomicU16, AtomicU32,
-	Ordering::{Acquire, Relaxed, Release},
-}};
+use core::{
+	array,
+	cmp::Ordering,
+	ffi::{c_int, c_void},
+	fmt,
+	fmt::Formatter,
+	hint,
+	hint::unlikely,
+	mem,
+	ops::Deref,
+	ptr::NonNull,
+	sync::atomic::{
+		AtomicBool, AtomicI8, AtomicPtr, AtomicU8, AtomicU16, AtomicU32,
+		Ordering::{Acquire, Relaxed, Release},
+	},
+};
 use mem_space::MemSpace;
 use pid::Pid;
 use scheduler::cpu::{PerCpu, per_cpu};
@@ -256,6 +268,24 @@ impl ProcessSignal {
 	/// Tells whether the given signal is blocked by the process.
 	pub fn is_signal_blocked(&self, sig: Signal) -> bool {
 		self.sigmask.is_set(sig.0 as usize)
+	}
+
+	/// Returns the set of signals currently pending on the process.
+	#[inline]
+	pub fn pending(&self) -> SigSet {
+		self.sigpending
+	}
+
+	/// Atomically dequeues the lowest-numbered pending signal that's in `set` and returns
+	/// it, or `None` if none is pending.
+	pub fn dequeue_from(&mut self, set: SigSet) -> Option<Signal> {
+		let masked = self.sigpending.0 & set.0;
+		if masked == 0 {
+			return None;
+		}
+		let bit = masked.trailing_zeros() as i32;
+		self.sigpending.clear(bit as usize);
+		Some(Signal(bit))
 	}
 
 	/// Returns the ID of the next signal to be handled, clearing it from the pending signals mask.
@@ -965,10 +995,6 @@ impl Process {
 	/// executed.
 	pub fn kill(this: &Arc<Self>, sig: Signal) {
 		let mut s = this.signal.lock();
-		// Ignore blocked signals
-		if sig.can_catch() && s.sigmask.is_set(sig.0 as usize) {
-			return;
-		}
 		// Statistics
 		this.rusage.lock().ru_nsignals += 1;
 		#[cfg(feature = "strace")]

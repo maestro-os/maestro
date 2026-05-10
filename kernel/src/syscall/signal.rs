@@ -22,15 +22,22 @@ use crate::{
 	arch::x86::idt::IntFrame,
 	file::perm::can_kill,
 	memory::user::UserPtr,
+	process,
 	process::{
 		PROCESSES, Process, State,
 		pid::{INIT_PID, Pid},
+		scheduler::schedule,
 		signal::{
-			AltStack, CompatSigAction, SS_AUTODISARM, SS_DISABLE, SigAction, SigSet, Signal,
-			SignalHandler, Stack32, Stack64, ucontext,
+			AltStack, CompatSigAction, SS_AUTODISARM, SS_DISABLE, SigAction, SigInfo, SigSet,
+			Signal, SignalHandler, Stack32, Stack64, ucontext,
 		},
 	},
 	syscall::FromSyscallArg,
+	time::{
+		clock::{Clock, current_time_ns},
+		timer::Timer,
+		unit::{TimeUnit, Timespec},
+	},
 };
 use core::{
 	ffi::{c_int, c_void},
@@ -80,7 +87,10 @@ pub fn signal(signum: c_int, handler: *const c_void) -> EResult<usize> {
 	let proc = Process::current();
 	let signal = Signal::try_from(signum)?;
 	let new_handler = SignalHandler::from_legacy(handler);
-	let old_handler = mem::replace(&mut proc.sig_handlers.lock()[signal.0 as usize], new_handler);
+	let old_handler = mem::replace(
+		&mut proc.sig_handlers.lock()[signal.0 as usize],
+		new_handler,
+	);
 	Ok(old_handler.to_legacy() as _)
 }
 
@@ -251,4 +261,71 @@ pub fn tkill(tid: Pid, sig: c_int) -> EResult<usize> {
 	}
 	Process::kill(&thread, sig);
 	Ok(0)
+}
+
+pub fn rt_sigpending(set: UserPtr<SigSet>, sigsetsize: usize) -> EResult<usize> {
+	if unlikely(sigsetsize != size_of::<SigSet>()) {
+		return Err(errno!(EINVAL));
+	}
+	let pending = Process::current().signal.lock().pending();
+	set.copy_to_user(&pending)?;
+	Ok(0)
+}
+
+/// Writes signal information for `sig` to `info` (no-op if `info` is null).
+fn write_siginfo(info: UserPtr<SigInfo>, sig: Signal) -> EResult<()> {
+	let mut value: SigInfo = unsafe { mem::zeroed() };
+	value.si_signo = sig.0;
+	info.copy_to_user(&value)
+}
+
+pub fn rt_sigtimedwait(
+	set: UserPtr<SigSet>,
+	info: UserPtr<SigInfo>,
+	timeout: UserPtr<Timespec>,
+	sigsetsize: usize,
+) -> EResult<usize> {
+	if unlikely(sigsetsize != size_of::<SigSet>()) {
+		return Err(errno!(EINVAL));
+	}
+	let set = set.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	let timeout_ns = timeout.copy_from_user()?.map(|ts| ts.to_nano());
+	let proc = Process::current();
+	// Fast path: a wanted signal is already pending
+	if let Some(sig) = proc.signal.lock().dequeue_from(set) {
+		write_siginfo(info, sig)?;
+		return Ok(sig.0 as usize);
+	}
+	// Poll mode: zero timeout and no signal pending
+	if timeout_ns == Some(0) {
+		return Err(errno!(EAGAIN));
+	}
+	// Set up the timeout timer if any
+	let _timer = if let Some(delay) = timeout_ns {
+		let proc_clone = proc.clone();
+		let mut t = Timer::new(Clock::Monotonic, move || {
+			Process::wake_from(&proc_clone, State::IntSleeping as u8);
+		})?;
+		t.set_time(0, delay)?;
+		Some(t)
+	} else {
+		None
+	};
+	let deadline = timeout_ns.map(|d| current_time_ns(Clock::Monotonic).saturating_add(d));
+	loop {
+		process::set_state(State::IntSleeping);
+		schedule();
+		if let Some(sig) = proc.signal.lock().dequeue_from(set) {
+			write_siginfo(info, sig)?;
+			return Ok(sig.0 as usize);
+		}
+		if let Some(deadline) = deadline
+			&& current_time_ns(Clock::Monotonic) >= deadline
+		{
+			return Err(errno!(EAGAIN));
+		}
+		if proc.has_pending_signal() {
+			return Err(errno!(EINTR));
+		}
+	}
 }
