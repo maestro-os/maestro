@@ -21,7 +21,11 @@
 mod block;
 mod chunk;
 
-use crate::{memory, memory::malloc::ptr::NonNull, sync::spin::IntSpin};
+use crate::{
+	memory,
+	memory::{buddy, malloc::ptr::NonNull},
+	sync::spin::IntSpin,
+};
 use block::Block;
 use chunk::Chunk;
 use core::{
@@ -32,7 +36,7 @@ use core::{
 	ptr,
 	ptr::drop_in_place,
 };
-use utils::errno::AllocResult;
+use utils::{errno::AllocResult, limits::PAGE_SIZE};
 
 /// The allocator's spinlock.
 static SPINLOCK: IntSpin<()> = IntSpin::new(());
@@ -129,6 +133,14 @@ unsafe fn free(ptr: NonNull<u8>) {
 	super::trace::sample("malloc", super::trace::SampleOp::Free, ptr.as_ptr() as _, 0);
 }
 
+/// Returns the buddy [`buddy::FrameOrder`] required to satisfy `layout` when the allocation goes
+/// through the buddy allocator (because the required alignment exceeds [`chunk::ALIGNMENT`]).
+fn buddy_order_for(layout: Layout) -> buddy::FrameOrder {
+	let bytes = layout.size().max(layout.align());
+	let pages = bytes.div_ceil(PAGE_SIZE);
+	buddy::get_order(NonZeroUsize::new(pages).unwrap())
+}
+
 /// See Rust documentation.
 #[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
@@ -136,7 +148,11 @@ pub unsafe fn __alloc(layout: Layout) -> AllocResult<NonNull<[u8]>> {
 	let Some(size) = NonZeroUsize::new(layout.size()) else {
 		return Ok(NonNull::slice_from_raw_parts(layout.dangling(), 0));
 	};
-	let ptr = alloc(size)?;
+	let ptr = if layout.align() <= chunk::ALIGNMENT {
+		alloc(size)?
+	} else {
+		buddy::alloc_kernel(buddy_order_for(layout), 0)?
+	};
 	Ok(NonNull::slice_from_raw_parts(ptr, size.get()))
 }
 
@@ -152,8 +168,21 @@ pub unsafe fn __realloc(
 		__dealloc(ptr, old_layout);
 		return Ok(NonNull::slice_from_raw_parts(new_layout.dangling(), 0));
 	};
-	let ptr = realloc(ptr, new_size)?;
-	Ok(NonNull::slice_from_raw_parts(ptr, new_size.get()))
+	let old_buddy = old_layout.align() > chunk::ALIGNMENT;
+	let new_buddy = new_layout.align() > chunk::ALIGNMENT;
+	let new_ptr = if !old_buddy && !new_buddy {
+		// Both allocations live in the chunk allocator: try in-place resize
+		realloc(ptr, new_size)?
+	} else {
+		// At least one side requires the buddy allocator
+		let new_ptr = __alloc(new_layout)?;
+		let new_ptr = new_ptr.cast::<u8>();
+		let copy_len = old_layout.size().min(new_size.get());
+		ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_ptr(), copy_len);
+		__dealloc(ptr, old_layout);
+		new_ptr
+	};
+	Ok(NonNull::slice_from_raw_parts(new_ptr, new_size.get()))
 }
 
 /// See Rust documentation.
@@ -163,7 +192,11 @@ pub unsafe fn __dealloc(ptr: NonNull<u8>, layout: Layout) {
 	if unlikely(layout.size() == 0) {
 		return;
 	}
-	free(ptr);
+	if layout.align() <= chunk::ALIGNMENT {
+		free(ptr);
+	} else {
+		buddy::free_kernel(ptr.as_ptr(), buddy_order_for(layout));
+	}
 }
 
 #[cfg(test)]

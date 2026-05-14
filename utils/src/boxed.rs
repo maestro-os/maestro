@@ -25,7 +25,7 @@ use core::{
 	fmt,
 	marker::Unsize,
 	mem,
-	mem::ManuallyDrop,
+	mem::{ManuallyDrop, MaybeUninit},
 	ops::{CoerceUnsized, Deref, DerefMut, DerefPure, DispatchFromDyn},
 	ptr::{Unique, drop_in_place},
 };
@@ -62,6 +62,28 @@ impl<T> Box<T> {
 			mem::forget(self);
 			t
 		}
+	}
+}
+
+impl<T> Box<MaybeUninit<T>> {
+	/// Allocates uninitialized storage for a `T` on the heap.
+	pub fn new_uninit() -> AllocResult<Self> {
+		let layout = Layout::new::<MaybeUninit<T>>();
+		if layout.size() == 0 {
+			return Ok(Self(Unique::dangling()));
+		}
+		let ptr = unsafe { __alloc(layout)?.cast() };
+		Ok(Self(Unique::from_non_null(ptr)))
+	}
+
+	/// Converts to `Box<T>`.
+	///
+	/// # Safety
+	///
+	/// The caller must ensure the value is initialized.
+	pub unsafe fn assume_init(self) -> Box<T> {
+		let raw = Box::into_raw(self) as *mut T;
+		unsafe { Box::from_raw(raw) }
 	}
 }
 
