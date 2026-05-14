@@ -409,6 +409,8 @@ impl TTY {
 			}
 			b'\r' => disp.cursor_x = 0,
 			0x08 | 0x7f => disp.cursor_backward(1),
+			// SO/SI: G0/G1 character-set switching. We only support a single charset, so ignore
+			0x0e | 0x0f => {}
 			_ => {
 				let tty_char = (c as vga::Char) | ((disp.current_color as vga::Char) << 8);
 				disp.history[disp.cursor_y][disp.cursor_x] = tty_char;
