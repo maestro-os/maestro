@@ -75,6 +75,8 @@ pub const SIGEV_SIGNAL: c_int = 0;
 pub const SIGEV_NONE: c_int = 1;
 /// Notify method: starts a function as a new thread
 pub const SIGEV_THREAD: c_int = 2;
+/// Notify method (Linux extension): generate a signal targeted at a specific thread
+pub const SIGEV_THREAD_ID: c_int = 4;
 
 /// The size of the signal handlers table (the number of signals + 1, since
 /// indexing begins at 1 instead of 0).
@@ -339,12 +341,12 @@ impl From<SigAction> for CompatSigAction {
 #[repr(C)]
 #[derive(Clone, Debug, Default)]
 pub struct SigEvent {
-	/// Notification method.
-	pub sigev_notify: c_int,
+	/// Data passed with notification.
+	pub sigev_value: SigVal,
 	/// Notification signal.
 	pub sigev_signo: c_int,
-	/// TODO doc
-	pub sigev_value: SigVal,
+	/// Notification method.
+	pub sigev_notify: c_int,
 	/// Function used for thread notification.
 	pub sigev_notify_function: Option<NonNull<extern "C" fn(SigVal)>>,
 	/// Data passed with notification.
@@ -359,7 +361,7 @@ impl SigEvent {
 		// TODO check sigev_notify_thread_id
 		match self.sigev_notify {
 			SIGEV_NONE | SIGEV_THREAD => true,
-			SIGEV_SIGNAL => Signal::try_from(self.sigev_signo).is_ok(),
+			SIGEV_SIGNAL | SIGEV_THREAD_ID => Signal::try_from(self.sigev_signo).is_ok(),
 			_ => false,
 		}
 	}
