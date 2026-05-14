@@ -639,6 +639,19 @@ pub fn truncate(path: UserString, length: usize) -> EResult<usize> {
 	Ok(0)
 }
 
+pub fn ftruncate(fd: c_int, length: usize) -> EResult<usize> {
+	if unlikely(fd < 0) {
+		return Err(errno!(EBADF));
+	}
+	let file = fd_to_file(fd)?;
+	// Permission check
+	if unlikely(!file.can_write()) {
+		return Err(errno!(EINVAL));
+	}
+	file.ops.truncate(&file, length as _)?;
+	Ok(0)
+}
+
 pub fn unlink(pathname: UserString) -> EResult<usize> {
 	do_unlinkat(AT_FDCWD, pathname, 0)
 }
