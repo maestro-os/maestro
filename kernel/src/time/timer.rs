@@ -23,7 +23,7 @@ use crate::{
 	memory::oom,
 	process::{
 		Process,
-		signal::{SIGEV_SIGNAL, SIGEV_THREAD, SigEvent, Signal},
+		signal::{SIGEV_SIGNAL, SIGEV_THREAD, SIGEV_THREAD_ID, SigEvent, Signal},
 	},
 	sync::spin::IntSpin,
 	time::{
@@ -224,7 +224,9 @@ impl TimerManager {
 		let proc = Process::current();
 		let f = move || {
 			match sevp.sigev_notify {
-				SIGEV_SIGNAL => {
+				// TODO for SIGEV_THREAD_ID, target the thread identified by
+				// sevp.sigev_notify_thread_id
+				SIGEV_SIGNAL | SIGEV_THREAD_ID => {
 					// TODO on sigint_t, set si_code to SI_TIMER
 					Process::kill(&proc, sig);
 				}
