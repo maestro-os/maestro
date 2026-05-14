@@ -103,7 +103,7 @@ extern crate alloc as rust_alloc;
 
 #[cfg(any(feature = "std", test))]
 #[unsafe(no_mangle)]
-fn __alloc(layout: Layout) -> AllocResult<NonNull<[u8]>> {
+unsafe fn __alloc(layout: Layout) -> AllocResult<NonNull<[u8]>> {
 	use rust_alloc::alloc::{Allocator, Global};
 	Global.allocate(layout)
 }

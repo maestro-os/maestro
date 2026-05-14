@@ -40,7 +40,7 @@ use crate::{
 };
 use core::{
 	any::Any,
-	array, fmt,
+	fmt,
 	fmt::Formatter,
 	hint,
 	hint::unlikely,
@@ -593,19 +593,29 @@ struct QueuePairInner {
 	cq_head: u32,
 
 	completion_phase: bool,
-	/// Associated data for each submission entry
-	entries: [QueueEntry; SQ_LEN],
+	/// Associated data for each submission entry.
+	///
+	/// Heap-allocated to avoid a stack overflow.
+	entries: Box<[QueueEntry; SQ_LEN]>,
 }
 
-impl Default for QueuePairInner {
-	fn default() -> Self {
-		Self {
+impl QueuePairInner {
+	fn new() -> AllocResult<Self> {
+		let mut entries = Box::<MaybeUninit<[QueueEntry; SQ_LEN]>>::new_uninit()?;
+		// Init on heap to avoid stack overflow
+		let elem_ptr = entries.as_mut_ptr() as *mut QueueEntry;
+		for i in 0..SQ_LEN {
+			unsafe {
+				elem_ptr.add(i).write(QueueEntry::Empty);
+			}
+		}
+		Ok(Self {
 			sq_tail: 0,
 			cq_head: 0,
 
 			completion_phase: true,
-			entries: array::from_fn::<_, SQ_LEN, _>(|_| QueueEntry::Empty),
-		}
+			entries: unsafe { entries.assume_init() },
+		})
 	}
 }
 
@@ -627,7 +637,25 @@ impl QueuePair {
 	pub fn new(id: u16) -> AllocResult<Self> {
 		// A SQE (64 bytes) is four times larger than a CQE (16 bytes)
 		let sq = buddy::alloc_kernel(2, 0)?;
-		let cq = buddy::alloc_kernel(0, 0)?; // TODO on failure, free previous
+		let cq = match buddy::alloc_kernel(0, 0) {
+			Ok(p) => p,
+			Err(e) => {
+				unsafe {
+					buddy::free_kernel(sq.as_ptr(), 2);
+				}
+				return Err(e);
+			}
+		};
+		let inner = match QueuePairInner::new() {
+			Ok(i) => i,
+			Err(e) => {
+				unsafe {
+					buddy::free_kernel(cq.as_ptr(), 0);
+					buddy::free_kernel(sq.as_ptr(), 2);
+				}
+				return Err(e);
+			}
+		};
 		// Zero-initialize queues
 		unsafe {
 			NonNull::slice_from_raw_parts(sq, PAGE_SIZE << 2)
@@ -644,7 +672,7 @@ impl QueuePair {
 			cq: cq.cast(),
 
 			sem: Semaphore::new(SQ_LEN),
-			inner: Default::default(),
+			inner: Spin::new(inner),
 		})
 	}
 }
@@ -985,9 +1013,11 @@ impl Controller {
 			println!("nvme: fatal error during initialization");
 			return Err(errno!(EINVAL));
 		}
-		// Identify controller
-		let mut ctrlr_id: MaybeUninit<IdentifyController> = MaybeUninit::uninit();
-		let dptr = VirtAddr::from(&mut ctrlr_id).kernel_to_physical().unwrap();
+		// Identify controller. Heap-allocated to avoid stack overflow
+		let mut ctrlr_id = Box::<MaybeUninit<IdentifyController>>::new_uninit()?;
+		let dptr = VirtAddr::from(ctrlr_id.as_mut_ptr())
+			.kernel_to_physical()
+			.unwrap();
 		let cqe = inner.submit_cmd_sync(
 			&inner.admin_qp,
 			SubmissionQueueEntry {
@@ -1027,9 +1057,12 @@ impl Controller {
 				inner.bar.read::<u32>(REG_CC) | (subsize << 16) | (comsize << 20),
 			);
 		}
-		// List namespaces
-		let mut ns_ids: MaybeUninit<[u32; 1024]> = MaybeUninit::uninit();
-		let dptr = VirtAddr::from(&mut ns_ids).kernel_to_physical().unwrap();
+		drop(ctrlr_id);
+		// List namespaces. heap-allocated to avoid a stack overflow
+		let mut ns_ids = Box::<MaybeUninit<[u32; 1024]>>::new_uninit()?;
+		let dptr = VirtAddr::from(ns_ids.as_mut_ptr())
+			.kernel_to_physical()
+			.unwrap();
 		let cqe = inner.submit_cmd_sync(
 			&inner.admin_qp,
 			SubmissionQueueEntry {
@@ -1054,7 +1087,7 @@ impl Controller {
 		};
 		controller.inner.init_io_queue(1, 1)?;
 		let ns_ids = unsafe { ns_ids.assume_init() };
-		for i in ns_ids {
+		for &i in ns_ids.iter() {
 			if i == 0 {
 				break;
 			}
