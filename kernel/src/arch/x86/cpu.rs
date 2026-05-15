@@ -75,14 +75,16 @@ pub fn topology_add() -> AllocResult<()> {
 			}
 			let mut parent = &CPU_TOPOLOGY;
 			for i in (0..depth).rev() {
-				let (eax, _, _, edx) = cpuid(0xb, depth);
+				let (eax, _, _, edx) = cpuid(0xb, i);
 				let current_bits = eax & 0x1f;
 				lapic_id = edx;
 				bits -= current_bits;
-				parent = parent.insert(
-					(lapic_id >> bits) & ((1 << (32 - current_bits)) - 1),
-					(i == 0).then_some(cpu),
-				)?;
+				let id = if current_bits == 0 {
+					0
+				} else {
+					(lapic_id >> bits) & ((1u32 << current_bits) - 1)
+				};
+				parent = parent.insert(id, (i == 0).then_some(cpu))?;
 			}
 		}
 		CPUID_VENDOR_INTEL if has_package_bits && has_leaf_0x4() => {
