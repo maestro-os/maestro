@@ -438,13 +438,13 @@ fn parse_csi(tty: &TTY, view: &mut ANSIBufferView) -> ANSIState {
 			// TODO Previous line
 		}
 		(seq, b'G') => {
-			let x = seq.first().cloned().unwrap_or(1).clamp(1, view.tty.width as usize) - 1;
+			let x = seq.first().cloned().unwrap_or(1).clamp(1, view.tty.width) - 1;
 			view.tty.cursor_x = x;
 		}
 		(seq, b'H' | b'f') => {
 			// `CSI <row> ; <col> H` (CUP). Both default to 1 when omitted
-			let row = seq.first().cloned().unwrap_or(1).clamp(1, view.tty.height as usize) - 1;
-			let col = seq.get(1).cloned().unwrap_or(1).clamp(1, view.tty.width as usize) - 1;
+			let row = seq.first().cloned().unwrap_or(1).clamp(1, view.tty.height) - 1;
+			let col = seq.get(1).cloned().unwrap_or(1).clamp(1, view.tty.width) - 1;
 			view.tty.cursor_x = col;
 			view.tty.cursor_y = view.tty.screen_y + row;
 		}
@@ -519,7 +519,7 @@ fn parse_csi(tty: &TTY, view: &mut ANSIBufferView) -> ANSIState {
 		}
 		(seq, b'd') => {
 			// VPA: move cursor to absolute row
-			let row = seq.first().cloned().unwrap_or(1).clamp(1, view.tty.height as usize) - 1;
+			let row = seq.first().cloned().unwrap_or(1).clamp(1, view.tty.height) - 1;
 			view.tty.cursor_y = view.tty.screen_y + row;
 		}
 		(seq, b'n') => {
@@ -606,7 +606,7 @@ pub(super) fn handle(tty: &TTY, disp: &mut Display, buffer: &[u8]) -> usize {
 	let count = disp.ansi_buffer.push_back(buffer);
 	while !disp.ansi_buffer.is_empty() {
 		if disp.ansi_buffer.buf[0] != ESCAPE {
-			tty.putchar(disp, disp.ansi_buffer.buf[0]);
+			tty.putchar(disp, disp.ansi_buffer.buf[0] as _);
 			disp.ansi_buffer.pop_front(1);
 			continue;
 		}
