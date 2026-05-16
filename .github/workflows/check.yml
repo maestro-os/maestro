@@ -1,28 +1,25 @@
 name: Check
 on:
   push:
-    branches:
-      - master
+    branches: ["master"]
   pull_request:
+
 jobs:
   clippy:
-    runs-on: [self-hosted, linux]
+    name: Lint & Check Format (${{ matrix.dir }})
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: ["macros", "utils", "kernel", "inttest"]
     steps:
-      - uses: actions/checkout@v4
-      - name: Macros
-        working-directory: macros
+      - uses: actions/checkout@v6
+      - name: Clippy
+        working-directory: ${{ matrix.dir }}
         run: cargo clippy --all-features --all-targets -- -D warnings
-      - name: Utils
-        working-directory: utils
-        run: cargo clippy --all-features --all-targets -- -D warnings
-      - name: Kernel
-        working-directory: kernel
-        run: |
-          cp default.build-config.toml build-config.toml
-          cargo clippy --all-features --all-targets -- -D warnings
-      - name: Integration tests
-        working-directory: inttest
-        run: cargo clippy --all-features --all-targets -- -D warnings
+
   format:
     runs-on: [self-hosted, linux]
     needs: clippy
@@ -39,6 +36,7 @@ jobs:
       - name: Integration tests
         working-directory: inttest
         run: cargo fmt --check
+
   documentation:
     runs-on: [self-hosted, linux]
     needs: clippy
@@ -50,6 +48,7 @@ jobs:
       - name: Build references
         working-directory: kernel
         run: cargo doc --target arch/${{ matrix.arch }}/${{ matrix.arch }}.json
+
   build:
     name: build (${{ matrix.arch }}, ${{ matrix.profile.dir }})
     runs-on: [self-hosted, linux]
@@ -70,6 +69,7 @@ jobs:
       - name: Check Multiboot2
         working-directory: kernel
         run: grub-file --is-x86-multiboot2 target/${{ matrix.arch }}/${{ matrix.profile.dir }}/maestro
+
   miri:
     runs-on: [self-hosted, linux]
     needs: build
@@ -80,6 +80,7 @@ jobs:
           MIRIFLAGS: -Zmiri-disable-stacked-borrows
         run: cargo miri test
         timeout-minutes: 10
+
   module:
     runs-on: [self-hosted, linux]
     needs: build
@@ -106,6 +107,7 @@ jobs:
           ARCH: ${{ matrix.arch }}
           PROFILE: ${{ matrix.profile }}
         run: ../build
+
   selftest:
     runs-on: [self-hosted, linux]
     needs: module
@@ -124,6 +126,7 @@ jobs:
           CARGOFLAGS: --target arch/${{ matrix.arch }}/${{ matrix.arch }}.json
         run: ci/test.sh self
         timeout-minutes: 10
+
   build_inttest:
     name: build_inttest (${{ matrix.arch.kernel }})
     runs-on: [self-hosted, linux]
@@ -155,6 +158,7 @@ jobs:
         run: |
           ./build.sh
           mv disk disk-${{ matrix.arch.kernel }}-compat
+
   inttest:
     name: inttest (${{ matrix.arch.kernel }}, ${{ matrix.cores }} CPU(s), ${{ matrix.disktype }})
     runs-on: [self-hosted, linux]
