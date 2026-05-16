@@ -422,9 +422,11 @@ impl Display {
 		}
 		for i in 0..n {
 			let row = (self.screen_y + screen_row + i) % HISTORY_LINES;
-			self.history[row].fill(EMPTY_CHAR);
+			let start = row * self.width;
+			let end = (row + 1) * self.width;
+			self.history[start..end].fill(Char::empty());
 		}
-		self.update_screen();
+		self.update_display();
 	}
 
 	/// Deletes `n` rows starting at the cursor row, shifting subsequent rows up within the
@@ -444,9 +446,11 @@ impl Display {
 		}
 		for i in 0..n {
 			let row = (self.screen_y + screen_row + movable + i) % HISTORY_LINES;
-			self.history[row].fill(EMPTY_CHAR);
+			let start = row * self.width;
+			let end = (row + 1) * self.width;
+			self.history[start..end].fill(Char::empty());
 		}
-		self.update_screen();
+		self.update_display();
 	}
 
 	/// Scrolls the contents of the scrolling region up by `n` rows. The top `n` rows of the region
@@ -464,9 +468,11 @@ impl Display {
 		}
 		for i in 0..n {
 			let row = (self.screen_y + bottom - n + i) % HISTORY_LINES;
-			self.history[row].fill(EMPTY_CHAR);
+			let start = row * self.width;
+			let end = (row + 1) * self.width;
+			self.history[start..end].fill(Char::empty());
 		}
-		self.update_screen();
+		self.update_display();
 	}
 
 	/// Sets the top and bottom margins of the scrolling region (DECSTBM).
@@ -482,8 +488,10 @@ impl Display {
 			self.scroll_bottom = height;
 		}
 		// VT100 spec: DECSTBM homes the cursor.
+		let old_cursor = (self.cursor_x, self.cursor_y);
 		self.cursor_x = 0;
 		self.cursor_y = self.screen_y;
+		self.update_cursor(Some(old_cursor));
 	}
 
 	/// If the cursor is out of the screen, append lines by shifting the screen relative to the

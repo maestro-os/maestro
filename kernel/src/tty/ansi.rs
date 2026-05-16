@@ -532,7 +532,7 @@ fn parse_csi(tty: &TTY, view: &mut ANSIBufferView) -> ANSIState {
 		(seq, b'r') => {
 			// DECSTBM: Set top and bottom margins (scrolling region)
 			let top = seq.first().cloned().unwrap_or(1).saturating_sub(1);
-			let bottom = seq.get(1).cloned().unwrap_or(HEIGHT as usize);
+			let bottom = seq.get(1).cloned().unwrap_or(view.tty.height);
 			view.tty.set_scroll_region(top, bottom);
 		}
 		(_seq, b's' | b'u') => {
