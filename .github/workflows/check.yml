@@ -5,6 +5,37 @@ on:
   pull_request:
 
 jobs:
+  build-binutils:
+    name: Build binutils
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Restore binutils cache
+        id: cache-binutils
+        uses: actions/cache@v5
+        with:
+          path: built-binutils
+          key: binutils-2.46.0
+      - name: Build binutils
+        if: steps.cache-binutils.outputs.cache-hit != 'true'
+        run: |
+          curl -o binutils.tar.xz https://ftp.gnu.org/gnu/binutils/binutils-2.46.0.tar.xz
+          tar xf binutils.tar.xz
+          rm binutils.tar.xz
+          for target in {i686-elf,x86_64-elf}; do
+            binutils-*/configure \
+              --prefix=/usr \
+              --target="$target" \
+              --disable-werror \
+              --disable-doc \
+              --disable-nls \
+              --enable-64-bit-bfd
+            make -j$(nproc)
+            make DESTDIR="$(pwd)/built-binutils" install
+            make distclean
+          done
+
   lint:
     name: Lint & Check Format (${{ matrix.dir }})
     permissions:
