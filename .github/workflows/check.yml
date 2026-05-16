@@ -5,7 +5,7 @@ on:
   pull_request:
 
 jobs:
-  clippy:
+  lint:
     name: Lint & Check Format (${{ matrix.dir }})
     permissions:
       contents: read
@@ -19,27 +19,13 @@ jobs:
       - name: Clippy
         working-directory: ${{ matrix.dir }}
         run: cargo clippy --all-features --all-targets -- -D warnings
-
-  format:
-    runs-on: [self-hosted, linux]
-    needs: clippy
-    steps:
-      - name: Macros
-        working-directory: macros
-        run: cargo fmt --check
-      - name: Utils
-        working-directory: utils
-        run: cargo fmt --check
-      - name: Kernel
-        working-directory: kernel
-        run: cargo fmt --check
-      - name: Integration tests
-        working-directory: inttest
+      - name: Check Format
+        working-directory: ${{ matrix.dir }}
         run: cargo fmt --check
 
   documentation:
     runs-on: [self-hosted, linux]
-    needs: clippy
+    needs: lint
     strategy:
       fail-fast: false
       matrix:
@@ -52,7 +38,7 @@ jobs:
   build:
     name: build (${{ matrix.arch }}, ${{ matrix.profile.dir }})
     runs-on: [self-hosted, linux]
-    needs: clippy
+    needs: lint
     strategy:
       fail-fast: false
       matrix:
