@@ -40,3 +40,8 @@ jobs:
         run: mdbook-mermaid install doc/
       - name: Build book
         run: mdbook build doc/
+      - name: Upload book artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: book
+          path: doc/book
