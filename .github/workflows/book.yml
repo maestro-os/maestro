@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+
       - name: Cache mdbook binary
         id: cache-mdbook
         uses: actions/cache@v5
@@ -27,19 +28,17 @@ jobs:
           path: ~/.cargo/bin/mdbook-mermaid
           key: mdbook-mermaid-0.17.0-${{ runner.os }}
       - name: Install mdbook
-        uses: taiki-e/install-action@3771e22aa892e03fd35585fae288baad1755695c # v2.78.2
         if: steps.cache-mdbook.outputs.cache-hit != 'true'
-        with:
-          tool: mdbook@0.5.2
+        run: cargo +stable install mdbook@0.5.2
       - name: Install mdbook-mermaid
-        uses: taiki-e/install-action@3771e22aa892e03fd35585fae288baad1755695c # v2.78.2
         if: steps.cache-mdbook-mermaid.outputs.cache-hit != 'true'
-        with:
-          tool: mdbook-mermaid@0.17.0
+        run: cargo +stable install mdbook-mermaid@0.17.0
+
       - name: Prepare
         run: mdbook-mermaid install doc/
       - name: Build book
         run: mdbook build doc/
+
       - name: Upload book artifact
         uses: actions/upload-artifact@v7
         with:
