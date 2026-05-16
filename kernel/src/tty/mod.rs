@@ -188,8 +188,8 @@ impl Display {
 
 	/// Sets the current foreground color `color` for TTY.
 	fn set_fgcolor(&mut self, color: vga::Color) {
-		self.current_color &= !0x7f;
-		self.current_color |= color;
+		self.current_color &= !0x0f;
+		self.current_color |= color & 0x0f;
 	}
 
 	/// Resets the current foreground color `color` for TTY.
@@ -199,21 +199,21 @@ impl Display {
 
 	/// Sets the current background color `color` for TTY.
 	fn set_bgcolor(&mut self, color: vga::Color) {
-		self.current_color &= !((0x7f << 4) as vga::Color);
-		self.current_color |= color << 4;
+		self.current_color &= !0x70;
+		self.current_color |= (color & 0x07) << 4;
 	}
 
 	/// Resets the current background color `color` for TTY.
 	fn reset_bgcolor(&mut self) {
-		self.set_bgcolor(vga::DEFAULT_COLOR);
+		self.set_bgcolor(vga::DEFAULT_COLOR >> 4);
 	}
 
 	/// Swaps the foreground and background colors.
 	fn swap_colors(&mut self) {
-		let fg = self.current_color & 0x7f;
-		let bg = self.current_color & (0x7f << 4);
-		self.set_fgcolor(fg);
-		self.set_bgcolor(bg);
+		let fg = self.current_color & 0x0f;
+		let bg = (self.current_color >> 4) & 0x0f;
+		self.set_fgcolor(bg);
+		self.set_bgcolor(fg);
 	}
 
 	/// Sets the blinking state of the text for TTY.
