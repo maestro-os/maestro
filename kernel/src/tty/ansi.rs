@@ -408,17 +408,23 @@ fn parse_csi(tty: &TTY, view: &mut ANSIBufferView) -> ANSIState {
 		return ANSIState::Incomplete;
 	};
 	match (seq, cmd) {
-		(_, b'?') => match (view.next_nbr(), view.next_char()) {
-			(Some(7 | 25), Some(b'h')) => view.tty.set_cursor_visible(true),
-			(Some(7 | 25), Some(b'l')) => view.tty.set_cursor_visible(false),
-			// `CSI ? <Pn> h/l` (DECSET/DECRST) for unknown modes: silently consume
-			(Some(_), Some(b'h' | b'l')) => {}
-			// `CSI ? <Pn> n` (private DSR): consume
-			(_, Some(b'n')) => {}
-			// `CSI ? <Pn> c` (private DA): consume; the conformance level is unused
-			(_, Some(b'c')) => {}
-			_ => return ANSIState::Invalid,
-		},
+		(_, b'?') => {
+			let nbr = view.next_nbr();
+			let Some(c) = view.next_char() else {
+				return ANSIState::Incomplete;
+			};
+			match (nbr, c) {
+				(Some(7 | 25), b'h') => view.tty.set_cursor_visible(true),
+				(Some(7 | 25), b'l') => view.tty.set_cursor_visible(false),
+				// `CSI ? <Pn> h/l` (DECSET/DECRST) for unknown modes: silently consume
+				(Some(_), b'h' | b'l') => {}
+				// `CSI ? <Pn> n` (private DSR): consume
+				(_, b'n') => {}
+				// `CSI ? <Pn> c` (private DA): consume; the conformance level is unused
+				(_, b'c') => {}
+				_ => return ANSIState::Invalid,
+			}
+		}
 		(seq, b'A'..=b'D') => {
 			return move_cursor(view.tty, cmd, seq.first().cloned().unwrap_or(1));
 		}
