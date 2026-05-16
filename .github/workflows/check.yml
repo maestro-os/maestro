@@ -11,7 +11,8 @@ jobs:
       contents: read
     runs-on: ubuntu-latest
     steps:
-      - name: Restore binutils cache
+      - &binutils-cache
+        name: Restore binutils cache
         id: cache-binutils
         uses: actions/cache@v5
         with:
@@ -71,9 +72,11 @@ jobs:
         run: cargo doc --target arch/${{ matrix.arch }}/${{ matrix.arch }}.json
 
   build:
-    name: build (${{ matrix.arch }}, ${{ matrix.profile.dir }})
-    runs-on: [self-hosted, linux]
-    needs: lint
+    name: Build (${{ matrix.arch }}, ${{ matrix.profile.dir }})
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    needs: [lint, build-binutils]
     strategy:
       fail-fast: false
       matrix:
@@ -84,6 +87,15 @@ jobs:
           - name: "release"
             dir: "release"
     steps:
+      - uses: actions/checkout@v6
+      - *binutils-cache
+      - name: Add binutils to PATH
+        run: echo "$(pwd)/built-binutils/usr/bin" >> $GITHUB_PATH
+      - name: Retrieve APT dependencies
+        uses: awalsh128/cache-apt-pkgs-action@acb598e5ddbc6f68a970c5da0688d2f3a9f04d05 # v1.6.0
+        with:
+          packages: bash build-essential clang curl grub-pc-bin libssl-dev lld perl pkg-config qemu-system texinfo xorriso
+          version: 1.0
       - name: Build
         working-directory: kernel
         run: cargo build --target arch/${{ matrix.arch }}/${{ matrix.arch }}.json --profile ${{ matrix.profile.name }}
