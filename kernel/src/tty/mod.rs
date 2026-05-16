@@ -405,6 +405,21 @@ impl Display {
 		self.update_cursor(None);
 	}
 
+	/// Copies the history row at `src_row` to the row at `dst_row`.
+	fn copy_history_row(&mut self, src_row: usize, dst_row: usize) {
+		let src_start = src_row * self.width;
+		let src_end = src_start + self.width;
+		let dst_start = dst_row * self.width;
+		self.history.copy_within(src_start..src_end, dst_start);
+	}
+
+	/// Clears a history row.
+	fn clear_history_row(&mut self, row: usize) {
+		let start = row * self.width;
+		let end = start + self.width;
+		self.history[start..end].fill(Char::empty());
+	}
+
 	/// Inserts `n` blank lines at the cursor row, shifting rows below it down within the scrolling
 	/// region. Rows shifted past the bottom of the region are discarded.
 	fn insert_lines(&mut self, n: usize) {
@@ -418,13 +433,11 @@ impl Display {
 		for i in (0..movable).rev() {
 			let src = (self.screen_y + screen_row + i) % HISTORY_LINES;
 			let dst = (self.screen_y + screen_row + i + n) % HISTORY_LINES;
-			self.history[dst] = self.history[src];
+			self.copy_history_row(src, dst);
 		}
 		for i in 0..n {
 			let row = (self.screen_y + screen_row + i) % HISTORY_LINES;
-			let start = row * self.width;
-			let end = (row + 1) * self.width;
-			self.history[start..end].fill(Char::empty());
+			self.clear_history_row(row);
 		}
 		self.update_display();
 	}
@@ -442,13 +455,11 @@ impl Display {
 		for i in 0..movable {
 			let src = (self.screen_y + screen_row + i + n) % HISTORY_LINES;
 			let dst = (self.screen_y + screen_row + i) % HISTORY_LINES;
-			self.history[dst] = self.history[src];
+			self.copy_history_row(src, dst);
 		}
 		for i in 0..n {
 			let row = (self.screen_y + screen_row + movable + i) % HISTORY_LINES;
-			let start = row * self.width;
-			let end = (row + 1) * self.width;
-			self.history[start..end].fill(Char::empty());
+			self.clear_history_row(row);
 		}
 		self.update_display();
 	}
@@ -464,28 +475,25 @@ impl Display {
 		for i in 0..movable {
 			let src = (self.screen_y + top + i + n) % HISTORY_LINES;
 			let dst = (self.screen_y + top + i) % HISTORY_LINES;
-			self.history[dst] = self.history[src];
+			self.copy_history_row(src, dst);
 		}
 		for i in 0..n {
 			let row = (self.screen_y + bottom - n + i) % HISTORY_LINES;
-			let start = row * self.width;
-			let end = (row + 1) * self.width;
-			self.history[start..end].fill(Char::empty());
+			self.clear_history_row(row);
 		}
 		self.update_display();
 	}
 
 	/// Sets the top and bottom margins of the scrolling region (DECSTBM).
 	fn set_scroll_region(&mut self, top: usize, bottom: usize) {
-		let height = vga::HEIGHT as usize;
-		let top = min(top, height);
-		let bottom = min(bottom, height);
+		let top = min(top, self.height);
+		let bottom = min(bottom, self.height);
 		if top + 2 <= bottom {
 			self.scroll_top = top;
 			self.scroll_bottom = bottom;
 		} else {
 			self.scroll_top = 0;
-			self.scroll_bottom = height;
+			self.scroll_bottom = self.height;
 		}
 		// VT100 spec: DECSTBM homes the cursor.
 		let old_cursor = (self.cursor_x, self.cursor_y);
@@ -551,7 +559,7 @@ impl Display {
 		let old_cursor_x = self.cursor_x;
 		let old_cursor_y = self.cursor_y;
 		self.cursor_x = 0;
-		let region_partial = self.scroll_top != 0 || self.scroll_bottom != vga::HEIGHT as usize;
+		let region_partial = self.scroll_top != 0 || self.scroll_bottom != self.height;
 		for _ in 0..n {
 			let screen_row = relative_y_distance(self.screen_y, self.cursor_y % HISTORY_LINES);
 			if region_partial && screen_row + 1 == self.scroll_bottom {
@@ -644,19 +652,39 @@ impl TTY {
 	///
 	/// `fb` is the framebuffer. If `None`, text mode is used.
 	pub fn show(&self, fb: Option<Arc<Framebuffer>>) -> AllocResult<()> {
-		let mut disp = self.display.lock();
-		disp.framebuffer = fb;
-		if let Some(fb) = &disp.framebuffer {
-			let width = fb.info().framebuffer_width as usize / CHAR_WIDTH;
-			let height = fb.info().framebuffer_height as usize / CHAR_HEIGHT;
-			disp.width = width;
-			disp.height = height;
-		}
-		disp.history = vec![Char::empty(); disp.width * HISTORY_LINES]?;
-		let cursor_visible = disp.cursor_visible;
-		disp.set_cursor_visible(cursor_visible);
-		disp.update_display();
-		disp.update_cursor(None);
+		let (width, height, xpixel, ypixel) = {
+			let mut disp = self.display.lock();
+			disp.framebuffer = fb;
+			if let Some(fb) = &disp.framebuffer {
+				let width = fb.info().framebuffer_width as usize / CHAR_WIDTH;
+				let height = fb.info().framebuffer_height as usize / CHAR_HEIGHT;
+				disp.width = width;
+				disp.height = height;
+			}
+			// Default scrolling region covers the whole screen
+			disp.scroll_top = 0;
+			disp.scroll_bottom = disp.height;
+			disp.history = vec![Char::empty(); disp.width * HISTORY_LINES]?;
+			let cursor_visible = disp.cursor_visible;
+			disp.set_cursor_visible(cursor_visible);
+			disp.update_display();
+			disp.update_cursor(None);
+			let (xpixel, ypixel) = match &disp.framebuffer {
+				Some(fb) => (
+					fb.info().framebuffer_width as u16,
+					fb.info().framebuffer_height as u16,
+				),
+				None => (vga::PIXEL_WIDTH as u16, vga::PIXEL_HEIGHT as u16),
+			};
+			(disp.width as u16, disp.height as u16, xpixel, ypixel)
+		};
+		let mut settings = self.settings.lock();
+		settings.winsize = WinSize {
+			ws_row: height,
+			ws_col: width,
+			ws_xpixel: xpixel,
+			ws_ypixel: ypixel,
+		};
 		Ok(())
 	}
 
@@ -965,16 +993,26 @@ impl TTY {
 	/// If a foreground process group is set on the TTY, the function shall send
 	/// it a `SIGWINCH` signal.
 	pub fn set_winsize(&self, mut winsize: WinSize) {
-		// Clamping values
-		if winsize.ws_col > vga::WIDTH as _ {
-			winsize.ws_col = vga::WIDTH as _;
+		let (max_col, max_row, xpixel, ypixel) = {
+			let disp = self.display.lock();
+			let (xpixel, ypixel) = match &disp.framebuffer {
+				Some(fb) => (
+					fb.info().framebuffer_width as u16,
+					fb.info().framebuffer_height as u16,
+				),
+				None => (vga::PIXEL_WIDTH as u16, vga::PIXEL_HEIGHT as u16),
+			};
+			(disp.width as u16, disp.height as u16, xpixel, ypixel)
+		};
+		// Clamp
+		if winsize.ws_col > max_col {
+			winsize.ws_col = max_col;
 		}
-		if winsize.ws_row > vga::HEIGHT as _ {
-			winsize.ws_row = vga::HEIGHT as _;
+		if winsize.ws_row > max_row {
+			winsize.ws_row = max_row;
 		}
-		// Changes to the size in pixels are ignored
-		winsize.ws_xpixel = vga::PIXEL_WIDTH as _;
-		winsize.ws_ypixel = vga::PIXEL_HEIGHT as _;
+		winsize.ws_xpixel = xpixel;
+		winsize.ws_ypixel = ypixel;
 
 		self.settings.lock().winsize = winsize;
 		send_signal(Signal::SIGWINCH, self.get_pgrp());
