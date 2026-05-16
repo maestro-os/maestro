@@ -124,6 +124,11 @@ pub struct Display {
 	/// The content of the TTY's history
 	history: [[vga::Char; vga::WIDTH as usize]; HISTORY_LINES],
 
+	/// Top row of the scrolling region (DECSTBM), in screen-relative coordinates.
+	scroll_top: usize,
+	/// Bottom row of the scrolling region (DECSTBM), exclusive, in screen-relative coordinates.
+	scroll_bottom: usize,
+
 	/// The ANSI escape codes buffer.
 	ansi_buffer: ANSIBuffer,
 
@@ -262,6 +267,87 @@ impl Display {
 		self.update_cursor();
 	}
 
+	/// Inserts `n` blank lines at the cursor row, shifting rows below it down within the scrolling
+	/// region. Rows shifted past the bottom of the region are discarded.
+	fn insert_lines(&mut self, n: usize) {
+		let screen_row = relative_y_distance(self.screen_y, self.cursor_y % HISTORY_LINES);
+		if screen_row < self.scroll_top || screen_row >= self.scroll_bottom {
+			return;
+		}
+		let max = self.scroll_bottom - screen_row;
+		let n = min(n, max);
+		let movable = max - n;
+		for i in (0..movable).rev() {
+			let src = (self.screen_y + screen_row + i) % HISTORY_LINES;
+			let dst = (self.screen_y + screen_row + i + n) % HISTORY_LINES;
+			self.history[dst] = self.history[src];
+		}
+		for i in 0..n {
+			let row = (self.screen_y + screen_row + i) % HISTORY_LINES;
+			self.history[row].fill(EMPTY_CHAR);
+		}
+		self.update_screen();
+	}
+
+	/// Deletes `n` rows starting at the cursor row, shifting subsequent rows up within the
+	/// scrolling region. Blank rows are placed at the bottom of the region.
+	fn delete_lines(&mut self, n: usize) {
+		let screen_row = relative_y_distance(self.screen_y, self.cursor_y % HISTORY_LINES);
+		if screen_row < self.scroll_top || screen_row >= self.scroll_bottom {
+			return;
+		}
+		let max = self.scroll_bottom - screen_row;
+		let n = min(n, max);
+		let movable = max - n;
+		for i in 0..movable {
+			let src = (self.screen_y + screen_row + i + n) % HISTORY_LINES;
+			let dst = (self.screen_y + screen_row + i) % HISTORY_LINES;
+			self.history[dst] = self.history[src];
+		}
+		for i in 0..n {
+			let row = (self.screen_y + screen_row + movable + i) % HISTORY_LINES;
+			self.history[row].fill(EMPTY_CHAR);
+		}
+		self.update_screen();
+	}
+
+	/// Scrolls the contents of the scrolling region up by `n` rows. The top `n` rows of the region
+	/// are discarded and the bottom `n` rows are blanked.
+	fn scroll_region_up(&mut self, n: usize) {
+		let top = self.scroll_top;
+		let bottom = self.scroll_bottom;
+		let size = bottom - top;
+		let n = min(n, size);
+		let movable = size - n;
+		for i in 0..movable {
+			let src = (self.screen_y + top + i + n) % HISTORY_LINES;
+			let dst = (self.screen_y + top + i) % HISTORY_LINES;
+			self.history[dst] = self.history[src];
+		}
+		for i in 0..n {
+			let row = (self.screen_y + bottom - n + i) % HISTORY_LINES;
+			self.history[row].fill(EMPTY_CHAR);
+		}
+		self.update_screen();
+	}
+
+	/// Sets the top and bottom margins of the scrolling region (DECSTBM).
+	fn set_scroll_region(&mut self, top: usize, bottom: usize) {
+		let height = vga::HEIGHT as usize;
+		let top = min(top, height);
+		let bottom = min(bottom, height);
+		if top + 2 <= bottom {
+			self.scroll_top = top;
+			self.scroll_bottom = bottom;
+		} else {
+			self.scroll_top = 0;
+			self.scroll_bottom = height;
+		}
+		// VT100 spec: DECSTBM homes the cursor.
+		self.cursor_x = 0;
+		self.cursor_y = self.screen_y;
+	}
+
 	/// If the cursor is out of the screen, append lines by shifting the screen relative to the
 	/// history buffer, wrapping if the history buffer is exceeded.
 	fn append_lines(&mut self) {
@@ -306,10 +392,22 @@ impl Display {
 	}
 
 	/// Moves the cursor `n` lines down.
+	///
+	/// If the cursor is at the bottom of a non-default scrolling region, scrolls the region up
+	/// instead of advancing the cursor. Otherwise, advances the cursor and scrolls the screen
+	/// through the history buffer as needed.
 	fn newline(&mut self, n: usize) {
 		self.cursor_x = 0;
-		self.cursor_y += n;
-		self.append_lines();
+		let region_partial = self.scroll_top != 0 || self.scroll_bottom != vga::HEIGHT as usize;
+		for _ in 0..n {
+			let screen_row = relative_y_distance(self.screen_y, self.cursor_y % HISTORY_LINES);
+			if region_partial && screen_row + 1 == self.scroll_bottom {
+				self.scroll_region_up(1);
+			} else {
+				self.cursor_y += 1;
+				self.append_lines();
+			}
+		}
 	}
 }
 
@@ -354,6 +452,9 @@ pub static TTY: TTY = TTY {
 
 		screen_y: 0,
 		history: [[EMPTY_CHAR; vga::WIDTH as usize]; HISTORY_LINES],
+
+		scroll_top: 0,
+		scroll_bottom: vga::HEIGHT as usize,
 
 		ansi_buffer: ANSIBuffer::new(),
 

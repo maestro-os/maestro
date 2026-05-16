@@ -489,11 +489,13 @@ fn parse_csi(tty: &TTY, view: &mut ANSIBufferView) -> ANSIState {
 				_ => return ANSIState::Invalid,
 			}
 		}
-		(_seq, b'L') => {
-			// TODO IL: Insert lines
+		(seq, b'L') => {
+			let n = seq.first().cloned().unwrap_or(1).max(1);
+			view.tty.insert_lines(n);
 		}
-		(_seq, b'M') => {
-			// TODO DL: Delete lines
+		(seq, b'M') => {
+			let n = seq.first().cloned().unwrap_or(1).max(1);
+			view.tty.delete_lines(n);
 		}
 		(_seq, b'P') => {
 			// TODO DCH: Delete characters
@@ -522,8 +524,11 @@ fn parse_csi(tty: &TTY, view: &mut ANSIBufferView) -> ANSIState {
 			}
 		}
 		(_seq, b'c') => send_da(tty),
-		(_seq, b'r') => {
-			// TODO DECSTBM: Set top and bottom margins (scrolling region)
+		(seq, b'r') => {
+			// DECSTBM: Set top and bottom margins (scrolling region)
+			let top = seq.first().cloned().unwrap_or(1).saturating_sub(1);
+			let bottom = seq.get(1).cloned().unwrap_or(HEIGHT as usize);
+			view.tty.set_scroll_region(top, bottom);
 		}
 		(_seq, b's' | b'u') => {
 			// TODO Save / restore cursor
