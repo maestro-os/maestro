@@ -107,10 +107,11 @@ jobs:
       - &binutils-path
         name: Add binutils to PATH
         run: echo "$(pwd)/built-binutils/usr/bin" >> $GITHUB_PATH
-      - name: Retrieve APT dependencies
+      - &apt-cache
+        name: Retrieve APT dependencies
         uses: awalsh128/cache-apt-pkgs-action@acb598e5ddbc6f68a970c5da0688d2f3a9f04d05 # v1.6.0
         with:
-          packages: bash build-essential clang curl grub-pc-bin libssl-dev lld perl pkg-config qemu-system texinfo xorriso
+          packages: bash build-essential clang curl grub-pc-bin libssl-dev lld mtools perl pkg-config qemu-system texinfo xorriso
           version: 1.0
       - name: Build
         working-directory: kernel
@@ -166,13 +167,20 @@ jobs:
         run: ../build
 
   selftest:
-    runs-on: [self-hosted, linux]
-    needs: module
+    name: Self Test (${{ matrix.arch }})
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    needs: lint
     strategy:
       fail-fast: false
       matrix:
         arch: ["x86", "x86_64"]
     steps:
+      - uses: actions/checkout@v6
+      - *apt-cache
+      - *binutils-cache
+      - *binutils-path
       - name: Run utils tests
         working-directory: utils
         run: cargo test
