@@ -104,7 +104,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - *binutils-cache
-      - name: Add binutils to PATH
+      - &binutils-path
+        name: Add binutils to PATH
         run: echo "$(pwd)/built-binutils/usr/bin" >> $GITHUB_PATH
       - name: Retrieve APT dependencies
         uses: awalsh128/cache-apt-pkgs-action@acb598e5ddbc6f68a970c5da0688d2f3a9f04d05 # v1.6.0
@@ -117,9 +118,20 @@ jobs:
       - name: Check Multiboot2
         working-directory: kernel
         run: grub-file --is-x86-multiboot2 target/${{ matrix.arch }}/${{ matrix.profile.dir }}/maestro
+      - name: Remove binutils (should not be in workspace artifact)
+        run: rm -rf built-binutils
+      - name: Upload ${{ matrix.arch }}-${{ matrix.profile.dir }} workspace
+        uses: actions/upload-artifact@v7
+        with:
+          name: workspace-${{ matrix.arch }}-${{ matrix.profile.dir }}
+          path: .
+          include-hidden-files: true
 
   module:
-    runs-on: [self-hosted, linux]
+    name: Build Module ${{ matrix.mod }} (${{ matrix.arch }}, ${{ matrix.profile }})
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
     needs: build
     strategy:
       fail-fast: false
@@ -128,6 +140,14 @@ jobs:
         arch: ["x86", "x86_64"]
         profile: ["debug", "release"]
     steps:
+      - name: Restore ${{ matrix.arch }}-${{ matrix.profile }} workspace
+        uses: actions/download-artifact@v8
+        with:
+          name: workspace-${{ matrix.arch }}-${{ matrix.profile }}
+      - name: Restore permissions
+        run: chmod +x mod/build
+      - *binutils-cache
+      - *binutils-path
       - name: Clippy
         working-directory: mod/${{ matrix.mod }}
         env:
