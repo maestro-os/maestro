@@ -44,3 +44,29 @@ jobs:
         with:
           name: book
           path: doc/book
+
+  publish:
+    name: Publish
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    steps:
+      - name: Download book artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: book
+      - name: Install rclone
+        uses: awalsh128/cache-apt-pkgs-action@acb598e5ddbc6f68a970c5da0688d2f3a9f04d05 # v1.6.0
+        with:
+          packages: rclone
+          version: 1.0
+      - name: Sync book to S3
+        env:
+          RCLONE_CONFIG_CELLAR_TYPE: s3
+          RCLONE_CONFIG_CELLAR_PROVIDER: ${{ vars.S3_PROVIDER }}
+          RCLONE_CONFIG_CELLAR_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_CELLAR_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_CELLAR_ENDPOINT: ${{ vars.S3_ENDPOINT_URL }}
+        run: rclone sync . cellar:${{ vars.S3_BUCKET }} --delete-during
