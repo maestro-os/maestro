@@ -48,6 +48,24 @@ jobs:
         dir: ["macros", "utils", "kernel", "inttest"]
     steps:
       - uses: actions/checkout@v6
+      - &rust-toolchain-cache
+        name: Cache Rust toolchain
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.rustup/toolchains
+            ~/.rustup/update-hashes
+          key: rust-toolchain-${{ runner.os }}-${{ hashFiles('rust-toolchain.toml') }}
+      - &rust-registry-cache
+        name: Restore Rust registry cache
+        uses: actions/cache/restore@v5
+        with: &rust-registry-cache-params
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: rust-registry-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: rust-registry-${{ runner.os }}-
       - name: Clippy
         working-directory: ${{ matrix.dir }}
         run: cargo clippy --all-features --all-targets -- -D warnings
@@ -67,6 +85,8 @@ jobs:
         arch: ["x86", "x86_64"]
     steps:
       - uses: actions/checkout@v6
+      - *rust-toolchain-cache
+      - *rust-registry-cache
       - name: Build references
         working-directory: kernel
         run: cargo doc --target arch/${{ matrix.arch }}/${{ matrix.arch }}.json
@@ -79,6 +99,8 @@ jobs:
     needs: lint
     steps:
       - uses: actions/checkout@v6
+      - *rust-toolchain-cache
+      - *rust-registry-cache
       - name: Utils
         working-directory: utils
         env:
@@ -103,6 +125,10 @@ jobs:
             dir: "release"
     steps:
       - uses: actions/checkout@v6
+      - *rust-toolchain-cache
+      - name: Cache Rust registry
+        uses: actions/cache@v5
+        with: *rust-registry-cache-params
       - *binutils-cache
       - &binutils-path
         name: Add binutils to PATH
@@ -147,6 +173,8 @@ jobs:
           name: workspace-${{ matrix.arch }}-${{ matrix.profile }}
       - name: Restore permissions
         run: chmod +x mod/build
+      - *rust-toolchain-cache
+      - *rust-registry-cache
       - *binutils-cache
       - *binutils-path
       - name: Clippy
@@ -178,6 +206,8 @@ jobs:
         arch: ["x86", "x86_64"]
     steps:
       - uses: actions/checkout@v6
+      - *rust-toolchain-cache
+      - *rust-registry-cache
       - *apt-cache
       - *binutils-cache
       - *binutils-path
