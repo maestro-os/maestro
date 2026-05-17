@@ -71,6 +71,21 @@ jobs:
         working-directory: kernel
         run: cargo doc --target arch/${{ matrix.arch }}/${{ matrix.arch }}.json
 
+  miri:
+    name: Miri
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v6
+      - name: Utils
+        working-directory: utils
+        env:
+          MIRIFLAGS: -Zmiri-disable-stacked-borrows
+        run: cargo miri test
+        timeout-minutes: 10
+
   build:
     name: Build (${{ matrix.arch }}, ${{ matrix.profile.dir }})
     permissions:
@@ -102,17 +117,6 @@ jobs:
       - name: Check Multiboot2
         working-directory: kernel
         run: grub-file --is-x86-multiboot2 target/${{ matrix.arch }}/${{ matrix.profile.dir }}/maestro
-
-  miri:
-    runs-on: [self-hosted, linux]
-    needs: build
-    steps:
-      - name: Utils
-        working-directory: utils
-        env:
-          MIRIFLAGS: -Zmiri-disable-stacked-borrows
-        run: cargo miri test
-        timeout-minutes: 10
 
   module:
     runs-on: [self-hosted, linux]
