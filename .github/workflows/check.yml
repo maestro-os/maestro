@@ -214,13 +214,13 @@ jobs:
       - name: Run utils tests
         working-directory: utils
         run: cargo test
-        timeout-minutes: 10
+        timeout-minutes: 3
       - name: Run kernel tests
         working-directory: kernel
         env:
           CARGOFLAGS: --target arch/${{ matrix.arch }}/${{ matrix.arch }}.json
         run: ci/test.sh self
-        timeout-minutes: 10
+        timeout-minutes: 3
 
   build_inttest:
     name: Build Integration Tests Disks (${{ matrix.arch.kernel }})
@@ -309,7 +309,7 @@ jobs:
         run: |
           mv ../disk-${{ matrix.arch.kernel }} qemu_disk
           ci/test.sh int
-        timeout-minutes: 10
+        timeout-minutes: 3
       - name: Run (compat)
         if: ${{ matrix.arch.user_compat }}
         working-directory: kernel
@@ -320,4 +320,4 @@ jobs:
         run: |
           mv ../disk-${{ matrix.arch.kernel }}-compat qemu_disk
           ci/test.sh int
-        timeout-minutes: 10
+        timeout-minutes: 3
