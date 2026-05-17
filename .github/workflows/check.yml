@@ -193,9 +193,11 @@ jobs:
         timeout-minutes: 10
 
   build_inttest:
-    name: build_inttest (${{ matrix.arch.kernel }})
-    runs-on: [self-hosted, linux]
-    needs: module
+    name: Build Integration Tests (${{ matrix.arch.kernel }})
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    needs: build
     strategy:
       fail-fast: false
       matrix:
@@ -206,6 +208,16 @@ jobs:
             user: "x86_64-unknown-linux-musl"
             user_compat: "i686-unknown-linux-musl"
     steps:
+      - name: Restore ${{ matrix.arch.kernel }}-debug workspace
+        uses: actions/download-artifact@v8
+        with:
+          name: workspace-${{ matrix.arch.kernel }}-debug
+      - name: Restore permissions
+        run: chmod +x mod/build inttest/build.sh
+      - *rust-toolchain-cache
+      - *rust-registry-cache
+      - *binutils-cache
+      - *binutils-path
       - name: Build tests
         working-directory: inttest
         env:
