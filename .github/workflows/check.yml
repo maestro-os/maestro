@@ -223,7 +223,7 @@ jobs:
         timeout-minutes: 10
 
   build_inttest:
-    name: Build Integration Tests (${{ matrix.arch.kernel }})
+    name: Build Integration Tests Disks (${{ matrix.arch.kernel }})
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -238,7 +238,8 @@ jobs:
             user: "x86_64-unknown-linux-musl"
             user_compat: "i686-unknown-linux-musl"
     steps:
-      - name: Restore ${{ matrix.arch.kernel }}-debug workspace
+      - &restore-dbg-workspace
+        name: Restore ${{ matrix.arch.kernel }}-debug workspace
         uses: actions/download-artifact@v8
         with:
           name: workspace-${{ matrix.arch.kernel }}-debug
@@ -265,10 +266,17 @@ jobs:
         run: |
           ./build.sh
           mv disk disk-${{ matrix.arch.kernel }}-compat
+      - name: Upload disk images
+        uses: actions/upload-artifact@v7
+        with:
+          name: inttest-disks-${{ matrix.arch.kernel }}
+          path: inttest/disk-${{ matrix.arch.kernel }}*
 
   inttest:
-    name: inttest (${{ matrix.arch.kernel }}, ${{ matrix.cores }} CPU(s), ${{ matrix.disktype }})
-    runs-on: [self-hosted, linux]
+    name: Run Integration Tests (${{ matrix.arch.kernel }}, ${{ matrix.cores }} CPU(s), ${{ matrix.disktype }})
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
     needs: build_inttest
     strategy:
       fail-fast: false
@@ -282,6 +290,16 @@ jobs:
         cores: ["1", "2"]
         disktype: ["ide", "nvme"]
     steps:
+      - uses: actions/checkout@v6
+      - name: Restore disk images
+        uses: actions/download-artifact@v8
+        with:
+          name: inttest-disks-${{ matrix.arch.kernel }}
+      - *rust-toolchain-cache
+      - *rust-registry-cache
+      - *apt-cache
+      - *binutils-cache
+      - *binutils-path
       - name: Run
         working-directory: kernel
         env:
@@ -289,7 +307,7 @@ jobs:
           QEMUFLAGS: "-smp ${{ matrix.cores }}"
           DISKTYPE: ${{ matrix.disktype }}
         run: |
-          cp ../inttest/disk-${{ matrix.arch.kernel }} qemu_disk
+          mv ../disk-${{ matrix.arch.kernel }} qemu_disk
           ci/test.sh int
         timeout-minutes: 10
       - name: Run (compat)
@@ -300,6 +318,6 @@ jobs:
           QEMUFLAGS: "-smp ${{ matrix.cores }}"
           DISKTYPE: ${{ matrix.disktype }}
         run: |
-          cp ../inttest/disk-${{ matrix.arch.kernel }}-compat qemu_disk
+          mv ../disk-${{ matrix.arch.kernel }}-compat qemu_disk
           ci/test.sh int
         timeout-minutes: 10
