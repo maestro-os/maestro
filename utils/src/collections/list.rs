@@ -387,13 +387,13 @@ pub struct Cursor<'l, T: 'l, const OFF: usize> {
 impl<'l, T: 'l, const OFF: usize> Cursor<'l, T, OFF> {
 	/// Returns the cursor's node.
 	#[inline]
-	pub fn node(&self) -> &ListNode {
+	pub fn node(&self) -> &'l ListNode {
 		self.node
 	}
 
 	/// Returns a reference to the node's value.
 	#[inline]
-	pub fn value(&self) -> &T {
+	pub fn value(&self) -> &'l T {
 		unsafe { self.node.container(OFF) }
 	}
 

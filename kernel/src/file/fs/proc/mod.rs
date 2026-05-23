@@ -40,7 +40,7 @@ use crate::{
 		},
 		perm::{Gid, Uid},
 		vfs,
-		vfs::node::Node,
+		vfs::{CachePolicy, node::Node},
 	},
 	process::{PROCESSES, Process, pid::Pid},
 };
@@ -246,7 +246,7 @@ impl NodeOps for RootDir {
 		Ok(())
 	}
 
-	fn iter_entries(&self, _dir: &Node, ctx: &mut DirContext) -> EResult<()> {
+	fn iter_entries(&self, _dir: &vfs::Entry, ctx: &mut DirContext) -> EResult<()> {
 		let off: usize = ctx.off.try_into().map_err(|_| errno!(EINVAL))?;
 		// Iterate on static entries
 		let static_iter = Self::STATIC.entries.iter().skip(off);
@@ -290,8 +290,8 @@ impl FilesystemOps for ProcFS {
 		b"proc"
 	}
 
-	fn cache_entries(&self) -> bool {
-		false
+	fn cache_policy(&self) -> CachePolicy {
+		CachePolicy::Never
 	}
 
 	fn get_stat(&self) -> EResult<Statfs> {
@@ -320,10 +320,6 @@ impl FilesystemOps for ProcFS {
 		))?)
 	}
 
-	fn create_node(&self, _fs: &Arc<Filesystem>, _stat: Stat) -> EResult<Arc<Node>> {
-		Err(errno!(EINVAL))
-	}
-
 	fn destroy_node(&self, _node: &Node) -> EResult<()> {
 		Ok(())
 	}
@@ -345,8 +341,8 @@ impl FilesystemType for ProcFsType {
 		&self,
 		_dev: Option<Arc<BlkDev>>,
 		_mountpath: PathBuf,
-		_readonly: bool,
+		mount_flags: u32,
 	) -> EResult<Arc<Filesystem>> {
-		Ok(Filesystem::new(0, Box::new(ProcFS)?)?)
+		Ok(Filesystem::new(0, Box::new(ProcFS)?, mount_flags)?)
 	}
 }

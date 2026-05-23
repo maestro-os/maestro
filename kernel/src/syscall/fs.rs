@@ -39,12 +39,12 @@ use crate::{
 		at::{AT_EACCESS, AT_EMPTY_PATH, AT_FDCWD, AT_SYMLINK_NOFOLLOW},
 	},
 	time::{
-		clock::{Clock, current_time_ns, current_time_sec},
+		clock::{Clock, current_time_ns},
 		unit::{TimeUnit, Timespec, Timeval, UTimBuf},
 	},
 };
 use core::{ffi::c_int, hint::unlikely, sync::atomic::Ordering::Release};
-use utils::{errno, errno::EResult, limits::SYMLINK_MAX};
+use utils::{errno, errno::EResult};
 
 /// `access` flag: Checks for existence of the file.
 const F_OK: i32 = 0;
@@ -54,11 +54,6 @@ const R_OK: i32 = 4;
 const W_OK: i32 = 2;
 /// `access` flag: Checks the file can be executed.
 const X_OK: i32 = 1;
-
-/// `rename` flag: Don't replace new path if it exists. Return an error instead.
-const RENAME_NOREPLACE: c_int = 1;
-/// `rename` flag: Exchanges old and new paths atomically.
-const RENAME_EXCHANGE: c_int = 2;
 
 pub fn creat(pathname: UserString, mode: c_int) -> EResult<usize> {
 	do_openat(AT_FDCWD, pathname, O_CREAT | O_WRONLY | O_TRUNC, mode as _)
@@ -78,15 +73,11 @@ pub fn mkdirat(dirfd: c_int, path: UserString, mode: file::Mode) -> EResult<usiz
 		return Err(errno!(EEXIST));
 	};
 	let mode = mode & !Process::current().umask();
-	let ts = current_time_sec(Clock::Realtime);
 	vfs::create_file(
 		parent,
 		name,
 		Stat {
 			mode: FileType::Directory.to_mode() | mode,
-			ctime: ts,
-			mtime: ts,
-			atime: ts,
 			..Default::default()
 		},
 	)?;
@@ -115,7 +106,6 @@ pub fn mknodat(dirfd: c_int, path: UserString, mode: file::Mode, dev: u64) -> ER
 		(_, false) => return Err(errno!(EPERM)),
 		(_, true) => return Err(errno!(EINVAL)),
 	}
-	let ts = current_time_sec(Clock::Realtime);
 	vfs::create_file(
 		parent,
 		name,
@@ -123,9 +113,6 @@ pub fn mknodat(dirfd: c_int, path: UserString, mode: file::Mode, dev: u64) -> ER
 			mode,
 			dev_major: id::major(dev),
 			dev_minor: id::minor(dev),
-			ctime: ts,
-			mtime: ts,
-			atime: ts,
 			..Default::default()
 		},
 	)?;
@@ -170,10 +157,6 @@ pub fn symlink(target: UserString, linkpath: UserString) -> EResult<usize> {
 }
 
 pub fn symlinkat(target: UserString, newdirfd: c_int, linkpath: UserString) -> EResult<usize> {
-	let target = target.copy_path_from_user()?;
-	if target.len() > SYMLINK_MAX {
-		return Err(errno!(ENAMETOOLONG));
-	}
 	let linkpath = linkpath.copy_path_from_user()?;
 	// Create link
 	let Resolved::Creatable {
@@ -183,18 +166,7 @@ pub fn symlinkat(target: UserString, newdirfd: c_int, linkpath: UserString) -> E
 	else {
 		return Err(errno!(EEXIST));
 	};
-	let ts = current_time_sec(Clock::Realtime);
-	vfs::symlink(
-		&parent,
-		name,
-		target.as_bytes(),
-		Stat {
-			ctime: ts,
-			mtime: ts,
-			atime: ts,
-			..Default::default()
-		},
-	)?;
+	vfs::symlink(&parent, name, target)?;
 	Ok(0)
 }
 
@@ -243,20 +215,14 @@ pub fn do_openat(
 		Resolved::Creatable {
 			parent,
 			name,
-		} => {
-			let ts = current_time_sec(Clock::Realtime);
-			vfs::create_file(
-				parent,
-				name,
-				Stat {
-					mode: FileType::Regular.to_mode() | mode,
-					ctime: ts,
-					mtime: ts,
-					atime: ts,
-					..Default::default()
-				},
-			)?
-		}
+		} => vfs::create_file(
+			parent,
+			name,
+			Stat {
+				mode: FileType::Regular.to_mode() | mode,
+				..Default::default()
+			},
+		)?,
 	};
 	// Check permissions
 	let (read, write) = match flags & 0b11 {
@@ -265,16 +231,19 @@ pub fn do_openat(
 		O_RDWR => (true, true),
 		_ => return Err(errno!(EINVAL)),
 	};
+	if unlikely(write && file.is_fs_readonly()) {
+		return Err(errno!(EROFS));
+	}
 	let stat = file.stat();
-	if read && !can_read_file(&stat, true) {
+	if unlikely(read && !can_read_file(&stat, true)) {
 		return Err(errno!(EACCES));
 	}
-	if write && !can_write_file(&stat, true) {
+	if unlikely(write && !can_write_file(&stat, true)) {
 		return Err(errno!(EACCES));
 	}
 	let file_type = stat.get_type();
 	// If `O_DIRECTORY` is set and the file is not a directory, return an error
-	if flags & O_DIRECTORY != 0 && file_type != Some(FileType::Directory) {
+	if unlikely(flags & O_DIRECTORY != 0 && file_type != Some(FileType::Directory)) {
 		return Err(errno!(ENOTDIR));
 	}
 	// Open file
@@ -367,7 +336,7 @@ pub fn chmod(pathname: UserString, mode: file::Mode) -> EResult<usize> {
 pub fn fchmod(fd: c_int, mode: file::Mode) -> EResult<usize> {
 	let file = fd_to_file(fd)?;
 	vfs::set_stat(
-		file.vfs_entry.node(),
+		&file.vfs_entry,
 		&StatSet {
 			mode: Some(mode),
 			..Default::default()
@@ -388,7 +357,7 @@ pub fn fchmodat(
 		unreachable!();
 	};
 	vfs::set_stat(
-		file.node(),
+		&file,
 		&StatSet {
 			mode: Some(mode),
 			..Default::default()
@@ -421,7 +390,7 @@ fn do_fchownat(
 		return Err(errno!(EPERM));
 	}
 	vfs::set_stat(
-		ent.node(),
+		&ent,
 		&StatSet {
 			uid: (user > -1).then_some(user as _),
 			gid: (group > -1).then_some(group as _),
@@ -532,7 +501,7 @@ fn do_utimensat<T: TimeUnit>(
 		unreachable!();
 	};
 	vfs::set_stat(
-		file.node(),
+		&file,
 		&StatSet {
 			atime: Some(times[0].to_nano() / 1_000_000_000),
 			mtime: Some(times[1].to_nano() / 1_000_000_000),
@@ -573,13 +542,12 @@ pub fn utimensat(
 	do_utimensat(dirfd, pathname, times, flags)
 }
 
-// TODO implement flags
 pub(super) fn do_renameat2(
 	olddirfd: c_int,
 	oldpath: UserString,
 	newdirfd: c_int,
 	newpath: UserString,
-	_flags: c_int,
+	flags: c_int,
 ) -> EResult<usize> {
 	// Get old file
 	let oldpath = oldpath.copy_path_from_user()?;
@@ -593,12 +561,12 @@ pub(super) fn do_renameat2(
 		Resolved::Found(new) => {
 			// cannot move the root of the vfs
 			let new_parent = new.parent.clone().ok_or_else(|| errno!(EBUSY))?;
-			vfs::rename(old, new_parent, &new.name)?;
+			vfs::rename(old, new_parent, &new.name, flags)?;
 		}
 		Resolved::Creatable {
 			parent: new_parent,
 			name: new_name,
-		} => vfs::rename(old, new_parent, new_name)?,
+		} => vfs::rename(old, new_parent, new_name, flags)?,
 	}
 	Ok(0)
 }

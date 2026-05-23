@@ -133,15 +133,15 @@ pub static FILESYSTEMS: Spin<HashMap<DeviceID, Arc<Filesystem>>> = Spin::new(Has
 /// it.
 ///
 /// Arguments:
-/// - `source` is the source of the mountpoint.
-/// - `fs_type` is the filesystem type. If `None`, the function tries to detect it automatically.
-/// - `target_path` is the path at which the filesystem is to be mounted.
-/// - `readonly` tells whether the filesystem is mount in readonly.
+/// - `source` is the source of the mountpoint
+/// - `fs_type` is the filesystem type. If `None`, the function tries to detect it automatically
+/// - `target_path` is the path at which the filesystem is to be mounted
+/// - `mount_flags` are mount flags
 fn get_fs(
 	source: &MountSource,
 	fs_type: Option<Arc<dyn FilesystemType>>,
 	target_path: PathBuf,
-	readonly: bool,
+	mount_flags: u32,
 ) -> EResult<Arc<Filesystem>> {
 	match source {
 		MountSource::Device(dev_id) => {
@@ -160,7 +160,7 @@ fn get_fs(
 				Some(f) => f,
 				None => fs::detect(&dev)?,
 			};
-			let fs = fs_type.load_filesystem(Some(dev), target_path, readonly)?;
+			let fs = fs_type.load_filesystem(Some(dev), target_path, mount_flags)?;
 			filesystems.insert(*dev_id, fs.clone())?;
 			Ok(fs)
 		}
@@ -169,7 +169,7 @@ fn get_fs(
 				Some(f) => f,
 				None => fs::get_type(name).ok_or_else(|| errno!(ENODEV))?,
 			};
-			fs_type.load_filesystem(None, target_path, readonly)
+			fs_type.load_filesystem(None, target_path, mount_flags)
 		}
 	}
 }
@@ -238,9 +238,8 @@ pub fn create(
 		),
 		None => (PathBuf::root()?, String::new(), None),
 	};
-	let fs = get_fs(&source, fs_type, target_path, flags & FLAG_RDONLY != 0)?;
+	let fs = get_fs(&source, fs_type, target_path, flags)?;
 	let mut mps = MOUNT_POINTS.lock();
-	// TODO get root node from cache if present instead
 	// Get filesystem root node
 	let root = fs.ops.root(&fs)?;
 	// Create an entry for the root of the mountpoint

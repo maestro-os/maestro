@@ -25,8 +25,9 @@ use crate::{
 };
 use core::{
 	ffi::{c_int, c_uint},
+	hint::unlikely,
 	mem::{offset_of, size_of},
-	sync::atomic,
+	sync::{atomic, atomic::Ordering::Release},
 };
 use utils::{bytes::as_bytes, errno, errno::EResult};
 
@@ -62,7 +63,7 @@ struct LinuxDirent64 {
 }
 
 fn do_getdents<F: FnMut(&DirEntry) -> EResult<bool>>(fd: c_int, mut write: F) -> EResult<()> {
-	if fd < 0 {
+	if unlikely(fd < 0) {
 		return Err(errno!(EBADF));
 	}
 	let file = fd_to_file(fd)?;
@@ -74,9 +75,10 @@ fn do_getdents<F: FnMut(&DirEntry) -> EResult<bool>>(fd: c_int, mut write: F) ->
 		off: file.off.load(atomic::Ordering::Acquire),
 	};
 	// cannot fail since we know this is a directory
-	let node = file.node();
-	node.node_ops.iter_entries(node, &mut ctx)?;
-	file.off.store(ctx.off, atomic::Ordering::Release);
+	file.node()
+		.node_ops
+		.iter_entries(&file.vfs_entry, &mut ctx)?;
+	file.off.store(ctx.off, Release);
 	Ok(())
 }
 

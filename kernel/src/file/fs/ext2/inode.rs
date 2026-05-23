@@ -21,8 +21,8 @@
 use super::{Ext2Fs, Superblock, bgd::BlockGroupDescriptor, dirent, dirent::Dirent, zero_block};
 use crate::{
 	file::{FileType, INode, Mode, Stat, fs::ext2::dirent::DirentIterator, vfs::node::Node},
-	memory::cache::{RcBlockVal, RcPage},
-	sync::mutex::MutexGuard,
+	memory::cache::{RcPage, RcPageVal},
+	sync::mutex::{Mutex, MutexGuard},
 };
 use core::{
 	hint::unlikely,
@@ -88,7 +88,7 @@ pub const ROOT_DIRECTORY_INODE: u32 = 2;
 /// Container for an inode, locking its associated spinlock to avoid concurrency issues
 pub(super) struct INodeWrap<'n> {
 	_guard: MutexGuard<'n, (), false>,
-	inode: RcBlockVal<Ext2INode>,
+	inode: RcPageVal<Ext2INode>,
 }
 
 impl INodeWrap<'_> {
@@ -257,9 +257,13 @@ pub struct Ext2INode {
 }
 
 impl Ext2INode {
-	/// Returns the `i`th inode on the filesystem.
-	pub fn get<'n>(node: &'n Node, fs: &Ext2Fs) -> EResult<INodeWrap<'n>> {
-		let i: u32 = node.inode.try_into().map_err(|_| errno!(EOVERFLOW))?;
+	/// Returns a reference to the inode, without locking.
+	///
+	/// # Safety
+	///
+	/// Concurrency is the caller's responsibility.
+	pub unsafe fn get(inode: INode, fs: &Ext2Fs) -> EResult<RcPageVal<Self>> {
+		let i: u32 = inode.try_into().map_err(|_| errno!(EOVERFLOW))?;
 		// Check the index is correct
 		let Some(i) = i.checked_sub(1) else {
 			return Err(errno!(EINVAL));
@@ -278,10 +282,38 @@ impl Ext2INode {
 		let off = i as u64 % (blk_size / inode_size);
 		// Adapt to the size of an inode
 		let off = off * (inode_size / 128);
+		Ok(RcPageVal::new(blk, off as _))
+	}
+
+	/// Returns filesystem's inode associated with `node`.
+	///
+	/// This function locks the [`Node`]'s mutex.
+	pub fn lock<'n>(node: &'n Node, fs: &Ext2Fs) -> EResult<INodeWrap<'n>> {
 		Ok(INodeWrap {
 			_guard: node.lock.lock(),
-			inode: RcBlockVal::new(blk, off as _),
+			inode: unsafe { Self::get(node.inode, fs)? },
 		})
+	}
+
+	/// Returns filesystem's inodes associated with `node0` and `node1`.
+	///
+	/// This function locks the [`Node`]'s mutex.
+	pub fn lock_two<'a, 'b>(
+		node0: &'a Node,
+		node1: &'b Node,
+		fs: &Ext2Fs,
+	) -> EResult<(INodeWrap<'a>, INodeWrap<'b>)> {
+		let (n0, n1) = Mutex::lock_two(&node0.lock, &node1.lock);
+		Ok((
+			INodeWrap {
+				_guard: n0,
+				inode: unsafe { Self::get(node0.inode as _, fs)? },
+			},
+			INodeWrap {
+				_guard: n1,
+				inode: unsafe { Self::get(node1.inode as _, fs)? },
+			},
+		))
 	}
 
 	/// Returns the file's status.
@@ -340,21 +372,16 @@ impl Ext2INode {
 	/// Arguments:
 	/// - `superblock` is the filesystem's superblock
 	/// - `size` is the file's size
-	/// - `inline` is `true` if the inode is a symlink storing the target inline
-	pub fn set_size(&mut self, sp: &Superblock, size: u64, inline: bool) {
+	pub fn set_size(&mut self, sp: &Superblock, size: u64) {
 		let has_version = sp.s_rev_level >= 1;
 		let has_feature = sp.s_feature_ro_compat & super::WRITE_REQUIRED_64_BITS != 0;
 		if has_version && has_feature {
 			self.i_dir_acl = (size >> 32) as u32;
 		}
 		self.i_size = size as u32;
-		if !inline {
-			let blk_size = sp.get_block_size();
-			let sector_per_blk = blk_size / SECTOR_SIZE;
-			self.i_blocks = size.div_ceil(blk_size as _) as u32 * sector_per_blk;
-		} else {
-			self.i_blocks = 0;
-		}
+		let blk_size = sp.get_block_size();
+		let sector_per_blk = blk_size / SECTOR_SIZE;
+		self.i_blocks = size.div_ceil(blk_size as _) as u32 * sector_per_blk;
 	}
 
 	/// Returns the number of content blocks.
@@ -483,7 +510,7 @@ impl Ext2INode {
 		{
 			return Ok(());
 		}
-		self.set_size(&fs.sp, 0, false);
+		self.set_size(&fs.sp, 0);
 		// Free blocks
 		for (off, blk) in self.i_block.iter().enumerate() {
 			let Some(blk) = check_blk_off(*blk, &fs.sp)? else {
@@ -599,7 +626,7 @@ impl Ext2INode {
 		fs: &Ext2Fs,
 		entry_inode: u32,
 		name: &[u8],
-		file_type: FileType,
+		file_type: Option<FileType>,
 	) -> EResult<()> {
 		debug_assert_eq!(self.get_type(), FileType::Directory);
 		// If the name is too long, error
@@ -627,7 +654,7 @@ impl Ext2INode {
 				&fs.sp,
 				entry_inode as _,
 				rec_len,
-				Some(file_type),
+				file_type,
 				name,
 			)?;
 			// Create free entries to cover remaining free space
@@ -645,13 +672,124 @@ impl Ext2INode {
 			let buf = unsafe { blk.slice_mut() };
 			buf.fill(0);
 			// Create used entry
-			Dirent::write_new(buf, &fs.sp, entry_inode, rec_len, Some(file_type), name)?;
+			Dirent::write_new(buf, &fs.sp, entry_inode, rec_len, file_type, name)?;
 			// Create free entries to cover remaining free space
 			fill_free_entries(&mut buf[rec_len as usize..], &fs.sp)?;
-			self.set_size(&fs.sp, (blocks as u64 + 1) * blk_size as u64, false);
+			self.set_size(&fs.sp, (blocks as u64 + 1) * blk_size as u64);
 			blk.mark_dirty();
 		}
 		Ok(())
+	}
+
+	/// Converts the file offset `off` into a block offset.
+	fn off_to_blk(&self, fs: &Ext2Fs, off: u64) -> EResult<Option<NonZeroU32>> {
+		let blk_size = fs.sp.get_block_size();
+		let file_blk_off = off / blk_size as u64;
+		self.translate_blk_off(file_blk_off as _, fs)
+	}
+
+	/// Changes the name of a directory entry.
+	///
+	/// Arguments:
+	/// - `old_name` is the name of the entry to update
+	/// - `new_name` is the new name for the entry
+	///
+	/// If the entry is not large enough to fit the new name, a new entry shall be created and the
+	/// previous entry is deleted
+	pub fn rename_dirent(&mut self, fs: &Ext2Fs, old_name: &[u8], new_name: &[u8]) -> EResult<()> {
+		debug_assert_eq!(self.get_type(), FileType::Directory);
+		// Get entry offset
+		let (_, off) = self
+			.get_dirent(old_name, fs)?
+			.ok_or_else(|| errno!(ENOENT))?;
+		// Read block
+		let blk_size = fs.sp.get_block_size();
+		let file_blk_off = off / blk_size as u64;
+		let Some(disk_blk_off) = self.translate_blk_off(file_blk_off as _, fs)? else {
+			return Ok(());
+		};
+		let blk = fs.dev.ops.read_page(&fs.dev, disk_blk_off.get() as _)?;
+		// Read entry
+		let slice = unsafe { blk.slice_mut() };
+		let inner_off = (off % blk_size as u64) as usize;
+		let ent = Dirent::from_slice(&mut slice[inner_off..], &fs.sp)?;
+		// Attempt to reuse the same entry
+		if ent.set_name(&fs.sp, new_name) {
+			return Ok(());
+		}
+		// The entry cannot fit the new name. Create a new entry and free the previous one
+		self.add_dirent(fs, ent.inode, ent.get_name(&fs.sp), ent.get_type(&fs.sp))?;
+		ent.inode = 0;
+		Ok(())
+	}
+
+	pub fn exchange_dirent(
+		&mut self,
+		fs: &Ext2Fs,
+		old_name: &[u8],
+		new_name: &[u8],
+	) -> EResult<()> {
+		debug_assert_eq!(self.get_type(), FileType::Directory);
+		// Get entries offsets
+		let (_, old_off) = self
+			.get_dirent(old_name, fs)?
+			.ok_or_else(|| errno!(ENOENT))?;
+		let (_, new_off) = self
+			.get_dirent(new_name, fs)?
+			.ok_or_else(|| errno!(ENOENT))?;
+		// Compute block offsets
+		let Some(old_disk_blk_off) = self.off_to_blk(fs, old_off)? else {
+			return Ok(());
+		};
+		let Some(new_disk_blk_off) = self.off_to_blk(fs, new_off)? else {
+			return Ok(());
+		};
+		// Read blocks
+		let blk_size = fs.sp.get_block_size();
+		if old_disk_blk_off == new_disk_blk_off {
+			// Same block, read only one
+			let blk = fs.dev.ops.read_page(&fs.dev, old_disk_blk_off.get() as _)?;
+			let old_inner_off = (old_disk_blk_off.get() % blk_size) as usize;
+			let new_inner_off = (new_disk_blk_off.get() % blk_size) as usize;
+			// Split slice to avoid double mutable borrow issue
+			let slice = unsafe { blk.slice_mut() };
+			let (old_ent, new_ent) = if old_inner_off < new_inner_off {
+				let (old_slice, new_slice) = slice.split_at_mut(new_inner_off);
+				let old_ent = Dirent::from_slice(&mut old_slice[old_inner_off..], &fs.sp)?;
+				let new_ent = Dirent::from_slice(&mut new_slice[..], &fs.sp)?;
+				(old_ent, new_ent)
+			} else {
+				let (new_slice, old_slice) = slice.split_at_mut(old_inner_off);
+				let old_ent = Dirent::from_slice(&mut old_slice[..], &fs.sp)?;
+				let new_ent = Dirent::from_slice(&mut new_slice[new_inner_off..], &fs.sp)?;
+				(old_ent, new_ent)
+			};
+			// Swap inodes
+			if unlikely(old_ent.is_free() || new_ent.is_free()) {
+				return Err(errno!(ENOENT));
+			}
+			mem::swap(&mut old_ent.inode, &mut new_ent.inode);
+			blk.mark_dirty();
+			Ok(())
+		} else {
+			// Different blocks, read both
+			let old_blk = fs.dev.ops.read_page(&fs.dev, old_disk_blk_off.get() as _)?;
+			let new_blk = fs.dev.ops.read_page(&fs.dev, new_disk_blk_off.get() as _)?;
+			let old_inner_off = (old_disk_blk_off.get() % blk_size) as usize;
+			let new_inner_off = (new_disk_blk_off.get() % blk_size) as usize;
+			let old_slice = unsafe { old_blk.slice_mut() };
+			let new_slice = unsafe { new_blk.slice_mut() };
+			let old_ent = Dirent::from_slice(&mut old_slice[old_inner_off..], &fs.sp)?;
+			let new_ent = Dirent::from_slice(&mut new_slice[new_inner_off..], &fs.sp)?;
+			// Swap inodes
+			if unlikely(old_ent.is_free() || new_ent.is_free()) {
+				return Err(errno!(ENOENT));
+			}
+			mem::swap(&mut old_ent.inode, &mut new_ent.inode);
+			old_blk.mark_dirty();
+			new_blk.mark_dirty();
+			Ok(())
+		}
 	}
 
 	/// Changes the inode associated with a directory entry.
@@ -670,7 +808,7 @@ impl Ext2INode {
 		let file_blk_off = off / blk_size as u64;
 		let inner_off = (off % blk_size as u64) as usize;
 		// Read entry's block
-		let Some(disk_blk_off) = self.translate_blk_off(file_blk_off as _, fs)? else {
+		let Some(disk_blk_off) = self.off_to_blk(fs, off)? else {
 			return Ok(());
 		};
 		let blk = fs.dev.ops.read_page(&fs.dev, disk_blk_off.get() as _)?;
@@ -683,7 +821,7 @@ impl Ext2INode {
 		if inode == 0 && is_block_empty(slice, &fs.sp)? {
 			// If this is the last block, update the file's size
 			if file_blk_off as u32 + 1 >= self.get_blocks(&fs.sp) {
-				self.set_size(&fs.sp, file_blk_off * blk_size as u64, false);
+				self.set_size(&fs.sp, file_blk_off * blk_size as u64);
 			}
 			self.free_content_blk(file_blk_off as _, fs)?;
 		}
