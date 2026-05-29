@@ -125,6 +125,14 @@ pub struct TTYConfig {
 	pub font: String,
 }
 
+/// Modules section of the configuration file.
+#[derive(Deserialize, Default)]
+struct ConfigModules {
+	/// Names of modules to compile and embed directly into the kernel binary.
+	#[serde(default)]
+	builtin: Vec<String>,
+}
+
 /// The compilation configuration.
 #[derive(Deserialize)]
 pub struct Config {
@@ -136,6 +144,9 @@ pub struct Config {
 	panic: ConfigPanic,
 	/// TTY configuration
 	pub tty: TTYConfig,
+	/// Modules section
+	#[serde(default)]
+	modules: ConfigModules,
 }
 
 impl Config {
@@ -168,5 +179,10 @@ impl Config {
 		generate_const_file!(self.panic.callstack_depth);
 
 		generate_cfg_flag!(self.tty.enabled);
+	}
+
+	/// Returns the list of built-in module names.
+	pub fn builtin_modules(&self) -> &[String] {
+		&self.modules.builtin
 	}
 }

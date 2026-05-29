@@ -29,3 +29,13 @@ callstack_depth = 16
 enabled = true
 # Font path or URL for the TTY
 font = "https://ftp.gnu.org/pub/gnu/unifont/unifont-17.0.04/unifont_all-17.0.04.hex.gz"
+
+[modules]
+# List of modules to compile and embed directly into the kernel binary.
+# These modules are loaded automatically at boot without needing files on the filesystem.
+# Example: builtin = ["ps2", "e1000"]
+#
+# Note: use `cargo xtask build-kernel` from the repo root; it handles the two-pass build
+# required the first time (when libkernel.rlib does not yet exist).
+# Alternatively, running `cargo build` twice from the kernel/ directory also works.
+builtin = []
