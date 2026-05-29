@@ -293,6 +293,21 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 		}
 	}
 
+	/// Creates an iterator of mutable references to the values over all elements.
+	#[inline]
+	pub fn iter_mut(&mut self) -> IterMut<K, V, H> {
+		IterMut {
+			hm: self,
+			inner: IterInner {
+				group: 0,
+				group_used: Mask::default(),
+				cursor: 0,
+
+				count: 0,
+			},
+		}
+	}
+
 	/// Tries to reserve memory for at least `additional` more elements. The function might reserve
 	/// more memory than necessary to avoid frequent re-allocations.
 	///
@@ -645,6 +660,50 @@ impl<K: Hash + Eq, V, H: Default + Hasher> FusedIterator for Iter<'_, K, V, H> {
 
 unsafe impl<K: Hash + Eq, V, H: Default + Hasher> TrustedLen for Iter<'_, K, V, H> {}
 
+/// Iterator of mutable references to the values over a [`HashMap`].
+///
+/// This iterator does not guarantee any order since the [`HashMap`] itself does not store values
+/// in a specific order.
+pub struct IterMut<'m, K: Hash + Eq, V, H: Default + Hasher> {
+	hm: &'m mut HashMap<K, V, H>,
+	inner: IterInner,
+}
+
+impl<'m, K: Hash + Eq, V, H: Default + Hasher> Iterator for IterMut<'m, K, V, H> {
+	type Item = (&'m K, &'m mut V);
+
+	fn next(&mut self) -> Option<Self::Item> {
+		let (group, cursor) = self.inner.next_pos(self.hm)?;
+		let off = raw::get_slot_offset::<K, V>(group, cursor);
+		let slot = self.hm.inner.get_slot_mut(off);
+		// Extend references to `'m`
+		let (key, value) = unsafe {
+			(
+				&*(slot.key.assume_init_ref() as *const K),
+				&mut *(slot.value.assume_init_mut() as *mut V),
+			)
+		};
+		Some((key, value))
+	}
+
+	#[inline]
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		let remaining = self.hm.len - self.inner.count;
+		(remaining, Some(remaining))
+	}
+
+	#[inline]
+	fn count(self) -> usize {
+		self.size_hint().0
+	}
+}
+
+impl<K: Hash + Eq, V, H: Default + Hasher> ExactSizeIterator for IterMut<'_, K, V, H> {}
+
+impl<K: Hash + Eq, V, H: Default + Hasher> FusedIterator for IterMut<'_, K, V, H> {}
+
+unsafe impl<K: Hash + Eq, V, H: Default + Hasher> TrustedLen for IterMut<'_, K, V, H> {}
+
 #[cfg(test)]
 mod test {
 	use super::*;
@@ -682,6 +741,23 @@ mod test {
 			assert_eq!(hm.len(), i + 1);
 			assert_eq!(hm.remove(&(i as _)).unwrap(), i as _);
 			assert_eq!(hm.len(), i);
+		}
+	}
+
+	#[test]
+	fn hashmap_iter_mut() {
+		let mut hm = (0..1000)
+			.map(|i| (i, i))
+			.collect::<CollectResult<HashMap<u32, u32>>>()
+			.0
+			.unwrap();
+		assert_eq!(hm.iter_mut().count(), 1000);
+		for (k, v) in hm.iter_mut() {
+			assert_eq!(*k, *v);
+			*v += 1;
+		}
+		for i in 0..1000 {
+			assert_eq!(hm[i], i + 1);
 		}
 	}
 
