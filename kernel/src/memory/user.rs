@@ -325,7 +325,7 @@ impl<'a, T: Sized + fmt::Debug> UserSlice<'a, T> {
 	/// Copies the slice to userspace.
 	///
 	/// Arguments:
-	/// - `off` is the byte offset in the slice to which the data is to be copied
+	/// - `off` is the offset in the slice to which the data is to be copied
 	/// - `buf` is the source slice to copy from
 	///
 	/// The function returns the number of elements written.

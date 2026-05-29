@@ -21,17 +21,18 @@
 
 use crate::{
 	device::serial,
-	file::{File, fs::FileOps},
+	file::{
+		File,
+		fs::FileOps,
+		poll::{POLLIN, POLLOUT},
+	},
 	memory::user::{UserPtr, UserSlice},
 	process::{
 		Process,
 		pid::Pid,
 		signal::{Signal, SignalHandler},
 	},
-	syscall::{
-		FromSyscallArg, ioctl,
-		select::{POLLIN, POLLOUT},
-	},
+	syscall::{FromSyscallArg, ioctl},
 	tty::{TTY, WinSize, termios, termios::Termios},
 };
 use core::ffi::c_void;

@@ -185,7 +185,7 @@ impl Dirent {
 	pub fn set_type(&mut self, superblock: &Superblock, file_type: Option<FileType>) {
 		if superblock.s_feature_incompat & super::REQUIRED_FEATURE_DIRECTORY_TYPE != 0 {
 			self.file_type = match file_type {
-				None => TYPE_INDICATOR_UNKNOWN,
+				None | Some(FileType::None) => TYPE_INDICATOR_UNKNOWN,
 				Some(FileType::Regular) => TYPE_INDICATOR_REGULAR,
 				Some(FileType::Directory) => TYPE_INDICATOR_DIRECTORY,
 				Some(FileType::CharDevice) => TYPE_INDICATOR_CHAR_DEVICE,
