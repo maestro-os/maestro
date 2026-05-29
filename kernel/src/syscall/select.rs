@@ -20,6 +20,10 @@
 //! writable or for an exception to occur.
 
 use crate::{
+	file::poll::{
+		FD_SETSIZE, FDSet, POLLIN, POLLOUT, POLLPRI, POLLRDBAND, POLLRDNORM, POLLWRBAND,
+		POLLWRNORM, PollFD,
+	},
 	memory::user::{UserPtr, UserSlice},
 	process::{Process, scheduler::schedule},
 	time::{
@@ -27,45 +31,8 @@ use crate::{
 		unit::{TimeUnit, Timespec, Timestamp, Timeval},
 	},
 };
-use core::{
-	cmp::min,
-	ffi::{c_int, c_long},
-};
+use core::{cmp::min, ffi::c_int};
 use utils::{errno, errno::EResult};
-
-/// The number of file descriptors in FDSet.
-pub const FD_SETSIZE: usize = 1024;
-
-/// Structure representing `fd_set`.
-#[repr(C)]
-#[derive(Debug)]
-pub struct FDSet {
-	/// The set's bitfield.
-	fds_bits: [c_long; FD_SETSIZE / c_long::BITS as usize],
-}
-
-impl FDSet {
-	/// Tells whether the given file descriptor `fd` is set in the list.
-	fn is_set(&self, fd: u32) -> bool {
-		if fd as usize >= FD_SETSIZE {
-			return false;
-		}
-		// TODO Check correctness
-		let i = (fd as usize) / c_long::BITS as usize;
-		self.fds_bits[i] >> (fd % c_long::BITS) != 0
-	}
-
-	/// Sets or clears the bit for file descriptor `fd`.
-	fn set(&mut self, fd: u32, val: bool) {
-		// TODO Check correctness
-		let i = (fd as usize) / c_long::BITS as usize;
-		if val {
-			self.fds_bits[i] |= 1 << (fd % c_long::BITS);
-		} else {
-			self.fds_bits[i] &= !(1 << (fd % c_long::BITS));
-		}
-	}
-}
 
 /// Performs the select operation.
 ///
@@ -223,42 +190,6 @@ pub(super) fn pselect6(
 		timeout,
 		Some(sigmask),
 	)
-}
-
-/// Poll event: There is data to read.
-pub const POLLIN: u32 = 0x1;
-/// Poll event: There is some exceptional condition on the file descriptor.
-pub const POLLPRI: u32 = 0x2;
-/// Poll event: Writing is now possible.
-pub const POLLOUT: u32 = 0x4;
-/// Poll event: Error condition.
-pub const POLLERR: u32 = 0x8;
-/// Poll event: Hang up.
-pub const POLLHUP: u32 = 0x10;
-/// Poll event: Invalid request.
-pub const POLLNVAL: u32 = 0x20;
-/// Poll event: Equivalent to POLLIN.
-pub const POLLRDNORM: u32 = 0x40;
-/// Poll event: Priority band data can be read.
-pub const POLLRDBAND: u32 = 0x80;
-/// Poll event: Equivalent to POLLOUT.
-pub const POLLWRNORM: u32 = 0x100;
-/// Poll event: Priority data may be written.
-pub const POLLWRBAND: u32 = 0x200;
-/// Poll event: Stream socket peer closed connection, or shut down writing half
-/// of connection.
-pub const POLLRDHUP: u32 = 0x2000;
-
-/// A file descriptor passed to the `poll` system call.
-#[repr(C)]
-#[derive(Debug)]
-pub struct PollFD {
-	/// The file descriptor.
-	fd: i32,
-	/// The input mask telling which events to look for.
-	events: i16,
-	/// The output mask telling which events happened.
-	revents: i16,
 }
 
 pub(super) fn poll(fds: *mut PollFD, nfds: usize, timeout: c_int) -> EResult<usize> {

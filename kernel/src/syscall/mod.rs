@@ -22,6 +22,7 @@
 //! command: `man 2 <syscall>`
 
 mod dirent;
+mod epoll;
 mod execve;
 mod fcntl;
 mod fd;
@@ -57,6 +58,7 @@ use crate::{
 	},
 	syscall::{
 		dirent::{getdents, getdents64},
+		epoll::{epoll_create, epoll_create1, epoll_ctl, epoll_wait},
 		execve::execve,
 		execve::execveat,
 		fcntl::{fcntl, fcntl64},
@@ -507,9 +509,9 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		// TODO 0x0fa => syscall!(fadvise64, frame),
 		0x0fc => syscall!(exit_group, frame),
 		// TODO 0x0fd => syscall!(lookup_dcookie, frame),
-		// TODO 0x0fe => syscall!(epoll_create, frame),
-		// TODO 0x0ff => syscall!(epoll_ctl, frame),
-		// TODO 0x100 => syscall!(epoll_wait, frame),
+		0x0fe => syscall!(epoll_create, frame),
+		0x0ff => syscall!(epoll_ctl, frame),
+		0x100 => syscall!(epoll_wait, frame),
 		// TODO 0x101 => syscall!(remap_file_pages, frame),
 		0x102 => syscall!(set_tid_address, frame),
 		0x103 => syscall!(timer_create, frame),
@@ -581,7 +583,7 @@ fn do_syscall32(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		// TODO 0x146 => syscall!(timerfd_gettime, frame),
 		// TODO 0x147 => syscall!(signalfd4, frame),
 		// TODO 0x148 => syscall!(eventfd2, frame),
-		// TODO 0x149 => syscall!(epoll_create1, frame),
+		0x149 => syscall!(epoll_create1, frame),
 		// TODO 0x14a => syscall!(dup3, frame),
 		0x14b => syscall!(pipe2, frame),
 		// TODO 0x14c => syscall!(inotify_init1, frame),
@@ -917,7 +919,7 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		// TODO 0x0d2 => syscall!(io_cancel, frame),
 		// TODO 0x0d3 => syscall!(get_thread_are, frame),
 		// TODO 0x0d4 => syscall!(lookup_dcooki, frame),
-		// TODO 0x0d5 => syscall!(epoll_create, frame),
+		0x0d5 => syscall!(epoll_create, frame),
 		// TODO 0x0d6 => syscall!(epoll_ctl_ol, frame),
 		// TODO 0x0d7 => syscall!(epoll_wait_ol, frame),
 		// TODO 0x0d8 => syscall!(remap_file_pages, frame),
@@ -936,8 +938,8 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		// TODO 0x0e5 => syscall!(clock_getres, frame),
 		// TODO 0x0e6 => syscall!(clock_nanosleep, frame),
 		0x0e7 => syscall!(exit_group, frame),
-		// TODO 0x0e8 => syscall!(epoll_wait, frame),
-		// TODO 0x0e9 => syscall!(epoll_ctl, frame),
+		0x0e8 => syscall!(epoll_wait, frame),
+		0x0e9 => syscall!(epoll_ctl, frame),
 		// TODO 0x0ea => syscall!(tgkill, frame),
 		0x0eb => syscall!(utimes, frame),
 		// TODO 0x0ec => syscall!(vserver, frame),
@@ -995,7 +997,7 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		// TODO 0x120 => syscall!(accept4, frame),
 		// TODO 0x121 => syscall!(signalfd4, frame),
 		// TODO 0x122 => syscall!(eventfd2, frame),
-		// TODO 0x123 => syscall!(epoll_create1, frame),
+		0x123 => syscall!(epoll_create1, frame),
 		// TODO 0x124 => syscall!(dup3, frame),
 		0x125 => syscall!(pipe2, frame),
 		// TODO 0x126 => syscall!(inotify_init1, frame),
