@@ -29,6 +29,7 @@ pub mod fs;
 pub mod lock;
 pub mod perm;
 pub mod pipe;
+pub mod poll;
 pub mod socket;
 pub mod util;
 pub mod vfs;
@@ -145,6 +146,8 @@ pub const O_TRUNC: i32 = 0b00000000000000000000001000000000;
 /// Enumeration representing the different file types.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum FileType {
+	/// No file type, used by anonymous inodes.
+	None,
 	/// A regular file storing data.
 	Regular,
 	/// A directory, containing other files.
@@ -181,6 +184,7 @@ impl FileType {
 	/// Returns the mode corresponding to the type.
 	pub const fn to_mode(self) -> Mode {
 		match self {
+			Self::None => 0,
 			Self::Socket => S_IFSOCK,
 			Self::Link => S_IFLNK,
 			Self::Regular => S_IFREG,
@@ -194,6 +198,7 @@ impl FileType {
 	/// Returns the directory entry type.
 	pub const fn to_dirent_type(self) -> u8 {
 		match self {
+			Self::None => DT_UNKNOWN,
 			Self::Socket => DT_SOCK,
 			Self::Link => DT_LNK,
 			Self::Regular => DT_REG,
