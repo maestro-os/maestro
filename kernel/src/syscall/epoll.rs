@@ -19,6 +19,7 @@
 //! `epoll` is an I/O event notification facility.
 
 use crate::{
+	arch::x86::{hlt, sti},
 	file::{
 		File, FileType, O_CLOEXEC, O_RDWR,
 		fd::{FD_CLOEXEC, fd_to_file},
@@ -26,8 +27,7 @@ use crate::{
 		poll::{EpollEvent, EpollFileOps, EpollItem},
 	},
 	memory::user::{UserPtr, UserSlice},
-	process,
-	process::{Process, State, scheduler::schedule},
+	process::Process,
 	time::{
 		clock::{Clock, current_time_ms},
 		unit::Timestamp,
@@ -241,8 +241,8 @@ pub(super) fn epoll_wait(
 		if Process::current().has_pending_signal() {
 			return Err(errno!(EINTR));
 		}
-		// Wait for completion
-		process::set_state(State::Sleeping);
-		schedule();
+		// TODO make process sleep
+		sti();
+		hlt();
 	}
 }
