@@ -839,11 +839,17 @@ impl TTY {
 	/// Takes the given string `buffer` as input, making it available from the
 	/// terminal input.
 	pub fn input(&self, buffer: &[u8]) {
+		crate::TTY_INPUT_CALLS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
 		let termios = self.get_termios().clone();
+		crate::TTY_LAST_LFLAG.store(
+			termios.c_lflag as u32,
+			core::sync::atomic::Ordering::Relaxed,
+		);
 
 		// Echo without holding the input lock to avoid display -> input vs input -> display lock
 		// inversion against `write` (which holds `display` and may call `inject_input`)
 		if termios.c_lflag & ECHO != 0 {
+			crate::TTY_ECHO_CALLS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
 			self.write(buffer);
 		}
 		// TODO If ECHO is disabled but ICANON and ECHONL are set, print newlines

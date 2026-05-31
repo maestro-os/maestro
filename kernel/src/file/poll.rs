@@ -30,7 +30,7 @@ pub const FD_SETSIZE: usize = 1024;
 
 /// Structure representing `fd_set`.
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct FDSet {
 	/// The set's bitfield.
 	fds_bits: [c_long; FD_SETSIZE / c_long::BITS as usize],
@@ -42,19 +42,22 @@ impl FDSet {
 		if fd as usize >= FD_SETSIZE {
 			return false;
 		}
-		// TODO Check correctness
-		let i = (fd as usize) / c_long::BITS as usize;
-		self.fds_bits[i] >> (fd % c_long::BITS) != 0
+		let i = fd as usize / c_long::BITS as usize;
+		let bit = fd % c_long::BITS;
+		self.fds_bits[i] & (1 << bit) != 0
 	}
 
 	/// Sets or clears the bit for file descriptor `fd`.
 	pub fn set(&mut self, fd: u32, val: bool) {
-		// TODO Check correctness
-		let i = (fd as usize) / c_long::BITS as usize;
+		if fd as usize >= FD_SETSIZE {
+			return;
+		}
+		let i = fd as usize / c_long::BITS as usize;
+		let bit = fd % c_long::BITS;
 		if val {
-			self.fds_bits[i] |= 1 << (fd % c_long::BITS);
+			self.fds_bits[i] |= 1 << bit;
 		} else {
-			self.fds_bits[i] &= !(1 << (fd % c_long::BITS));
+			self.fds_bits[i] &= !(1 << bit);
 		}
 	}
 }

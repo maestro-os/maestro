@@ -35,6 +35,28 @@ pub fn _print(args: fmt::Arguments) {
 	fmt::write(&mut *logger::BUF.lock(), args).ok();
 }
 
+/// DEBUG: writes only to the serial port (not the VGA TTY), so the framebuffer stays clean.
+struct SerialOnly;
+impl fmt::Write for SerialOnly {
+	fn write_str(&mut self, s: &str) -> fmt::Result {
+		crate::device::serial::PORTS[0].lock().write(s.as_bytes());
+		Ok(())
+	}
+}
+#[doc(hidden)]
+pub fn _dbg_serial(args: fmt::Arguments) {
+	fmt::write(&mut SerialOnly, args).ok();
+}
+
+/// DEBUG: like `println!` but serial-only.
+#[macro_export]
+#[allow_internal_unstable(print_internals, format_args_nl)]
+macro_rules! dbgs {
+	($($arg:tt)*) => {{
+		$crate::print::_dbg_serial(format_args_nl!($($arg)*));
+	}};
+}
+
 /// Prints the given formatted string with the given values.
 #[allow_internal_unstable(print_internals)]
 #[macro_export]

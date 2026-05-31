@@ -117,6 +117,15 @@ const INIT_PATH: &[u8] = b"/sbin/init";
 /// The current hostname of the system.
 pub static HOSTNAME: Spin<Vec<u8>> = Spin::new(Vec::new());
 
+/// DEBUG: number of times TTY::input was called.
+pub static TTY_INPUT_CALLS: core::sync::atomic::AtomicUsize =
+	core::sync::atomic::AtomicUsize::new(0);
+/// DEBUG: number of times TTY::input took the ECHO branch (called self.write).
+pub static TTY_ECHO_CALLS: core::sync::atomic::AtomicUsize =
+	core::sync::atomic::AtomicUsize::new(0);
+/// DEBUG: last termios c_lflag seen in TTY::input.
+pub static TTY_LAST_LFLAG: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+
 /// Launches the init process.
 ///
 /// `init_path` is the path to the init program.
