@@ -107,6 +107,31 @@ impl PartialOrd for Timeval {
 	}
 }
 
+/// 32 bit version of [`Timeval`].
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[repr(C)]
+pub struct Timeval32 {
+	/// Seconds
+	pub tv_sec: u32,
+	/// Microseconds
+	pub tv_usec: u32,
+}
+
+impl TimeUnit for Timeval32 {
+	fn from_nano(timestamp: u64) -> Self {
+		Self {
+			tv_sec: (timestamp / 1_000_000_000) as _,
+			tv_usec: ((timestamp % 1_000_000_000) / 1000) as _,
+		}
+	}
+
+	fn to_nano(&self) -> u64 {
+		(self.tv_sec as u64)
+			.wrapping_mul(1_000_000_000)
+			.wrapping_add((self.tv_usec as u64).wrapping_mul(1000))
+	}
+}
+
 /// Same as [`Timeval`], but with nanosecond precision.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 #[repr(C)]
