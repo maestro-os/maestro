@@ -42,6 +42,11 @@ const BUFFER_SIZE: usize = 65536;
 /// Socket option level: Socket
 const SOL_SOCKET: c_int = 1;
 
+/// Socket opt: Send buffer size
+const SO_SNDBUF: c_int = 7;
+/// Socket opt: Receive buffer size
+const SO_RCVBUF: c_int = 8;
+
 /// A UNIX socket.
 #[derive(Debug)]
 pub struct Socket {
@@ -104,19 +109,31 @@ impl Socket {
 	/// Reads the given socket option.
 	///
 	/// Arguments:
-	/// - `level` is the level (protocol) at which the option is located.
-	/// - `optname` is the name of the option.
-	pub fn get_opt(&self, _level: c_int, _optname: c_int) -> EResult<&[u8]> {
-		// TODO
-		todo!()
+	/// - `level` is the level (protocol) at which the option is located
+	/// - `optname` is the name of the option
+	/// - `optval` is the slice to write the value to
+	///
+	/// The function returns the length of the written value
+	pub fn get_opt(&self, level: c_int, optname: c_int, optval: UserSlice<u8>) -> EResult<usize> {
+		match level {
+			SOL_SOCKET => match optname {
+				SO_SNDBUF | SO_RCVBUF => {
+					let val = BUFFER_SIZE as u32;
+					let len = optval.copy_to_user(0, &val.to_ne_bytes())?;
+					Ok(len)
+				}
+				_ => Err(errno!(EINVAL)),
+			},
+			_ => Err(errno!(EINVAL)),
+		}
 	}
 
 	/// Writes the given socket option.
 	///
 	/// Arguments:
-	/// - `level` is the level (protocol) at which the option is located.
-	/// - `optname` is the name of the option.
-	/// - `optval` is the value of the option.
+	/// - `level` is the level (protocol) at which the option is located
+	/// - `optname` is the name of the option
+	/// - `optval` is the value of the option
 	///
 	/// The function returns a value to be returned by the syscall on success.
 	pub fn set_opt(&self, _level: c_int, _optname: c_int, _optval: &[u8]) -> EResult<c_int> {
