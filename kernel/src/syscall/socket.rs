@@ -108,17 +108,15 @@ pub fn getsockopt(
 	level: c_int,
 	optname: c_int,
 	optval: *mut u8,
-	optlen: usize,
+	optlen: UserPtr<usize>,
 ) -> EResult<usize> {
-	// Get socket
 	let file = fd_to_file(sockfd)?;
 	let sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
-	let val = sock.get_opt(level, optname)?;
-	// Write
-	let len = min(val.len(), optlen);
-	let optval = UserSlice::from_user(optval, optlen)?;
-	optval.copy_to_user(0, &val[..len])?;
-	Ok(len as _)
+	let len = optlen.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	let optval = UserSlice::from_user(optval, len)?;
+	let len = sock.get_opt(level, optname, optval)?;
+	optlen.copy_to_user(&len)?;
+	Ok(0)
 }
 
 pub fn setsockopt(
