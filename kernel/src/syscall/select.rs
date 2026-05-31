@@ -27,7 +27,7 @@ use crate::{
 	process::Process,
 	time::{
 		clock::{Clock, current_time_ns},
-		unit::{TimeUnit, Timespec, Timestamp, Timeval},
+		unit::{TimeUnit, Timespec, Timespec32, Timestamp, Timeval, Timeval32},
 	},
 };
 use core::{cmp::min, ffi::c_int};
@@ -164,12 +164,23 @@ pub(super) fn select(
 }
 
 #[allow(clippy::type_complexity)]
+pub(super) fn compat_select(
+	nfds: c_int,
+	readfds: UserPtr<FDSet>,
+	writefds: UserPtr<FDSet>,
+	exceptfds: UserPtr<FDSet>,
+	timeout: UserPtr<Timeval32>,
+) -> EResult<usize> {
+	do_select(nfds as _, readfds, writefds, exceptfds, timeout, None)
+}
+
+#[allow(clippy::type_complexity)]
 pub(super) fn _newselect(
 	nfds: c_int,
 	readfds: UserPtr<FDSet>,
 	writefds: UserPtr<FDSet>,
 	exceptfds: UserPtr<FDSet>,
-	timeout: UserPtr<Timeval>,
+	timeout: UserPtr<Timeval32>,
 ) -> EResult<usize> {
 	do_select(nfds as _, readfds, writefds, exceptfds, timeout, None)
 }
@@ -181,6 +192,25 @@ pub(super) fn pselect6(
 	writefds: UserPtr<FDSet>,
 	exceptfds: UserPtr<FDSet>,
 	timeout: UserPtr<Timespec>,
+	sigmask: *mut u8,
+) -> EResult<usize> {
+	do_select(
+		nfds as _,
+		readfds,
+		writefds,
+		exceptfds,
+		timeout,
+		Some(sigmask),
+	)
+}
+
+#[allow(clippy::type_complexity)]
+pub(super) fn compat_pselect6(
+	nfds: c_int,
+	readfds: UserPtr<FDSet>,
+	writefds: UserPtr<FDSet>,
+	exceptfds: UserPtr<FDSet>,
+	timeout: UserPtr<Timespec32>,
 	sigmask: *mut u8,
 ) -> EResult<usize> {
 	do_select(
