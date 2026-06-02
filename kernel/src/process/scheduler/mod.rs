@@ -29,7 +29,7 @@ pub mod switch;
 use crate::{
 	arch::{
 		core_id,
-		x86::{cli, idt::IntFrame},
+		x86::{apic, apic::IpiDeliveryMode, cli, idt::IntFrame},
 	},
 	process::{
 		Process, State,
@@ -102,14 +102,38 @@ impl Scheduler {
 		self.run_queue.lock().len
 	}
 
-	/// Returns the next process to run with its PID.
+	/// Selects the next process to run and atomically makes it the current process.
 	///
-	/// If no process is left to run, the function returns `None`.
-	fn get_next_process(&self) -> Option<Arc<Process>> {
+	/// Returns the previous and next processes as raw pointers, for the context switch, or `None`
+	/// if the next process is the same as the current one (nothing to do).
+	fn pick_and_switch(&self) -> Option<(*const Process, *const Process)> {
+		// Held all along to avoid concurrency issues, because the [`rebalance`] task holds it too
 		let mut queue = self.run_queue.lock();
-		let proc = queue.queue.front()?;
-		queue.queue.rotate_left();
-		Some(proc)
+		let next = match queue.queue.front() {
+			Some(proc) => {
+				queue.queue.rotate_left();
+				proc
+			}
+			None => self.idle_task.clone(),
+		};
+		let mut cur = self.cur_proc.lock();
+		// If the process to run is the current, do nothing
+		if ptr::eq(next.as_ref(), cur.as_ref()) {
+			return None;
+		}
+		// Update the idle bitmap if necessary
+		if cur.is_idle_task() {
+			IDLE_CPUS.clear_bit(core_id() as _);
+		} else if next.is_idle_task() {
+			IDLE_CPUS.set_bit(core_id() as _);
+		}
+		// Swap current running process. We use pointers to avoid cloning the Arc
+		per_cpu()
+			.kernel_stack
+			.store(next.kernel_stack.top().as_ptr() as _, Release);
+		let next_ptr = Arc::as_ptr(&next);
+		let prev = mem::replace(&mut *cur, next);
+		Some((Arc::as_ptr(&prev), next_ptr))
 	}
 }
 
@@ -170,6 +194,34 @@ pub(crate) fn enqueue(proc: &Arc<Process>) {
 		cpu.apic_id
 	);*/
 	// Enqueue
+	{
+		let mut run_queue = cpu.sched.run_queue.lock();
+		run_queue.queue.insert_back(proc.clone());
+		run_queue.len += 1;
+		let mut links = proc.links.lock();
+		debug_assert!(links.cur_cpu.is_none());
+		links.cur_cpu = Some(cpu);
+		links.last_cpu = Some(cpu);
+	}
+	// If the process has been enqueued on another core, notify it with a reschedule IPI
+	if !ptr::eq(cpu, per_cpu()) {
+		apic::ipi(cpu.apic_id, IpiDeliveryMode::Fixed, defer::INT);
+	}
+}
+
+/// Re-attaches `proc` to the **current** core's run queue.
+///
+/// Unlike [`enqueue`], this never load-balances the process onto another core. It must only be
+/// used for a process that is *currently running on the calling core* (i.e. it is this core's
+/// `cur_proc`) and that has been dequeued — for example after cancelling a sleep.
+///
+/// Using [`enqueue`] in that situation is a bug: its load-balancing may place the still-running
+/// process into another core's run queue, letting that core schedule it concurrently. Since a
+/// process's kernel stack is shared across whichever cores run it, that causes memory corruption
+/// (the "double-run" bug).
+pub(crate) fn enqueue_current(proc: &Arc<Process>) {
+	debug_assert_eq!(proc.get_state(), State::Running);
+	let cpu = per_cpu();
 	let mut run_queue = cpu.sched.run_queue.lock();
 	run_queue.queue.insert_back(proc.clone());
 	run_queue.len += 1;
@@ -311,27 +363,8 @@ pub fn schedule() {
 	debug_assert_eq!(old_preempt_counter & !PREEMPT_FLAG, 0);
 	// Make deferred calls
 	defer::consume();
-	let sched = &per_cpu().sched;
-	let (prev, next) = {
-		let prev = sched.cur_proc.get();
-		// Find the next process to run
-		let next = sched
-			.get_next_process()
-			.unwrap_or_else(|| sched.idle_task.clone());
-		// If the process to run is the current, do nothing
-		if ptr::eq(next.as_ref(), prev.as_ref()) {
-			return;
-		}
-		// Update the idle bitmap if necessary
-		if prev.is_idle_task() {
-			IDLE_CPUS.clear_bit(core_id() as _);
-		} else if next.is_idle_task() {
-			IDLE_CPUS.set_bit(core_id() as _);
-		}
-		// Swap current running process. We use pointers to avoid cloning the Arc
-		let next_ptr = Arc::as_ptr(&next);
-		let prev = sched.swap_current_process(next);
-		(Arc::as_ptr(&prev), next_ptr)
+	let Some((prev, next)) = per_cpu().sched.pick_and_switch() else {
+		return;
 	};
 	unsafe {
 		switch(prev, next);
