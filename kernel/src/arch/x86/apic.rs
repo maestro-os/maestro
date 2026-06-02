@@ -264,7 +264,7 @@ pub fn redirect_int(gsi: u32, lapic: u32, int: u8) -> bool {
 		ioapic_write(
 			ioapic.mmio.as_ptr(),
 			IO_APIC_REDIRECTIONS_OFF + i * 2 + 1,
-			val as u32,
+			(val >> 32) as u32,
 		);
 	}
 	true
