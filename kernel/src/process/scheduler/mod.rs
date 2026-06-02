@@ -41,15 +41,11 @@ use crate::{
 use core::{
 	cmp::Ordering,
 	hint::unlikely,
-	mem::swap,
-	ptr,
+	mem, ptr,
 	sync::atomic::Ordering::{Relaxed, Release},
 };
 use cpu::{CPU, IDLE_CPUS, PerCpu};
-use utils::{
-	list_type,
-	ptr::arc::{Arc, AtomicArc},
-};
+use utils::{list_type, ptr::arc::Arc};
 
 /// Flag in the preempt counter, telling whether preemption has been requested
 const PREEMPT_FLAG: u32 = 1 << 31;
@@ -73,7 +69,7 @@ pub struct Scheduler {
 	/// Run queue
 	run_queue: IntSpin<RunQueue>,
 	/// The currently running process
-	cur_proc: AtomicArc<Process>,
+	cur_proc: IntSpin<Arc<Process>>,
 
 	/// The task used to make the current CPU idle
 	idle_task: Arc<Process>,
@@ -83,7 +79,7 @@ impl Scheduler {
 	/// Returns the current running process.
 	#[inline]
 	pub fn get_current_process(&self) -> Arc<Process> {
-		self.cur_proc.get()
+		self.cur_proc.lock().clone()
 	}
 
 	/// Swaps the current running process for `new`, returning the previous.
@@ -91,7 +87,7 @@ impl Scheduler {
 		per_cpu()
 			.kernel_stack
 			.store(new.kernel_stack.top().as_ptr() as _, Release);
-		self.cur_proc.replace(new)
+		mem::replace(&mut *self.cur_proc.lock(), new)
 	}
 
 	/// Tells whether this scheduler can immediately run `proc`
@@ -242,8 +238,8 @@ fn rebalance() {
 	let mut src_queue = src.sched.run_queue.lock();
 	// Process counts might have changed before we locked
 	if dst_queue.len > src_queue.len {
-		swap(&mut dst, &mut src);
-		swap(&mut dst_queue, &mut src_queue);
+		mem::swap(&mut dst, &mut src);
+		mem::swap(&mut dst_queue, &mut src_queue);
 	}
 	// No need to do anything if no core has more than one process
 	if src_queue.len <= 1 {

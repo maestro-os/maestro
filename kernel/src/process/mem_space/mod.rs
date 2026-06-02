@@ -560,7 +560,7 @@ impl MemSpace {
 		}
 		critical(|| {
 			// Update per-CPU structure
-			let prev = per_cpu().mem_space.replace(Some(this.clone()));
+			let prev = per_cpu().mem_space.lock().replace(this.clone());
 			// Update new bitmap
 			let core_id = core_id() as usize;
 			this.bound_cpus.set_bit(core_id);
@@ -579,7 +579,7 @@ impl MemSpace {
 	pub fn unbind() {
 		critical(|| {
 			// Update per-CPU structure
-			let prev = per_cpu().mem_space.replace(None);
+			let prev = per_cpu().mem_space.lock().take();
 			// Bind the kernel's vmem
 			KERNEL_VMEM.bind();
 			// Update old bitmap if any
@@ -605,7 +605,7 @@ impl MemSpace {
 	pub fn switch<F: FnOnce(&Arc<Self>) -> T, T>(this: &Arc<Self>, f: F) -> T {
 		let proc = Process::current();
 		let old = critical(|| {
-			let old = per_cpu().mem_space.get();
+			let old = per_cpu().mem_space.lock().clone();
 			*proc.active_mem_space.lock() = Some(this.clone());
 			Self::bind(this);
 			old
