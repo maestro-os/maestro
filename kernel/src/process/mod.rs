@@ -426,7 +426,7 @@ pub(crate) fn register_callbacks() -> AllocResult<()> {
 	let page_fault_callback = |_id: u32, code: u32, frame: &mut IntFrame, ring: u8| {
 		let accessed_addr = VirtAddr(register_get!("cr2"));
 		let pc = frame.get_program_counter();
-		let Some(mem_space) = per_cpu().mem_space.get() else {
+		let Some(mem_space) = per_cpu().mem_space.lock().clone() else {
 			panic::with_frame(frame);
 		};
 		// Check access

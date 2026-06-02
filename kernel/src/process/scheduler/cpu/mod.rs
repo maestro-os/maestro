@@ -41,7 +41,7 @@ use utils::{
 	collections::vec::Vec,
 	errno::{AllocResult, CollectResult},
 	list,
-	ptr::arc::{AtomicArc, AtomicOptionalArc},
+	ptr::arc::Arc,
 };
 // TODO allow to declare per-core variables everywhere in the codebase using a dedicated ELF
 // section
@@ -90,9 +90,7 @@ pub struct PerCpu {
 	pub preempt_counter: AtomicU32,
 
 	/// Attached memory space
-	///
-	/// The pointer stored by this field is returned by `Arc::into_raw`
-	pub mem_space: AtomicOptionalArc<MemSpace>,
+	pub mem_space: IntSpin<Option<Arc<MemSpace>>>,
 
 	/// Queue of deferred calls to be executed on this core
 	pub(super) deferred_calls: DeferredCallQueue,
@@ -125,14 +123,14 @@ impl PerCpu {
 					queue: list!(Process, sched_node),
 					len: 0,
 				}),
-				cur_proc: AtomicArc::from(idle_task.clone()),
+				cur_proc: IntSpin::new(idle_task.clone()),
 
 				idle_task: idle_task.clone(),
 			},
 			tick_period: AtomicU64::new(0),
 			preempt_counter: AtomicU32::new(1 << 31),
 
-			mem_space: AtomicOptionalArc::new(),
+			mem_space: IntSpin::new(None),
 
 			deferred_calls: DeferredCallQueue::new(),
 		})
