@@ -212,20 +212,22 @@ pub(crate) fn enqueue(proc: &Arc<Process>) {
 /// Re-attaches `proc` to the **current** core's run queue.
 ///
 /// Unlike [`enqueue`], this never load-balances the process onto another core. It must only be
-/// used for a process that is *currently running on the calling core* (i.e. it is this core's
-/// `cur_proc`) and that has been dequeued — for example after cancelling a sleep.
-///
-/// Using [`enqueue`] in that situation is a bug: its load-balancing may place the still-running
-/// process into another core's run queue, letting that core schedule it concurrently. Since a
-/// process's kernel stack is shared across whichever cores run it, that causes memory corruption
-/// (the "double-run" bug).
+/// used for a process that is *currently running on the calling core* (example: it is this core's
+/// current process) and that has been dequeued. Using [`enqueue`] in that situation may result in
+/// the process running on two cores at once (critical bug).
 pub(crate) fn enqueue_current(proc: &Arc<Process>) {
 	debug_assert_eq!(proc.get_state(), State::Running);
 	let cpu = per_cpu();
+	// Lock order is always run_queue then links (see `enqueue`/`dequeue`), to avoid deadlocks
 	let mut run_queue = cpu.sched.run_queue.lock();
+	let mut links = proc.links.lock();
+	// If the process is already enqueued, do nothing
+	if let Some(cur) = links.cur_cpu {
+		debug_assert!(ptr::eq(cur, cpu));
+		return;
+	}
 	run_queue.queue.insert_back(proc.clone());
 	run_queue.len += 1;
-	let mut links = proc.links.lock();
 	links.cur_cpu = Some(cpu);
 	links.last_cpu = Some(cpu);
 }
