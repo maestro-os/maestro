@@ -671,7 +671,7 @@ impl QueuePair {
 			sq: sq.cast(),
 			cq: cq.cast(),
 
-			sem: Semaphore::new(SQ_LEN),
+			sem: Semaphore::new(SQ_LEN - 1),
 			inner: Spin::new(inner),
 		})
 	}
