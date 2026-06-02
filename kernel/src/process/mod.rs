@@ -46,7 +46,7 @@ use crate::{
 		pid::{IDLE_PID, INIT_PID, PidHandle},
 		rusage::Rusage,
 		scheduler::{
-			cpu, critical, dequeue, enqueue, preempt, switch,
+			cpu, critical, dequeue, enqueue, enqueue_current, preempt, switch,
 			switch::{KThreadEntry, idle_task, save_segments},
 		},
 		signal::{AltStack, SIGNALS_COUNT, SigSet, SignalAction},
@@ -1105,7 +1105,7 @@ pub fn set_state(new_state: State) {
 		);*/
 		// Enqueue or dequeue the process
 		if new_state == State::Running {
-			enqueue(&proc);
+			enqueue_current(&proc);
 		} else {
 			dequeue(&proc);
 		}
@@ -1154,7 +1154,7 @@ pub fn cancel_sleep() {
 	let proc = Process::current();
 	proc.state.store(State::Running as u8, Release);
 	// `set_state` has dequeued the process
-	enqueue(&proc);
+	enqueue_current(&proc);
 }
 
 /// Exits the current process with the given `status`.
