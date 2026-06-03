@@ -785,7 +785,10 @@ impl Process {
 		critical(|| {
 			let old_state = this.lock_state();
 			if from_mask & old_state as u8 != 0 {
-				this.state.store(STATE_LOCK | State::Running as u8, Release);
+				// Mark the process `Running` and release the state lock before enqueuing it.
+				// Otherwise it becomes runnable on another core while `STATE_LOCK` is set,
+				// resulting in a deadlock.
+				this.state.store(State::Running as u8, Release);
 				// FIXME: deadlock
 				/*#[cfg(feature = "strace")]
 				println!(
@@ -797,8 +800,9 @@ impl Process {
 				if Process::current().cmp_priority(this) == Ordering::Less {
 					preempt();
 				}
+			} else {
+				this.unlock_state();
 			}
-			this.unlock_state();
 		});
 	}
 
