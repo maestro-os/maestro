@@ -126,6 +126,8 @@ fn get_waitable(
 	// Remove zombie process if requested
 	let pid = proc.get_pid();
 	if options & WNOWAIT == 0 && proc.get_state() == State::Zombie {
+		// Wait for the context to be finished before reclaiming resources
+		proc.wait_off_cpu();
 		Process::remove(proc);
 	}
 	Ok(Some(pid))

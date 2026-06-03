@@ -236,9 +236,6 @@ pub extern "C" fn finish(prev: &Process, next: &Process) {
 	fxrstor(&next.fpu.lock());
 	// Save segments
 	save_segments(prev);
-	// State is saved for `prev`, we may unlock its state so that it can be resumed if it is
-	// currently sleeping
-	prev.unlock_state();
 	// Restore TLS entries from `next`
 	next.tls
 		.lock()
@@ -260,6 +257,11 @@ pub extern "C" fn finish(prev: &Process, next: &Process) {
 			.tss()
 			.set_kernel_stack(next.kernel_stack.top().as_ptr());
 	}
+	// `prev` is fully switched off this core: its state is saved and its memory space has been
+	// unbound. Only now unlock its state, so that another core may resume it (if sleeping) or
+	// reclaim it (if it is a zombie). Unlocking earlier would let a concurrent reaper free `prev`
+	// (and its memory space) while we are still switching away from it
+	prev.unlock_state();
 }
 
 #[cfg(target_arch = "x86")]
