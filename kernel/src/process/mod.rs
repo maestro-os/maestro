@@ -767,6 +767,19 @@ impl Process {
 		self.state.fetch_and(!STATE_LOCK, Release);
 	}
 
+	/// Waits until the process is no longer running on any CPU.
+	///
+	/// A non-[`State::Running`] process keeps its state write-locked from the moment it stops
+	/// running until its context switch is effective ([`switch`] calls [`Self::unlock_state`]).
+	///
+	/// This function is used to avoid reclaiming resources of a process that has been marked as
+	/// `Zombie` but whose final context switch has not happened yet.
+	pub fn wait_off_cpu(&self) {
+		while unlikely(self.state.load(Acquire) & STATE_LOCK != 0) {
+			hint::spin_loop();
+		}
+	}
+
 	/// Wakes up the process if it is currently in state present in `from_mask`.
 	pub fn wake_from(this: &Arc<Self>, from_mask: u8) {
 		critical(|| {
@@ -1135,10 +1148,11 @@ pub fn set_state(new_state: State) {
 			// Set vfork as done just in case
 			proc.vfork_wake();
 		}
-		// Sleeping or stopped processes are unlocked only once rescheduled, to prevent another
-		// core from waking them up before they are actually asleep
+		// Sleeping, stopped and zombie processes are unlocked only once rescheduled, to prevent
+		// another core from waking them up or reclaiming their resources before they have
+		// actually switched off this core
 		match new_state {
-			State::Running | State::Zombie => proc.unlock_state(),
+			State::Running => proc.unlock_state(),
 			// Disable interruptions to prevent deadlock if an interruption tries to wake up the
 			// process
 			_ => cli(),
