@@ -20,6 +20,7 @@
 //! communicate with it.
 
 use crate::{
+	device::serial,
 	file::{File, fs::FileOps},
 	memory::user::{UserPtr, UserSlice},
 	process::{
@@ -160,6 +161,8 @@ impl FileOps for TTYDeviceHandle {
 		let mut b: [u8; 128] = [0; 128];
 		while i < buf.len() {
 			let l = buf.copy_from_user(i, &mut b)?;
+			// TODO: this is here for debug purpose. We should find a better solution later
+			serial::PORTS[0].lock().write(&b[..l]);
 			TTY.write(&b[..l]);
 			i += l;
 		}
