@@ -232,11 +232,18 @@ impl RcPage {
 
 impl Drop for RcPage {
 	fn drop(&mut self) {
+		// Fast path: the page is still referenced somewhere else.
+		// This avoids taking the LRU lock on every drop (in particular from contexts that already
+		// hold it), which would deadlock.
 		if Arc::strong_count(&self.0) > 2 {
 			return;
 		}
-		unsafe {
-			LRU.lock().remove(&self.0);
+		// Lock before checking references count to avoid TOCTOU
+		let mut lru = LRU.lock();
+		if Arc::strong_count(&self.0) <= 2 {
+			unsafe {
+				lru.remove(&self.0);
+			}
 		}
 	}
 }
