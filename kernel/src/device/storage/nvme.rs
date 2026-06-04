@@ -865,36 +865,37 @@ impl ControllerInner {
 }
 
 fn handle_int(inner: &ControllerInner, qp: &QueuePair) {
-	let mut qp_inner = qp.inner.lock();
-	let mut any = false;
 	loop {
-		let cqe = unsafe { qp.cq.add(qp_inner.cq_head as usize).read_volatile() };
-		// Check phase bit
-		if (cqe.status & 1 != 0) != qp_inner.completion_phase {
-			break;
-		}
-		// Wake up process
-		let ent = mem::replace(
-			&mut qp_inner.entries[cqe.cid as usize],
-			QueueEntry::Completed(cqe),
-		);
-		let QueueEntry::Submitted(proc) = ent else {
-			unreachable!();
-		};
-		Process::wake_from(&proc, State::Sleeping as _);
-		qp_inner.cq_head = (qp_inner.cq_head + 1) % (CQ_LEN as u32);
-		if qp_inner.cq_head == 0 {
-			qp_inner.completion_phase = !qp_inner.completion_phase;
-		}
-		any = true;
-	}
-	if any {
-		unsafe {
-			inner.bar.write::<u32>(
-				queue_doorbell_off(qp.id, true, inner.dstrd),
-				qp_inner.cq_head,
+		// Do no hold `qp.inner` across a sleep point
+		let proc = {
+			let mut qp_inner = qp.inner.lock();
+			let cqe = unsafe { qp.cq.add(qp_inner.cq_head as usize).read_volatile() };
+			// Check phase bit
+			if (cqe.status & 1 != 0) != qp_inner.completion_phase {
+				break;
+			}
+			let ent = mem::replace(
+				&mut qp_inner.entries[cqe.cid as usize],
+				QueueEntry::Completed(cqe),
 			);
-		}
+			let QueueEntry::Submitted(proc) = ent else {
+				unreachable!();
+			};
+			qp_inner.cq_head = (qp_inner.cq_head + 1) % (CQ_LEN as u32);
+			if qp_inner.cq_head == 0 {
+				qp_inner.completion_phase = !qp_inner.completion_phase;
+			}
+			// Notify the controller of the consumed completion
+			unsafe {
+				inner.bar.write::<u32>(
+					queue_doorbell_off(qp.id, true, inner.dstrd),
+					qp_inner.cq_head,
+				);
+			}
+			proc
+		};
+		// Wake up the process outside the queue-pair lock
+		Process::wake_from(&proc, State::Sleeping as _);
 	}
 }
 
