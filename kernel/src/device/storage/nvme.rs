@@ -869,15 +869,21 @@ fn handle_int(inner: &ControllerInner, qp: &QueuePair) {
 		// Do no hold `qp.inner` across a sleep point
 		let proc = {
 			let mut qp_inner = qp.inner.lock();
-			let cqe = unsafe { qp.cq.add(qp_inner.cq_head as usize).read_volatile() };
-			// Check phase bit
-			if (cqe.status & 1 != 0) != qp_inner.completion_phase {
+			let head = qp_inner.cq_head as usize;
+			let entry = unsafe { qp.cq.as_ptr().add(head) };
+			// The command identifier (low 16 bits) and the status field (high 16 bits, carrying
+			// the phase bit) occupy the same 32-bit word of the completion entry. Read that
+			// word as a unit so the phase bit can never be observed as updated while the
+			// command identifier is still stale
+			let cid_word_off = mem::offset_of!(CompletionQueueEntry, cid) / size_of::<u32>();
+			let cid_status = unsafe { entry.cast::<u32>().add(cid_word_off).read_volatile() };
+			// Check phase bit (bit 0 of the status field, the high half of the word)
+			if (cid_status >> 16 & 1 != 0) != qp_inner.completion_phase {
 				break;
 			}
-			let ent = mem::replace(
-				&mut qp_inner.entries[cqe.cid as usize],
-				QueueEntry::Completed(cqe),
-			);
+			let cid = (cid_status & 0xffff) as usize;
+			let cqe = unsafe { entry.read_volatile() };
+			let ent = mem::replace(&mut qp_inner.entries[cid], QueueEntry::Completed(cqe));
 			let QueueEntry::Submitted(proc) = ent else {
 				unreachable!();
 			};
