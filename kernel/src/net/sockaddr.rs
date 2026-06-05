@@ -16,83 +16,114 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//! This module defines sockaddr structures used by system calls to define connection informations
-//! on sockets.
+//! `sockaddr` structures used by system calls to define a socket's address.
 
-use super::Address;
-use core::ffi::c_short;
+use core::{
+	ffi::{c_short, c_uchar, c_uint, c_ushort},
+	fmt::{Debug, Formatter},
+};
 
-/// Structure providing connection informations for sockets with IPv4.
+/// POSIX's `sa_family`
+pub type SaFamily = u16;
+
+/// Unix domain socket address
 #[repr(C)]
-#[derive(Clone)]
-pub struct SockAddrIn {
-	/// The family of the socket.
-	sin_family: c_short,
-	/// The port on which the connection is to be opened.
-	sin_port: c_short,
-	/// The destination address of the connection.
-	sin_addr: u32,
-	/// Padding.
-	sin_zero: [u8; 8],
+#[derive(Clone, Copy, Debug)]
+pub struct SockAddrUn {
+	/// Socket family
+	pub sun_family: SaFamily,
+	/// Unix socket path
+	pub sun_path: [u8; 108],
 }
 
-/// Structure representing an IPv6 address.
+/// IPv4 socket address
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct SockAddrIn {
+	/// Socket family
+	pub sin_family: SaFamily,
+	/// Port
+	pub sin_port: c_short,
+	/// Address
+	pub sin_addr: u32,
+	/// Padding
+	pub sin_zero: [u8; 8],
+}
+
+/// An IPv6 address
 #[repr(C)]
 #[derive(Clone, Copy)]
+#[allow(missing_docs)]
 pub union In6Addr {
-	__s6_addr: [u8; 16],
-	__s6_addr16: [u16; 8],
-	__s6_addr32: [u32; 4],
+	pub __s6_addr: [u8; 16],
+	pub __s6_addr16: [u16; 8],
+	pub __s6_addr32: [u32; 4],
 }
 
-/// Structure providing connection informations for sockets with IPv6.
+impl Debug for In6Addr {
+	fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+		unsafe {
+			write!(
+				f,
+				"{:x}:{:x}:{:x}:{:x}:{:x}:{:x}:{:x}:{:x}",
+				self.__s6_addr16[0],
+				self.__s6_addr16[1],
+				self.__s6_addr16[2],
+				self.__s6_addr16[3],
+				self.__s6_addr16[4],
+				self.__s6_addr16[5],
+				self.__s6_addr16[6],
+				self.__s6_addr16[7]
+			)
+		}
+	}
+}
+
+/// IPv6 socket address
 #[repr(C)]
-#[derive(Clone)]
+#[derive(Clone, Copy, Debug)]
 pub struct SockAddrIn6 {
-	/// The family of the socket.
-	sin6_family: c_short,
-	/// The port on which the connection is to be opened.
-	sin6_port: c_short,
+	/// Socket family
+	pub sin6_family: SaFamily,
+	/// Port
+	pub sin6_port: c_short,
 	/// TODO doc
-	sin6_flowinfo: u32,
-	/// The destination address of the connection.
-	sin6_addr: In6Addr,
+	pub sin6_flowinfo: u32,
+	/// Address
+	pub sin6_addr: In6Addr,
 	/// TODO doc
-	sin6_scope_id: u32,
+	pub sin6_scope_id: u32,
 }
 
-/// A unified structure which contains data passed from userspace.
+/// Link-layer socket address
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct SockAddrLl {
+	/// Socket family
+	pub sll_family: SaFamily,
+	/// TODO doc
+	pub sll_protocol: c_ushort,
+	/// Interface index
+	pub sll_ifindex: c_uint,
+	/// TODO doc
+	pub sll_hatype: c_ushort,
+	/// TODO doc
+	pub sll_pkttype: c_uchar,
+	/// TODO doc
+	pub sll_halen: c_uchar,
+	/// TODO doc
+	pub sll_addr: [c_uchar; 8],
+}
+
+/// Socket address
 #[derive(Debug)]
-pub struct SockAddr {
-	/// The port used by the socket.
-	pub port: u16,
-	/// The destination address of the socket.
-	pub addr: Address,
-}
-
-impl From<SockAddrIn> for SockAddr {
-	fn from(val: SockAddrIn) -> Self {
-		let addr: [u8; 4] = [
-			((val.sin_addr >> 24) & 0xff) as u8,
-			((val.sin_addr >> 16) & 0xff) as u8,
-			((val.sin_addr >> 8) & 0xff) as u8,
-			(val.sin_addr & 0xff) as u8,
-		];
-
-		Self {
-			port: val.sin_port as _,
-			addr: Address::IPv4(addr),
-		}
-	}
-}
-
-impl From<SockAddrIn6> for SockAddr {
-	fn from(val: SockAddrIn6) -> Self {
-		let addr = unsafe { val.sin6_addr.__s6_addr };
-
-		Self {
-			port: val.sin6_port as _,
-			addr: Address::IPv6(addr),
-		}
-	}
+pub enum SockAddr {
+	/// Unix domain socket address
+	Unix(SockAddrUn),
+	/// IPv4 socket address
+	Inet(SockAddrIn),
+	/// IPv6 socket address
+	Inet6(SockAddrIn6),
+	/// Link-layer socket address
+	Link(SockAddrLl),
 }

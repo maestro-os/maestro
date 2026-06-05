@@ -28,7 +28,7 @@ pub mod tcp;
 
 use crate::{
 	file::perm::is_privileged,
-	net::sockaddr::{SockAddrIn, SockAddrIn6},
+	net::sockaddr::{SaFamily, SockAddrIn, SockAddrIn6, SockAddrUn},
 	sync::spin::Spin,
 };
 use buf::BufList;
@@ -257,7 +257,7 @@ impl TryFrom<u32> for SocketDomain {
 
 impl SocketDomain {
 	/// Returns the associated ID.
-	pub fn get_id(&self) -> u32 {
+	pub fn get_id(&self) -> SaFamily {
 		match self {
 			Self::AfUnix => 1,
 			Self::AfInet => 2,
@@ -267,13 +267,14 @@ impl SocketDomain {
 		}
 	}
 
-	/// Returns the size of the sockaddr structure for the domain.
+	/// Returns the size of the associated `sockaddr_*` structure in bytes.
 	pub fn get_sockaddr_len(&self) -> usize {
 		match self {
+			Self::AfUnix => size_of::<SockAddrUn>(),
 			Self::AfInet => size_of::<SockAddrIn>(),
 			Self::AfInet6 => size_of::<SockAddrIn6>(),
-			// TODO add others
-			_ => 0,
+			Self::AfNetlink => todo!(),
+			Self::AfPacket => todo!(),
 		}
 	}
 
