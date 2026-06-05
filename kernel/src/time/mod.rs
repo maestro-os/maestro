@@ -77,7 +77,7 @@ pub fn sleep_for(clock: Clock, delay: Timestamp, remain: &mut Timestamp) -> ERes
 /// Initializes timekeeping
 pub(crate) fn init() -> EResult<()> {
 	clock::init(rtc::read_time());
-	const FREQUENCY: u32 = 1024;
+	const FREQUENCY: u32 = 128;
 	rtc::set_frequency(FREQUENCY);
 	if apic::is_present() {
 		apic::redirect_int(0x8, core_id(), rtc::INTERRUPT_VECTOR);
@@ -85,7 +85,6 @@ pub(crate) fn init() -> EResult<()> {
 	unsafe {
 		int::register_callback(rtc::INTERRUPT_VECTOR as _, move |_, _, _, _| {
 			rtc::reset();
-			// FIXME: we are loosing precision here
 			clock::update((1_000_000_000 / FREQUENCY) as _);
 			timer::tick();
 		})?;
