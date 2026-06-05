@@ -21,7 +21,7 @@
 use crate::{
 	file::{File, fs::FileOps},
 	memory::{ring_buffer::RingBuffer, user::UserSlice},
-	net::{SocketDesc, osi},
+	net::{SocketDesc, osi, sockaddr::SockAddr},
 	sync::{spin::Spin, wait_queue::WaitQueue},
 	syscall::ioctl,
 };
@@ -58,8 +58,14 @@ pub struct Socket {
 	/// socket is closed.
 	open_count: AtomicUsize,
 
-	/// The address the socket is bound to.
-	sockname: Spin<Vec<u8>>,
+	/// The address the socket is bound to
+	pub sockaddr: Spin<Option<SockAddr>>,
+
+	/// If this is a listening socket, this is the maximum size of the `connections` field.
+	pub backlog: Spin<usize>,
+	/// If this is a listening socket, this field contains the list of **completely established**
+	/// connections.
+	pub connections: Spin<Vec<Socket>>,
 
 	/// The buffer containing received data. If `None`, reception has been shutdown.
 	rx_buff: Spin<Option<RingBuffer>>,
@@ -80,7 +86,10 @@ impl Socket {
 			stack: None,
 			open_count: AtomicUsize::new(0),
 
-			sockname: Default::default(),
+			sockaddr: Default::default(),
+
+			backlog: Spin::new(0),
+			connections: Default::default(),
 
 			rx_buff: Spin::new(Some(RingBuffer::new(
 				NonZeroUsize::new(BUFFER_SIZE).unwrap(),
@@ -141,28 +150,9 @@ impl Socket {
 		Ok(0)
 	}
 
-	/// Returns the name of the socket.
-	pub fn get_sockname(&self) -> &Spin<Vec<u8>> {
-		&self.sockname
-	}
-
-	/// Binds the socket to the given address.
-	///
-	/// `sockaddr` is the new socket name.
-	///
-	/// If the socket is already bound, or if the address is invalid, or if the address is already
-	/// in used, the function returns an error.
-	pub fn bind(&self, sockaddr: &[u8]) -> EResult<()> {
-		let mut sockname = self.sockname.lock();
-		if !sockname.is_empty() {
-			return Err(errno!(EINVAL));
-		}
-		// TODO check if address is already in used (EADDRINUSE)
-		// TODO check the requested network interface exists (EADDRNOTAVAIL)
-		// TODO check address against stack's domain
-
-		*sockname = Vec::try_from(sockaddr)?;
-		Ok(())
+	/// Tells whether the socket is listening.
+	pub fn is_listening(&self) -> bool {
+		*self.backlog.lock() > 0
 	}
 
 	/// Shuts down the reception side of the socket.
