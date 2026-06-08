@@ -22,13 +22,14 @@ use core::{
 	ffi::{c_short, c_uchar, c_uint, c_ushort},
 	fmt::{Debug, Formatter},
 };
+use macros::AnyRepr;
 
 /// POSIX's `sa_family`
 pub type SaFamily = u16;
 
 /// Unix domain socket address
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(AnyRepr, Clone, Copy, Debug)]
 pub struct SockAddrUn {
 	/// Socket family
 	pub sun_family: SaFamily,
@@ -38,7 +39,7 @@ pub struct SockAddrUn {
 
 /// IPv4 socket address
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(AnyRepr, Clone, Copy, Debug)]
 pub struct SockAddrIn {
 	/// Socket family
 	pub sin_family: SaFamily,
@@ -52,7 +53,7 @@ pub struct SockAddrIn {
 
 /// An IPv6 address
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(AnyRepr, Clone, Copy)]
 #[allow(missing_docs)]
 pub union In6Addr {
 	pub __s6_addr: [u8; 16],
@@ -81,7 +82,7 @@ impl Debug for In6Addr {
 
 /// IPv6 socket address
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(AnyRepr, Clone, Copy, Debug)]
 pub struct SockAddrIn6 {
 	/// Socket family
 	pub sin6_family: SaFamily,
@@ -97,7 +98,7 @@ pub struct SockAddrIn6 {
 
 /// Link-layer socket address
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(AnyRepr, Clone, Copy, Debug)]
 pub struct SockAddrLl {
 	/// Socket family
 	pub sll_family: SaFamily,

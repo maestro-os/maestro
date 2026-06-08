@@ -26,13 +26,9 @@ pub mod osi;
 pub mod sockaddr;
 pub mod tcp;
 
-use crate::{
-	file::perm::is_privileged,
-	net::sockaddr::{SaFamily, SockAddrIn, SockAddrIn6, SockAddrUn},
-	sync::spin::Spin,
-};
+use crate::{file::perm::is_privileged, net::sockaddr::SaFamily, sync::spin::Spin};
 use buf::BufList;
-use core::{cmp::Ordering, mem::size_of};
+use core::cmp::Ordering;
 use utils::{
 	collections::{hashmap::HashMap, string::String, vec::Vec},
 	errno,
@@ -264,17 +260,6 @@ impl SocketDomain {
 			Self::AfInet6 => 10,
 			Self::AfNetlink => 16,
 			Self::AfPacket => 17,
-		}
-	}
-
-	/// Returns the size of the associated `sockaddr_*` structure in bytes.
-	pub fn get_sockaddr_len(&self) -> usize {
-		match self {
-			Self::AfUnix => size_of::<SockAddrUn>(),
-			Self::AfInet => size_of::<SockAddrIn>(),
-			Self::AfInet6 => size_of::<SockAddrIn6>(),
-			Self::AfNetlink => todo!(),
-			Self::AfPacket => todo!(),
 		}
 	}
 
