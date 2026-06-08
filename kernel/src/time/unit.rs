@@ -20,7 +20,7 @@
 
 use core::{
 	cmp::Ordering,
-	ffi::{c_int, c_long},
+	ffi::c_int,
 	fmt::Debug,
 	ops::{Add, Sub},
 };
@@ -139,7 +139,7 @@ pub struct Timespec {
 	/// Seconds
 	pub tv_sec: Timestamp,
 	/// Nanoseconds
-	pub tv_nsec: c_long,
+	pub tv_nsec: i64,
 }
 
 impl TimeUnit for Timespec {

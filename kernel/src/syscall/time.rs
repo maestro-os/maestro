@@ -51,17 +51,31 @@ pub fn time64(tloc: UserPtr<u64>) -> EResult<usize> {
 	Ok(time as _)
 }
 
-pub fn clock_gettime(clockid: ClockIdT, tp: UserPtr<Timespec>) -> EResult<usize> {
+pub fn clock_gettime(clockid: ClockIdT, tp: UserPtr<Timespec32>) -> EResult<usize> {
+	let clk = Clock::from_id(clockid).ok_or_else(|| errno!(EINVAL))?;
+	let ts = current_time_ns(clk);
+	tp.copy_to_user(&Timespec32::from_nano(ts))?;
+	Ok(0)
+}
+
+pub fn clock_gettime64(clockid: ClockIdT, tp: UserPtr<Timespec>) -> EResult<usize> {
 	let clk = Clock::from_id(clockid).ok_or_else(|| errno!(EINVAL))?;
 	let ts = current_time_ns(clk);
 	tp.copy_to_user(&Timespec::from_nano(ts))?;
 	Ok(0)
 }
 
-pub fn clock_gettime64(clockid: ClockIdT, tp: UserPtr<Timespec>) -> EResult<usize> {
-	let clock = Clock::from_id(clockid).ok_or_else(|| errno!(EINVAL))?;
-	let ts = current_time_ns(clock);
-	tp.copy_to_user(&Timespec::from_nano(ts))?;
+pub fn clock_getres(clockid: ClockIdT, res: UserPtr<Timespec32>) -> EResult<usize> {
+	Clock::from_id(clockid).ok_or_else(|| errno!(EINVAL))?;
+	// TODO return the actual correct resolution
+	res.copy_to_user(&Timespec32::from_nano(1))?;
+	Ok(0)
+}
+
+pub fn clock_getres64(clockid: ClockIdT, res: UserPtr<Timespec>) -> EResult<usize> {
+	Clock::from_id(clockid).ok_or_else(|| errno!(EINVAL))?;
+	// TODO return the actual correct resolution
+	res.copy_to_user(&Timespec::from_nano(1))?;
 	Ok(0)
 }
 
