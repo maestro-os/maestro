@@ -26,9 +26,8 @@ use crate::{
 		sockaddr::{SockAddr, SockAddrIn, SockAddrIn6, SockAddrUn},
 	},
 	process::Process,
-	syscall::FromSyscallArg,
 };
-use core::{ffi::c_int, hint::unlikely};
+use core::{ffi::c_int, hint::unlikely, mem};
 use utils::{bytes, errno, errno::EResult};
 
 /// Socket [`accept4`] flag: sets `O_NONBLOCK` on the newly open socket
@@ -173,34 +172,37 @@ pub fn bind(sockfd: c_int, sockaddr: *const u8, addrlen: isize) -> EResult<usize
 	let sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
 	let dom = sock.desc().domain;
 	// Check sockaddr length
-	if unlikely(addrlen < 0 || addrlen as usize != dom.get_sockaddr_len()) {
+	if unlikely(addrlen < 0) {
 		return Err(errno!(EINVAL));
 	}
-	// Note: the `compat` argument of `UserPtr` is ignored
+	let sockaddr = UserSlice::from_user(sockaddr as _, addrlen as _)?;
 	let sockaddr = match dom {
 		SocketDomain::AfUnix => {
-			let sockaddr = UserPtr::<SockAddrUn>::from_syscall_arg(sockaddr as _, false);
-			let sockaddr = sockaddr.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-			if unlikely(sockaddr.sun_family != dom.get_id()) {
+			let mut s: SockAddrUn = unsafe { mem::zeroed() };
+			let slice = bytes::as_bytes_mut(&mut s);
+			sockaddr.copy_from_user(0, slice)?;
+			if unlikely(s.sun_family != dom.get_id()) {
 				return Err(errno!(EINVAL));
 			}
-			SockAddr::Unix(sockaddr)
+			SockAddr::Unix(s)
 		}
 		SocketDomain::AfInet => {
-			let sockaddr = UserPtr::<SockAddrIn>::from_syscall_arg(sockaddr as _, false);
-			let sockaddr = sockaddr.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-			if unlikely(sockaddr.sin_family != dom.get_id()) {
+			let mut s: SockAddrIn = unsafe { mem::zeroed() };
+			let slice = bytes::as_bytes_mut(&mut s);
+			sockaddr.copy_from_user(0, slice)?;
+			if unlikely(s.sin_family != dom.get_id()) {
 				return Err(errno!(EINVAL));
 			}
-			SockAddr::Inet(sockaddr)
+			SockAddr::Inet(s)
 		}
 		SocketDomain::AfInet6 => {
-			let sockaddr = UserPtr::<SockAddrIn6>::from_syscall_arg(sockaddr as _, false);
-			let sockaddr = sockaddr.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
-			if unlikely(sockaddr.sin6_family != dom.get_id()) {
+			let mut s: SockAddrIn6 = unsafe { mem::zeroed() };
+			let slice = bytes::as_bytes_mut(&mut s);
+			sockaddr.copy_from_user(0, slice)?;
+			if unlikely(s.sin6_family != dom.get_id()) {
 				return Err(errno!(EINVAL));
 			}
-			SockAddr::Inet6(sockaddr)
+			SockAddr::Inet6(s)
 		}
 		SocketDomain::AfNetlink => todo!(),
 		SocketDomain::AfPacket => todo!(),
