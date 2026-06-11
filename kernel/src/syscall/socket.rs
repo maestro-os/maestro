@@ -19,15 +19,23 @@
 //! Socket interface system calls.
 
 use crate::{
-	file::{File, FileType, O_RDWR, fd::fd_to_file, fs::float, socket::Socket},
+	file::{
+		File, FileType, O_RDWR, Stat,
+		fd::fd_to_file,
+		fs::float,
+		socket::Socket,
+		vfs,
+		vfs::{ResolutionSettings, Resolved},
+	},
 	memory::user::{UserPtr, UserSlice},
 	net::{
 		SocketDesc, SocketDomain, SocketType,
 		sockaddr::{SockAddr, SockAddrIn, SockAddrIn6, SockAddrUn},
 	},
 	process::Process,
+	time::clock::{Clock, current_time_sec},
 };
-use core::{ffi::c_int, hint::unlikely, mem};
+use core::{any::Any, ffi::c_int, hint::unlikely, mem};
 use utils::{bytes, errno, errno::EResult};
 
 /// Socket [`accept4`] flag: sets `O_NONBLOCK` on the newly open socket
@@ -152,30 +160,8 @@ pub fn setsockopt(
 	sock.set_opt(level, optname, &optval).map(|opt| opt as _)
 }
 
-pub fn connect(sockfd: c_int, addr: *mut u8, addrlen: isize) -> EResult<usize> {
-	// Validation
-	if unlikely(addrlen < 0) {
-		return Err(errno!(EINVAL));
-	}
-	// Get socket
-	let file = fd_to_file(sockfd)?;
-	let _sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
-	let addr = UserSlice::from_user(addr, addrlen as _)?;
-	let _addr = addr.copy_from_user_vec(0)?.ok_or_else(|| errno!(EFAULT))?;
-	// TODO connect socket
-	todo!()
-}
-
-pub fn bind(sockfd: c_int, sockaddr: *const u8, addrlen: isize) -> EResult<usize> {
-	// Get socket
-	let file = fd_to_file(sockfd)?;
-	let sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
-	let dom = sock.desc().domain;
-	// Check sockaddr length
-	if unlikely(addrlen < 0) {
-		return Err(errno!(EINVAL));
-	}
-	let sockaddr = UserSlice::from_user(sockaddr as _, addrlen as _)?;
+fn read_sockaddr(dom: SocketDomain, addr: *const u8, addrlen: usize) -> EResult<SockAddr> {
+	let sockaddr = UserSlice::from_user(addr as _, addrlen)?;
 	let sockaddr = match dom {
 		SocketDomain::AfUnix => {
 			let mut s: SockAddrUn = unsafe { mem::zeroed() };
@@ -207,14 +193,83 @@ pub fn bind(sockfd: c_int, sockaddr: *const u8, addrlen: isize) -> EResult<usize
 		SocketDomain::AfNetlink => todo!(),
 		SocketDomain::AfPacket => todo!(),
 	};
+	Ok(sockaddr)
+}
+
+pub fn connect(sockfd: c_int, addr: *const u8, addrlen: isize) -> EResult<usize> {
+	// Validation
+	if unlikely(addrlen < 0) {
+		return Err(errno!(EINVAL));
+	}
+	// Get socket
+	let file = fd_to_file(sockfd)?;
+	let sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
+	let dom = sock.desc().domain;
+	let addr = read_sockaddr(dom, addr, addrlen as _)?;
+	match addr {
+		SockAddr::Unix(sa) => {
+			let file = vfs::get_file_from_path(sa.get_path(), true)?;
+			// If not a socket file, error
+			let dstsock = file.node().file_ops.as_ref();
+			let dstsock: Option<&Socket> = (dstsock as &dyn Any).downcast_ref();
+			let dstsock = dstsock.ok_or_else(|| errno!(ENOTSOCK))?;
+			todo!() // insert sock as connection on dstsock
+		}
+		SockAddr::Inet(_) => todo!(),
+		SockAddr::Inet6(_) => todo!(),
+		SockAddr::Link(_) => todo!(),
+	}
+	Ok(0)
+}
+
+pub fn bind(sockfd: c_int, addr: *const u8, addrlen: isize) -> EResult<usize> {
+	// Validation
+	if unlikely(addrlen < 0) {
+		return Err(errno!(EINVAL));
+	}
+	// Get socket
+	let file = fd_to_file(sockfd)?;
+	let sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
+	let dom = sock.desc().domain;
+	let addr = read_sockaddr(dom, addr, addrlen as _)?;
 	// TODO check if address is already in used (EADDRINUSE)
 	// TODO check the requested network interface exists (EADDRNOTAVAIL)
+	if let SockAddr::Unix(sa) = addr {
+		// Create the socket's file
+		let parent = vfs::resolve_path(sa.get_path(), &ResolutionSettings::cur_task(true, true))?;
+		match parent {
+			Resolved::Found(s) => {
+				// If file exist and is not a socket, error
+				let file_type = FileType::from_mode(s.node().stat().mode);
+				if file_type != Some(FileType::Socket) {
+					return Err(errno!(EADDRINUSE));
+				}
+			}
+			Resolved::Creatable {
+				parent,
+				name,
+			} => {
+				let ts = current_time_sec(Clock::Realtime);
+				vfs::create_file(
+					parent,
+					name,
+					Stat {
+						mode: FileType::Socket.to_mode(),
+						ctime: ts,
+						mtime: ts,
+						atime: ts,
+						..Default::default()
+					},
+				)?;
+			}
+		}
+	}
 	let mut sa = sock.sockaddr.lock();
 	// If already bound, error
 	if unlikely(sa.is_some()) {
 		return Err(errno!(EINVAL));
 	}
-	*sa = Some(sockaddr);
+	*sa = Some(addr);
 	Ok(0)
 }
 
