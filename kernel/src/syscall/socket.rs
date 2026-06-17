@@ -35,8 +35,8 @@ use crate::{
 	process::Process,
 	time::clock::{Clock, current_time_sec},
 };
-use core::{any::Any, ffi::c_int, hint::unlikely, mem};
-use utils::{bytes, errno, errno::EResult};
+use core::{ffi::c_int, hint::unlikely, mem};
+use utils::{bytes, collections::vec::Vec, errno, errno::EResult, ptr::arc::Arc};
 
 /// Socket [`accept4`] flag: sets `O_NONBLOCK` on the newly open socket
 const SOCK_NONBLOCK: c_int = 0o4000;
@@ -203,22 +203,10 @@ pub fn connect(sockfd: c_int, addr: *const u8, addrlen: isize) -> EResult<usize>
 	}
 	// Get socket
 	let file = fd_to_file(sockfd)?;
-	let sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
+	let sock: Arc<Socket> = file.get_buffer_arc().ok_or_else(|| errno!(ENOTSOCK))?;
 	let dom = sock.desc().domain;
 	let addr = read_sockaddr(dom, addr, addrlen as _)?;
-	match addr {
-		SockAddr::Unix(sa) => {
-			let file = vfs::get_file_from_path(sa.get_path(), true)?;
-			// If not a socket file, error
-			let dstsock = file.node().file_ops.as_ref();
-			let dstsock: Option<&Socket> = (dstsock as &dyn Any).downcast_ref();
-			let dstsock = dstsock.ok_or_else(|| errno!(ENOTSOCK))?;
-			todo!() // insert sock as connection on dstsock
-		}
-		SockAddr::Inet(_) => todo!(),
-		SockAddr::Inet6(_) => todo!(),
-		SockAddr::Link(_) => todo!(),
-	}
+	sock.ops.connect(&sock, addr)?;
 	Ok(0)
 }
 
@@ -291,7 +279,11 @@ pub fn listen(sockfd: c_int, backlog: c_int) -> EResult<usize> {
 		SocketDomain::AfNetlink => return Err(errno!(EOPNOTSUPP)),
 		_ => {}
 	}
-	*sock.backlog.lock() = backlog as _;
+	let mut b = sock.backlog.lock();
+	if b.capacity() > 0 {
+		return Err(errno!(EADDRINUSE));
+	}
+	*b = Vec::with_capacity(backlog as usize)?;
 	Ok(0)
 }
 
@@ -312,7 +304,7 @@ pub fn accept4(
 		return Err(errno!(EOPNOTSUPP));
 	}
 	// If the socket is not listening, error
-	if unlikely(sock.is_listening()) {
+	if unlikely(!sock.is_listening()) {
 		return Err(errno!(EINVAL));
 	}
 	// TODO if there is a pending connection:

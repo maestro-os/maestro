@@ -19,21 +19,25 @@
 //! This file implements sockets.
 
 use crate::{
-	file::{File, fs::FileOps},
+	file::{File, fs::FileOps, vfs},
 	memory::{ring_buffer::RingBuffer, user::UserSlice},
-	net::{SocketDesc, osi, sockaddr::SockAddr},
+	net::{SocketDesc, SocketDomain, osi, sockaddr::SockAddr},
 	sync::{spin::Spin, wait_queue::WaitQueue},
 	syscall::ioctl,
 };
 use core::{
+	any::Any,
 	ffi::{c_int, c_void},
+	fmt::Debug,
 	num::NonZeroUsize,
 	sync::{atomic, atomic::AtomicUsize},
 };
 use utils::{
+	boxed::Box,
 	collections::vec::Vec,
 	errno,
 	errno::{AllocResult, EResult},
+	ptr::arc::Arc,
 };
 
 /// The maximum size of a socket's buffers.
@@ -46,6 +50,69 @@ const SOL_SOCKET: c_int = 1;
 const SO_SNDBUF: c_int = 7;
 /// Socket opt: Receive buffer size
 const SO_RCVBUF: c_int = 8;
+
+/// Socket operations
+pub trait SocketOps: Debug {
+	/// Connects a socket as a client, with the given `addr`.
+	fn connect(&self, sock: &Arc<Socket>, addr: SockAddr) -> EResult<()>;
+
+	/// Read data from the socket.
+	///
+	/// `buf` is the buffer the data is written to.
+	///
+	/// On success, the function returns the number of bytes read.
+	fn read(&self, sock: &Socket, buf: &mut [u8]) -> EResult<usize>;
+	/// Writes data to the socket.
+	///
+	/// `buf` is the buffer the data is read from.
+	///
+	/// On success, the function returns the number of bytes written.
+	fn write(&self, sock: &Socket, buf: &[u8]) -> EResult<usize>;
+}
+
+/// Unix socket operations
+#[derive(Debug, Default)]
+pub struct UnixSocketOps {
+	/// If connected, contains the peer socket
+	peer: Spin<Option<Arc<Socket>>>,
+}
+
+impl SocketOps for UnixSocketOps {
+	fn connect(&self, sock: &Arc<Socket>, addr: SockAddr) -> EResult<()> {
+		let SockAddr::Unix(sa) = addr else {
+			return Err(errno!(EINVAL));
+		};
+		let file = vfs::get_file_from_path(sa.get_path(), true)?;
+		// If not a socket file, error
+		let dstsock = file.node().file_ops.as_ref();
+		let dstsock: Option<&Socket> = (dstsock as &dyn Any).downcast_ref();
+		let dstsock = dstsock.ok_or_else(|| errno!(ENOTSOCK))?;
+		let mut p = self.peer.lock();
+		if p.is_some() {
+			return Err(errno!(EISCONN));
+		}
+		// Create peer socket
+		let peer = Arc::new(Socket::new_with_ops(
+			sock.desc.clone(),
+			Box::new(UnixSocketOps {
+				peer: Spin::new(Some(sock.clone())),
+			})?,
+		)?)?;
+		let mut dst_backlog = dstsock.backlog.lock();
+		// TODO if the backlog is full, wait? or return an error?
+		dst_backlog.push(peer.clone())?;
+		*p = Some(peer);
+		Ok(())
+	}
+
+	fn read(&self, _sock: &Socket, _buf: &mut [u8]) -> EResult<usize> {
+		todo!()
+	}
+
+	fn write(&self, _sock: &Socket, _buf: &[u8]) -> EResult<usize> {
+		todo!()
+	}
+}
 
 /// A UNIX socket.
 #[derive(Debug)]
@@ -60,12 +127,15 @@ pub struct Socket {
 
 	/// The address the socket is bound to
 	pub sockaddr: Spin<Option<SockAddr>>,
+	/// Socket operations
+	pub ops: Box<dyn SocketOps>,
 
-	/// If this is a listening socket, this is the maximum size of the `connections` field.
-	pub backlog: Spin<usize>,
-	/// If this is a listening socket, this field contains the list of **completely established**
-	/// connections.
-	pub connections: Spin<Vec<Socket>>,
+	// TODO use a FIFO
+	/// If this is a listening socket, this is a queue of pending connections to be accepted with
+	/// the `accept` system call.
+	///
+	/// The size of the queue is defined by the `listen` system call.
+	pub backlog: Spin<Vec<Arc<Socket>>>,
 
 	/// The buffer containing received data. If `None`, reception has been shutdown.
 	rx_buff: Spin<Option<RingBuffer>>,
@@ -79,17 +149,29 @@ pub struct Socket {
 }
 
 impl Socket {
-	/// Creates a new instance.
+	/// Creates a new instance, with default socket operations
 	pub fn new(desc: SocketDesc) -> AllocResult<Self> {
+		let ops = match desc.domain {
+			SocketDomain::AfUnix => Box::new(UnixSocketOps::default())?,
+			SocketDomain::AfInet => todo!(),
+			SocketDomain::AfInet6 => todo!(),
+			SocketDomain::AfNetlink => todo!(),
+			SocketDomain::AfPacket => todo!(),
+		};
+		Self::new_with_ops(desc, ops)
+	}
+
+	/// Creates a new instance, with the given socket operations `ops`
+	pub fn new_with_ops(desc: SocketDesc, ops: Box<dyn SocketOps>) -> AllocResult<Self> {
 		Ok(Self {
 			desc,
 			stack: None,
 			open_count: AtomicUsize::new(0),
 
 			sockaddr: Default::default(),
+			ops,
 
-			backlog: Spin::new(0),
-			connections: Default::default(),
+			backlog: Default::default(),
 
 			rx_buff: Spin::new(Some(RingBuffer::new(
 				NonZeroUsize::new(BUFFER_SIZE).unwrap(),
@@ -152,7 +234,7 @@ impl Socket {
 
 	/// Tells whether the socket is listening.
 	pub fn is_listening(&self) -> bool {
-		*self.backlog.lock() > 0
+		self.backlog.lock().capacity() > 0
 	}
 
 	/// Shuts down the reception side of the socket.

@@ -435,6 +435,19 @@ impl File {
 		(self.ops.deref() as &dyn Any).downcast_ref::<B>()
 	}
 
+	/// Returns the underlying buffer as an owned [`Arc`], if it is owned and of type `B`.
+	pub fn get_buffer_arc<B: FileOps>(&self) -> Option<Arc<B>> {
+		let FileOpsWrapper::Owned(arc) = &self.ops else {
+			return None;
+		};
+		// Type check
+		(arc.as_ref() as &dyn Any).downcast_ref::<B>()?;
+		// Recover an owned Arc sharing the same allocation
+		let ptr = Arc::as_ptr(arc) as *const B;
+		Arc::increment_count(arc);
+		Some(unsafe { Arc::from_raw(ptr) })
+	}
+
 	/// If the file is a block device, returns the associated device.
 	pub fn as_block_device(&self) -> Option<Arc<BlkDev>> {
 		let stat = self.stat();
