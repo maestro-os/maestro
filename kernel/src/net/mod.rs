@@ -327,7 +327,7 @@ impl SocketType {
 }
 
 /// Socket network stack descriptor.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct SocketDesc {
 	/// The socket's domain.
 	pub domain: SocketDomain,
