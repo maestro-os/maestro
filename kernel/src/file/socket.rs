@@ -61,13 +61,13 @@ pub trait SocketOps: Debug {
 	/// `buf` is the buffer the data is written to.
 	///
 	/// On success, the function returns the number of bytes read.
-	fn read(&self, sock: &Socket, buf: &mut [u8]) -> EResult<usize>;
+	fn read(&self, sock: &Socket, buf: UserSlice<u8>) -> EResult<usize>;
 	/// Writes data to the socket.
 	///
 	/// `buf` is the buffer the data is read from.
 	///
 	/// On success, the function returns the number of bytes written.
-	fn write(&self, sock: &Socket, buf: &[u8]) -> EResult<usize>;
+	fn write(&self, sock: &Socket, buf: UserSlice<u8>) -> EResult<usize>;
 }
 
 /// Unix socket operations
@@ -105,12 +105,27 @@ impl SocketOps for UnixSocketOps {
 		Ok(())
 	}
 
-	fn read(&self, _sock: &Socket, _buf: &mut [u8]) -> EResult<usize> {
-		todo!()
+	fn read(&self, sock: &Socket, buf: UserSlice<u8>) -> EResult<usize> {
+		let mut rx_buf = sock.rx_buf.lock();
+		let Some(rx_buf) = rx_buf.as_mut() else {
+			// Connection shutdown
+			return Err(errno!(ENOTCONN));
+		};
+		rx_buf.read(buf)
 	}
 
-	fn write(&self, _sock: &Socket, _buf: &[u8]) -> EResult<usize> {
-		todo!()
+	fn write(&self, _sock: &Socket, buf: UserSlice<u8>) -> EResult<usize> {
+		let peer_sock = self.peer.lock();
+		let Some(peer_sock) = peer_sock.as_ref() else {
+			// Not connected
+			return Err(errno!(ENOTCONN));
+		};
+		let mut peer_rx_buf = peer_sock.rx_buf.lock();
+		let Some(peer_rx_buf) = peer_rx_buf.as_mut() else {
+			// Connection shutdown
+			return Err(errno!(ENOTCONN));
+		};
+		peer_rx_buf.write(buf)
 	}
 }
 
@@ -138,9 +153,9 @@ pub struct Socket {
 	pub backlog: Spin<Vec<Arc<Socket>>>,
 
 	/// The buffer containing received data. If `None`, reception has been shutdown.
-	rx_buff: Spin<Option<RingBuffer>>,
+	rx_buf: Spin<Option<RingBuffer>>,
 	/// The buffer containing data to be transmitted. If `None`, transmission has been shutdown.
-	tx_buff: Spin<Option<RingBuffer>>,
+	tx_buf: Spin<Option<RingBuffer>>,
 
 	/// Receive wait queue.
 	rx_queue: WaitQueue,
@@ -173,10 +188,10 @@ impl Socket {
 
 			backlog: Default::default(),
 
-			rx_buff: Spin::new(Some(RingBuffer::new(
+			rx_buf: Spin::new(Some(RingBuffer::new(
 				NonZeroUsize::new(BUFFER_SIZE).unwrap(),
 			)?)),
-			tx_buff: Spin::new(Some(RingBuffer::new(
+			tx_buf: Spin::new(Some(RingBuffer::new(
 				NonZeroUsize::new(BUFFER_SIZE).unwrap(),
 			)?)),
 
@@ -239,12 +254,12 @@ impl Socket {
 
 	/// Shuts down the reception side of the socket.
 	pub fn shutdown_reception(&self) {
-		*self.rx_buff.lock() = None;
+		*self.rx_buf.lock() = None;
 	}
 
 	/// Shuts down the transmit side of the socket.
 	pub fn shutdown_transmit(&self) {
-		*self.tx_buff.lock() = None;
+		*self.tx_buf.lock() = None;
 	}
 }
 
@@ -268,18 +283,11 @@ impl FileOps for Socket {
 		todo!()
 	}
 
-	fn read(&self, _file: &File, _off: u64, _buf: UserSlice<u8>) -> EResult<usize> {
-		if !self.desc.type_.is_stream() {
-			// TODO error
-		}
-		todo!()
+	fn read(&self, _file: &File, _off: u64, buf: UserSlice<u8>) -> EResult<usize> {
+		self.ops.read(self, buf)
 	}
 
-	fn write(&self, _file: &File, _off: u64, _buf: UserSlice<u8>) -> EResult<usize> {
-		// A destination address is required
-		let Some(_stack) = self.stack.as_ref() else {
-			return Err(errno!(EDESTADDRREQ));
-		};
-		todo!()
+	fn write(&self, _file: &File, _off: u64, buf: UserSlice<u8>) -> EResult<usize> {
+		self.ops.write(self, buf)
 	}
 }

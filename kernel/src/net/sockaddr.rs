@@ -41,14 +41,15 @@ pub struct SockAddrUn {
 impl SockAddrUn {
 	/// Returns the socket's path
 	pub fn get_path(&self) -> &Path {
-		let path_len = self
-			.sun_path
-			.iter()
-			.position(|b| *b == 0)
-			.unwrap_or(self.sun_path.len());
+		let mut path = self.sun_path.as_slice();
+		// Abstract socket are not supported, fallback to normal paths
+		if path.first().cloned() == Some(0) {
+			path = &path[1..];
+		}
+		let path_len = path.iter().position(|b| *b == 0).unwrap_or(path.len());
 		// `sun_path`'s length is smaller than the maximum path length, so we can use
 		// `new_unbounded`
-		Path::new_unbounded(&self.sun_path[..path_len])
+		Path::new_unbounded(&path[..path_len])
 	}
 }
 
