@@ -224,8 +224,8 @@ pub fn bind(sockfd: c_int, addr: *const u8, addrlen: isize) -> EResult<usize> {
 	// TODO check the requested network interface exists (EADDRNOTAVAIL)
 	if let SockAddr::Unix(sa) = addr {
 		// Create the socket's file
-		let parent = vfs::resolve_path(sa.get_path(), &ResolutionSettings::cur_task(true, true))?;
-		match parent {
+		let res = vfs::resolve_path(sa.get_path(), &ResolutionSettings::cur_task(true, true))?;
+		match res {
 			Resolved::Found(s) => {
 				// If file exist and is not a socket, error
 				let file_type = FileType::from_mode(s.node().stat().mode);
