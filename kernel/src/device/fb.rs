@@ -22,10 +22,19 @@ use crate::{
 	arch::x86::paging::{FLAG_CACHE_DISABLE, FLAG_GLOBAL, FLAG_WRITE, FLAG_WRITE_THROUGH},
 	device::{CharDev, DeviceID, DeviceType, id::MajorBlock, register_char},
 	file::{File, fs::FileOps},
-	memory::{PhysAddr, VirtAddr, user::UserSlice, vmem::KERNEL_VMEM},
+	memory::{
+		PhysAddr, VirtAddr,
+		user::{UserPtr, UserSlice},
+		vmem::KERNEL_VMEM,
+	},
 	multiboot::FramebufferInfo,
+	syscall::{FromSyscallArg, ioctl},
 };
-use core::{hint::unlikely, mem::ManuallyDrop};
+use core::{
+	ffi::{c_ulong, c_void},
+	hint::unlikely,
+	mem::ManuallyDrop,
+};
 use utils::{
 	collections::path::PathBuf,
 	errno,
@@ -87,11 +96,196 @@ impl Framebuffer {
 
 // TODO undo memory remap on fb drop? (determine if this is useful)
 
+/// Packed RGB pixel: framebuffer memory holds true color values.
+const FB_VISUAL_TRUECOLOR: u32 = 2;
+/// Packed pixels framebuffer type.
+const FB_TYPE_PACKED_PIXELS: u32 = 0;
+
+/// Description of a bitfield inside a pixel, as exposed by [`FbVarScreeninfo`].
+#[repr(C)]
+#[derive(Clone, Debug, Default)]
+struct FbBitfield {
+	/// Beginning of the bitfield, in bits.
+	offset: u32,
+	/// Length of the bitfield, in bits.
+	length: u32,
+	/// Whether the most significant bit is on the right.
+	msb_right: u32,
+}
+
+/// Fixed screen information, as returned by [`ioctl::FBIOGET_FSCREENINFO`].
+///
+/// This mirrors the Linux `struct fb_fix_screeninfo`.
+#[repr(C)]
+#[derive(Clone, Debug, Default)]
+struct FbFixScreeninfo {
+	/// Identification string
+	id: [u8; 16],
+	/// Start of the framebuffer memory (physical address)
+	smem_start: c_ulong,
+	/// Length of the framebuffer memory, in bytes
+	smem_len: u32,
+	/// Framebuffer type (see `FB_TYPE_*`)
+	type_: u32,
+	/// Interleave for interleaved planes
+	type_aux: u32,
+	/// Visual type (see `FB_VISUAL_*`)
+	visual: u32,
+	/// Horizontal panning step, `0` if no hardware panning
+	xpanstep: u16,
+	/// Vertical panning step, `0` if no hardware panning
+	ypanstep: u16,
+	/// Vertical wrap step, `0` if no hardware ywrap
+	ywrapstep: u16,
+	/// Length of a line, in bytes
+	line_length: u32,
+	/// Start of memory mapped I/O (physical address)
+	mmio_start: c_ulong,
+	/// Length of memory mapped I/O, in bytes
+	mmio_len: u32,
+	/// Acceleration chip/card identifier
+	accel: u32,
+	/// Capabilities (see `FB_CAP_*`)
+	capabilities: u16,
+	/// Reserved for future compatibility
+	reserved: [u16; 2],
+}
+
+/// Variable screen information, as returned by [`ioctl::FBIOGET_VSCREENINFO`].
+///
+/// This mirrors the Linux `struct fb_var_screeninfo`.
+#[repr(C)]
+#[derive(Clone, Debug, Default)]
+struct FbVarScreeninfo {
+	/// Visible horizontal resolution, in pixels
+	xres: u32,
+	/// Visible vertical resolution, in pixels
+	yres: u32,
+	/// Virtual horizontal resolution, in pixels
+	xres_virtual: u32,
+	/// Virtual vertical resolution, in pixels
+	yres_virtual: u32,
+	/// Horizontal offset from virtual to visible resolution
+	xoffset: u32,
+	/// Vertical offset from virtual to visible resolution
+	yoffset: u32,
+	/// Bits per pixel
+	bits_per_pixel: u32,
+	/// `0` for color, `1` for grayscale, `>1` for FOURCC
+	grayscale: u32,
+	/// Red bitfield in framebuffer memory
+	red: FbBitfield,
+	/// Green bitfield in framebuffer memory
+	green: FbBitfield,
+	/// Blue bitfield in framebuffer memory
+	blue: FbBitfield,
+	/// Transparency bitfield in framebuffer memory
+	transp: FbBitfield,
+	/// Non-zero for a non-standard pixel format
+	nonstd: u32,
+	/// Activation flags (see `FB_ACTIVATE_*`)
+	activate: u32,
+	/// Height of the picture, in mm
+	height: u32,
+	/// Width of the picture, in mm
+	width: u32,
+	/// Acceleration flags (obsolete)
+	accel_flags: u32,
+	/// Pixel clock, in picoseconds
+	pixclock: u32,
+	/// Time from sync to picture, in pixel clocks
+	left_margin: u32,
+	/// Time from picture to sync, in pixel clocks
+	right_margin: u32,
+	/// Time from sync to picture, in pixel clocks
+	upper_margin: u32,
+	/// Time from picture to sync, in pixel clocks
+	lower_margin: u32,
+	/// Length of the horizontal sync, in pixel clocks
+	hsync_len: u32,
+	/// Length of the vertical sync, in pixel clocks
+	vsync_len: u32,
+	/// Sync flags (see `FB_SYNC_*`)
+	sync: u32,
+	/// Video mode flags (see `FB_VMODE_*`)
+	vmode: u32,
+	/// Rotation angle, counter clockwise
+	rotate: u32,
+	/// Colorspace for FOURCC-based modes
+	colorspace: u32,
+	/// Reserved for future compatibility
+	reserved: [u32; 4],
+}
+
 /// A framebuffer device
 #[derive(Debug)]
 pub struct FramebufferDev(Arc<Framebuffer>);
 
+impl FramebufferDev {
+	/// Builds the fixed screen information for the framebuffer.
+	fn fix_screeninfo(&self) -> FbFixScreeninfo {
+		let fb = self.0.info();
+		let mut id = [0u8; 16];
+		let name = b"maestro";
+		id[..name.len()].copy_from_slice(name);
+		FbFixScreeninfo {
+			id,
+			smem_start: fb.framebuffer_addr as _,
+			smem_len: self.0.len() as _,
+			type_: FB_TYPE_PACKED_PIXELS,
+			visual: FB_VISUAL_TRUECOLOR,
+			line_length: fb.framebuffer_pitch,
+			..Default::default()
+		}
+	}
+
+	/// Builds the variable screen information for the framebuffer.
+	fn var_screeninfo(&self) -> FbVarScreeninfo {
+		let fb = self.0.info();
+		let rgb = &fb.framebuffer_rgb;
+		FbVarScreeninfo {
+			xres: fb.framebuffer_width,
+			yres: fb.framebuffer_height,
+			xres_virtual: fb.framebuffer_width,
+			yres_virtual: fb.framebuffer_height,
+			bits_per_pixel: fb.framebuffer_bpp as _,
+			red: FbBitfield {
+				offset: rgb.framebuffer_red_field_position as _,
+				length: rgb.framebuffer_red_mask_size as _,
+				msb_right: 0,
+			},
+			green: FbBitfield {
+				offset: rgb.framebuffer_green_field_position as _,
+				length: rgb.framebuffer_green_mask_size as _,
+				msb_right: 0,
+			},
+			blue: FbBitfield {
+				offset: rgb.framebuffer_blue_field_position as _,
+				length: rgb.framebuffer_blue_mask_size as _,
+				msb_right: 0,
+			},
+			..Default::default()
+		}
+	}
+}
+
 impl FileOps for FramebufferDev {
+	fn ioctl(&self, _file: &File, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
+		match request.get_old_format() {
+			ioctl::FBIOGET_FSCREENINFO => {
+				let ptr = UserPtr::<FbFixScreeninfo>::from_ptr(argp as usize);
+				ptr.copy_to_user(&self.fix_screeninfo())?;
+				Ok(0)
+			}
+			ioctl::FBIOGET_VSCREENINFO => {
+				let ptr = UserPtr::<FbVarScreeninfo>::from_ptr(argp as usize);
+				ptr.copy_to_user(&self.var_screeninfo())?;
+				Ok(0)
+			}
+			_ => Err(errno!(EINVAL)),
+		}
+	}
+
 	fn read(&self, _file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		let off: usize = off.try_into().map_err(|_| errno!(EINVAL))?;
 		let fb_len = self.0.len();

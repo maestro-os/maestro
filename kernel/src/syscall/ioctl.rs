@@ -37,6 +37,13 @@ pub const BLKSSZGET: c_ulong = 0x00001268;
 /// ioctl request: get storage size in bytes.
 pub const BLKGETSIZE64: c_ulong = 0x00001272;
 
+// ioctl requests: framebuffer
+
+/// ioctl request: Returns the variable screen information of a framebuffer.
+pub const FBIOGET_VSCREENINFO: c_ulong = 0x00004600;
+/// ioctl request: Returns the fixed screen information of a framebuffer.
+pub const FBIOGET_FSCREENINFO: c_ulong = 0x00004602;
+
 // ioctl requests: TTY
 
 /// ioctl request: Returns the current serial port settings.
