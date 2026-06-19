@@ -24,6 +24,7 @@ pub mod float;
 pub mod initramfs;
 pub mod kernfs;
 pub mod proc;
+pub mod sysfs;
 pub mod tmp;
 
 use super::{
@@ -612,6 +613,6 @@ pub(crate) fn register_defaults() -> EResult<()> {
 	register(ext2::Ext2FsType)?;
 	register(tmp::TmpFsType)?;
 	register(proc::ProcFsType)?;
-	// TODO sysfs
+	register(sysfs::SysFsType)?;
 	Ok(())
 }
