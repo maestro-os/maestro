@@ -282,6 +282,24 @@ impl FileOps for FramebufferDev {
 				ptr.copy_to_user(&self.var_screeninfo())?;
 				Ok(0)
 			}
+			ioctl::FBIOPUT_VSCREENINFO => {
+				// The framebuffer mode is fixed by the bootloader and cannot be reprogrammed
+				let ptr = UserPtr::<FbVarScreeninfo>::from_ptr(argp as usize);
+				let req = ptr.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+				let cur = self.var_screeninfo();
+				if unlikely(
+					req.xres != cur.xres
+						|| req.yres != cur.yres
+						|| req.bits_per_pixel != cur.bits_per_pixel,
+				) {
+					return Err(errno!(EINVAL));
+				}
+				Ok(0)
+			}
+			ioctl::FBIOPUTCMAP => {
+				// Ignored
+				Ok(0)
+			}
 			_ => Err(errno!(EINVAL)),
 		}
 	}
