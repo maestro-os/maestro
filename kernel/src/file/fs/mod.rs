@@ -35,7 +35,7 @@ use super::{
 use crate::{
 	device::BlkDev,
 	file::vfs::node::Node,
-	memory::{cache::RcPage, user::UserSlice},
+	memory::{PhysAddr, cache::RcPage, user::UserSlice},
 	sync::{mutex::Mutex, spin::Spin},
 	syscall::ioctl,
 	time::unit::Timestamp,
@@ -280,6 +280,19 @@ pub trait FileOps: Any + Debug {
 	fn ioctl(&self, file: &File, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
 		let _ = (file, request, argp);
 		Err(errno!(EINVAL))
+	}
+
+	/// Returns the physical address of the page to map at the page offset `offset` when
+	/// memory-mapping this file.
+	///
+	/// This allows device files to map their fixed physical memory directly into userspace.
+	///
+	/// `offset` is the offset in pages in the file.
+	///
+	/// If the function returns `None`, mapping shall go through the page cache.
+	fn mmap_page(&self, file: &File, offset: usize) -> EResult<Option<PhysAddr>> {
+		let _ = (file, offset);
+		Ok(None)
 	}
 
 	/// Reads from the content of `file` into the buffer `buf`.

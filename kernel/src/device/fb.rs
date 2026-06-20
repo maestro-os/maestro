@@ -286,6 +286,20 @@ impl FileOps for FramebufferDev {
 		}
 	}
 
+	fn mmap_page(&self, _file: &File, offset: usize) -> EResult<Option<PhysAddr>> {
+		// Bounds check
+		let byte_off = offset
+			.checked_mul(PAGE_SIZE)
+			.ok_or_else(|| errno!(EINVAL))?;
+		if unlikely(byte_off >= self.0.len()) {
+			return Err(errno!(EINVAL));
+		}
+		// Return framebuffer physical address
+		let base: usize = self.0.info().framebuffer_addr as usize;
+		let phys_addr = PhysAddr(base.checked_add(byte_off).ok_or_else(|| errno!(EINVAL))?);
+		Ok(Some(phys_addr))
+	}
+
 	fn read(&self, _file: &File, off: u64, buf: UserSlice<u8>) -> EResult<usize> {
 		let off: usize = off.try_into().map_err(|_| errno!(EINVAL))?;
 		let fb_len = self.0.len();
