@@ -108,9 +108,9 @@ framebuffer_tag:
 	.short 5
 	.short 0
 	.long (framebuffer_tag_end - framebuffer_tag)
-	.long 0
-	.long 0
-	.long 0
+	.long 800
+	.long 600
+	.long 32
 framebuffer_tag_end:
 
 # End tag

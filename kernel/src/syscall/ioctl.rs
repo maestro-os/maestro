@@ -41,8 +41,12 @@ pub const BLKGETSIZE64: c_ulong = 0x00001272;
 
 /// ioctl request: Returns the variable screen information of a framebuffer.
 pub const FBIOGET_VSCREENINFO: c_ulong = 0x00004600;
+/// ioctl request: Sets the variable screen information of a framebuffer.
+pub const FBIOPUT_VSCREENINFO: c_ulong = 0x00004601;
 /// ioctl request: Returns the fixed screen information of a framebuffer.
 pub const FBIOGET_FSCREENINFO: c_ulong = 0x00004602;
+/// ioctl request: Sets the color map (palette) of a framebuffer.
+pub const FBIOPUTCMAP: c_ulong = 0x00004605;
 
 // ioctl requests: TTY
 
