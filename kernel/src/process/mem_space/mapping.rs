@@ -261,9 +261,18 @@ impl MemMapping {
 			}
 			// Mapped file
 			Some(file) => {
+				let file_off = self.off / PAGE_SIZE as u64 + offset as u64;
+				// Device mapping: map fixed physical memory directly, bypassing the page cache
+				if let Some(phys_addr) = file.ops.mmap_page(file, file_off as usize)? {
+					let flags = vmem_flags(self.prot, false)
+						| paging::FLAG_CACHE_DISABLE
+						| paging::FLAG_WRITE_THROUGH;
+					mem_space.vmem.map(phys_addr, virtaddr, flags, 0);
+					shootdown_page(virtaddr, mem_space.bound_cpus());
+					return Ok(());
+				}
 				// Get page from file
 				let node = file.node();
-				let file_off = self.off / PAGE_SIZE as u64 + offset as u64;
 				let mut page = node.node_ops.read_page(node, file_off)?;
 				// If the mapping is private, we need our own copy
 				if self.flags & MAP_PRIVATE != 0 {
