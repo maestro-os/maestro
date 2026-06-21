@@ -212,13 +212,13 @@ impl Display {
 		const FONT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/font.bin"));
 		if let Some(fb) = &self.framebuffer {
 			let fb_ptr: *mut u8 = fb.addr().as_ptr();
-			let bytes_per_pixel = fb.info().framebuffer_bpp.div_ceil(8) as usize;
 			let pitch = fb.info().framebuffer_pitch as usize;
 			// Draw char
 			let code = c.c as usize;
 			let data_off = code * CHAR_HEIGHT;
 			let data = &FONT[data_off..data_off + 16];
-			let char_px_off = y * CHAR_HEIGHT * pitch + x * CHAR_WIDTH * bytes_per_pixel;
+			// 4 bytes per pixel: the kernel only supports 32bpp framebuffers
+			let char_px_off = y * CHAR_HEIGHT * pitch + x * CHAR_WIDTH * 4;
 			// Swap fg/bg if the cursor is on this cell
 			let (fg, bg) =
 				if self.cursor_visible && x == self.cursor_x && history_y == self.cursor_y {
@@ -228,7 +228,7 @@ impl Display {
 				};
 			// Pack a Rgb triple into a pixel word using the framebuffer channel layout
 			let pack = |val: u8, pos: u8, size: u8| -> u32 { (val as u32 >> (8 - size)) << pos };
-			let to_pixel = |(r, g, b): Rgb| -> [u8; 4] {
+			let to_pixel = |(r, g, b): Rgb| -> u32 {
 				let rgb = &fb.info().framebuffer_rgb;
 				let r = pack(
 					r,
@@ -245,20 +245,19 @@ impl Display {
 					rgb.framebuffer_blue_field_position,
 					rgb.framebuffer_blue_mask_size,
 				);
-				(r | g | b).to_le_bytes()
+				r | g | b
 			};
 			let fg_pixel = to_pixel(fg);
 			let bg_pixel = to_pixel(bg);
+			#[allow(clippy::needless_range_loop)]
 			for char_y in 0..CHAR_HEIGHT {
+				let bits = data[char_y];
+				let row = unsafe { fb_ptr.add(char_px_off + char_y * pitch) as *mut u32 };
 				for char_x in 0..CHAR_WIDTH {
-					let index = char_y * 8 + char_x;
-					let set = data[index / 8] & (0x80 >> (index % 8)) != 0;
+					let set = bits & (0x80 >> char_x) != 0;
 					let pixel = if set { fg_pixel } else { bg_pixel };
-					let px_off = char_px_off + char_y * pitch + char_x * bytes_per_pixel;
-					for (i, &c) in pixel.iter().enumerate().take(bytes_per_pixel) {
-						unsafe {
-							fb_ptr.add(px_off + i).write_volatile(c);
-						}
+					unsafe {
+						row.add(char_x).write_volatile(pixel);
 					}
 				}
 			}
