@@ -767,7 +767,7 @@ fn do_syscall64(id: usize, frame: &mut IntFrame) -> EResult<usize> {
 		0x039 => syscall!(fork, frame),
 		0x03a => syscall!(vfork, frame),
 		0x03b => syscall!(execve, frame),
-		// TODO 0x03c => syscall!(exit, frame),
+		0x03c => syscall!(_exit, frame),
 		0x03d => syscall!(wait4, frame),
 		0x03e => syscall!(kill, frame),
 		0x03f => syscall!(uname, frame),
