@@ -27,13 +27,13 @@ use crate::{
 		poll::{EpollEvent, EpollFileOps, EpollItem},
 	},
 	memory::user::{UserPtr, UserSlice},
-	process::Process,
+	process::{Process, signal::SigSet},
 	time::{
 		clock::{Clock, current_time_ms},
 		unit::Timestamp,
 	},
 };
-use core::{ffi::c_int, hint::unlikely, ptr};
+use core::{ffi::c_int, hint::unlikely, mem, ptr};
 use utils::{errno, errno::EResult, ptr::arc::Arc};
 
 /// epoll event flag: associated file is available for `read` operations.
@@ -245,4 +245,27 @@ pub(super) fn epoll_wait(
 		sti();
 		hlt();
 	}
+}
+
+pub(super) fn epoll_pwait(
+	epfd: c_int,
+	events: *mut EpollEvent,
+	maxevents: c_int,
+	timeout: c_int,
+	sigmask: UserPtr<SigSet>,
+	sigsetsize: usize,
+) -> EResult<usize> {
+	if unlikely(sigsetsize != size_of::<SigSet>()) {
+		return Err(errno!(EINVAL));
+	}
+	// Install the temporary mask for the duration of the wait
+	let saved = sigmask
+		.copy_from_user()?
+		.map(|mask| mem::replace(&mut Process::current().signal.lock().sigmask, mask));
+	let res = epoll_wait(epfd, events, maxevents, timeout);
+	// Restore the previous mask
+	if let Some(saved) = saved {
+		Process::current().signal.lock().sigmask = saved;
+	}
+	res
 }
