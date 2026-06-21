@@ -66,6 +66,10 @@ impl Framebuffer {
 	///
 	/// If the framebuffer is outside reachable memory, the function returns `None`.
 	pub fn new(info: FramebufferInfo) -> AllocResult<Option<Arc<Self>>> {
+		assert_eq!(
+			info.framebuffer_bpp, 32,
+			"unsupported framebuffer format: only 32 bits-per-pixel is supported"
+		);
 		let fb = Self(info);
 		if Self::remap(&fb).is_some() {
 			Ok(Some(Arc::new(fb)?))
