@@ -19,7 +19,12 @@
 //! This file implements sockets.
 
 use crate::{
-	file::{File, fs::FileOps, vfs},
+	file::{
+		File,
+		fs::FileOps,
+		poll::{POLLHUP, POLLIN, POLLOUT},
+		vfs,
+	},
 	memory::{ring_buffer::RingBuffer, user::UserSlice},
 	net::{SocketDesc, SocketDomain, osi, sockaddr::SockAddr},
 	sync::{spin::Spin, wait_queue::WaitQueue},
@@ -68,6 +73,9 @@ pub trait SocketOps: Debug {
 	///
 	/// On success, the function returns the number of bytes written.
 	fn write(&self, sock: &Socket, buf: UserSlice<u8>) -> EResult<usize>;
+
+	/// Returns the mask of events that are ready on the socket.
+	fn poll(&self, sock: &Socket) -> EResult<u32>;
 }
 
 /// Unix socket operations
@@ -126,6 +134,37 @@ impl SocketOps for UnixSocketOps {
 			return Err(errno!(ENOTCONN));
 		};
 		peer_rx_buf.write(buf)
+	}
+
+	fn poll(&self, sock: &Socket) -> EResult<u32> {
+		let mut result = 0;
+		// Read
+		if sock.is_listening() {
+			// A pending connection makes a listening socket readable for `accept`
+			if !sock.backlog.lock().is_empty() {
+				result |= POLLIN;
+			}
+		} else {
+			match &*sock.rx_buf.lock() {
+				// Data is available for reading
+				Some(rx) if !rx.is_empty() => result |= POLLIN,
+				// Reception has been shut down: reads return EOF without blocking
+				None => result |= POLLIN | POLLHUP,
+				_ => {}
+			}
+		}
+		// Write
+		let peer = self.peer.lock();
+		if let Some(peer) = &*peer {
+			match &*peer.rx_buf.lock() {
+				// The peer can still accept data
+				Some(rx) if !rx.is_full() => result |= POLLOUT,
+				// The peer shut down reception: writes would fail
+				None => result |= POLLOUT | POLLHUP,
+				_ => {}
+			}
+		}
+		Ok(result)
 	}
 }
 
@@ -275,8 +314,8 @@ impl FileOps for Socket {
 		}
 	}
 
-	fn poll(&self, _file: &File, _mask: u32) -> EResult<u32> {
-		todo!()
+	fn poll(&self, _file: &File, mask: u32) -> EResult<u32> {
+		Ok(self.ops.poll(self)? & mask)
 	}
 
 	fn ioctl(&self, _file: &File, _request: ioctl::Request, _argp: *const c_void) -> EResult<u32> {

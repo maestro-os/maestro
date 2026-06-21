@@ -20,7 +20,11 @@
 //! and another writing, with a buffer in between.
 
 use crate::{
-	file::{File, O_NONBLOCK, fs::FileOps},
+	file::{
+		File, O_NONBLOCK,
+		fs::FileOps,
+		poll::{POLLERR, POLLHUP, POLLIN, POLLOUT},
+	},
 	memory::{
 		ring_buffer::RingBuffer,
 		user::{UserPtr, UserSlice},
@@ -110,8 +114,31 @@ impl FileOps for PipeBuffer {
 		}
 	}
 
-	fn poll(&self, _file: &File, _mask: u32) -> EResult<u32> {
-		todo!()
+	fn poll(&self, file: &File, mask: u32) -> EResult<u32> {
+		let inner = self.inner.lock();
+		let mut result = 0;
+		// Read end
+		if file.can_read() {
+			// Data is available for reading
+			if !inner.buffer.is_empty() {
+				result |= POLLIN;
+			}
+			// The write end has been closed
+			if inner.writers == 0 {
+				result |= POLLHUP;
+			}
+		}
+		// Write end
+		if file.can_write() {
+			if inner.readers == 0 {
+				// The read end has been closed
+				result |= POLLERR;
+			} else if !inner.buffer.is_full() {
+				// There is space available for writing
+				result |= POLLOUT;
+			}
+		}
+		Ok(result & mask)
 	}
 
 	fn ioctl(&self, _file: &File, request: ioctl::Request, argp: *const c_void) -> EResult<u32> {
