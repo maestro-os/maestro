@@ -438,11 +438,22 @@ impl SignalHandler {
 	/// Executes the action for `signal` on the current process.
 	pub fn exec(&self, signal: Signal, frame: &mut IntFrame) {
 		let proc = Process::current();
+		let saved_sigmask = proc.signal.lock().saved_sigmask.take();
 		let action = match self {
 			Self::Handler(action) if signal.can_catch() => action,
-			Self::Ignore => return,
+			Self::Ignore => {
+				// Restores the temporary mask installed by `sigsuspend`
+				if let Some(mask) = saved_sigmask {
+					proc.signal.lock().sigmask = mask;
+				}
+				return;
+			}
 			// Execute default action
 			_ => {
+				// Restores the temporary mask installed by `sigsuspend`
+				if let Some(mask) = saved_sigmask {
+					proc.signal.lock().sigmask = mask;
+				}
 				// Signals on the init process can be executed only if the process has set a
 				// signal handler
 				if !proc.is_init() || !signal.can_catch() {
@@ -468,7 +479,7 @@ impl SignalHandler {
 			} else {
 				VirtAddr(frame.get_stack_address().saturating_sub(REDZONE_SIZE))
 			};
-			(stack_addr, altstack, sig.sigmask)
+			(stack_addr, altstack, saved_sigmask.unwrap_or(sig.sigmask))
 		};
 		// Size of the `ucontext_t` struct and arguments *on the stack*
 		let (ctx_size, ctx_align) = if frame.is_compat() {
