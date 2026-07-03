@@ -29,7 +29,10 @@ use crate::{
 		clock::{Clock, current_time_ns, current_time_sec},
 		sleep_for,
 		timer::TimerManager,
-		unit::{ClockIdT, ITimerspec, ITimerspec32, TimeUnit, TimerT, Timespec, Timespec32},
+		unit::{
+			ClockIdT, ITimerspec, ITimerspec32, ITimerval, ITimerval32, TimeUnit, TimerT,
+			Timespec, Timespec32, Timeval, Timeval32,
+		},
 	},
 };
 use core::ffi::c_int;
@@ -208,4 +211,52 @@ pub fn timer_settime64(
 			})
 		},
 	)
+}
+
+pub fn getitimer32(which: c_int, curr_value: UserPtr<ITimerval32>) -> EResult<usize> {
+	let (interval, value) = TimerManager::get_itimer(which)?;
+	curr_value.copy_to_user(&ITimerval32 {
+		it_interval: Timeval32::from_nano(interval),
+		it_value: Timeval32::from_nano(value),
+	})?;
+	Ok(0)
+}
+
+pub fn getitimer(which: c_int, curr_value: UserPtr<ITimerval>) -> EResult<usize> {
+	let (interval, value) = TimerManager::get_itimer(which)?;
+	curr_value.copy_to_user(&ITimerval {
+		it_interval: Timeval::from_nano(interval),
+		it_value: Timeval::from_nano(value),
+	})?;
+	Ok(0)
+}
+
+pub fn setitimer32(
+	which: c_int,
+	new_value: UserPtr<ITimerval32>,
+	old_value: UserPtr<ITimerval32>,
+) -> EResult<usize> {
+	let new = new_value.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	let (old_interval, old_value_ns) =
+		TimerManager::set_itimer(which, new.it_interval.to_nano(), new.it_value.to_nano())?;
+	old_value.copy_to_user(&ITimerval32 {
+		it_interval: Timeval32::from_nano(old_interval),
+		it_value: Timeval32::from_nano(old_value_ns),
+	})?;
+	Ok(0)
+}
+
+pub fn setitimer(
+	which: c_int,
+	new_value: UserPtr<ITimerval>,
+	old_value: UserPtr<ITimerval>,
+) -> EResult<usize> {
+	let new = new_value.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	let (old_interval, old_value_ns) =
+		TimerManager::set_itimer(which, new.it_interval.to_nano(), new.it_value.to_nano())?;
+	old_value.copy_to_user(&ITimerval {
+		it_interval: Timeval::from_nano(old_interval),
+		it_value: Timeval::from_nano(old_value_ns),
+	})?;
+	Ok(0)
 }
