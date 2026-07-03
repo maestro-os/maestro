@@ -20,9 +20,9 @@
 
 use crate::{
 	file::{
-		File, FileType, O_RDWR, Stat,
-		fd::fd_to_file,
-		fs::float,
+		File, FileType, O_NONBLOCK, O_RDWR, Stat,
+		fd::{FD_CLOEXEC, fd_to_file},
+		fs::{DummyOps, float},
 		socket::Socket,
 		vfs,
 		vfs::{ResolutionSettings, Resolved},
@@ -50,9 +50,24 @@ const SHUT_WR: c_int = 1;
 /// Both sides are shutdown.
 const SHUT_RDWR: c_int = 2;
 
+/// Splits the raw `type` argument of `socket`/`socketpair` into the base [`SocketType`] and the
+/// `SOCK_NONBLOCK`/`SOCK_CLOEXEC` flags.
+///
+/// Returns `(type, open_flags, cloexec)`, where `open_flags` are the open file description flags
+/// to use (including [`O_NONBLOCK`] if requested) and `cloexec` tells whether the new file
+/// descriptor(s) must have `FD_CLOEXEC` set.
+fn parse_socket_type(r#type: c_int) -> EResult<(SocketType, i32, bool)> {
+	let sock_type = SocketType::try_from((r#type & !(SOCK_NONBLOCK | SOCK_CLOEXEC)) as u32)?;
+	let mut open_flags = O_RDWR;
+	if r#type & SOCK_NONBLOCK != 0 {
+		open_flags |= O_NONBLOCK;
+	}
+	Ok((sock_type, open_flags, r#type & SOCK_CLOEXEC != 0))
+}
+
 pub fn socket(domain: c_int, r#type: c_int, protocol: c_int) -> EResult<usize> {
 	let sock_domain = SocketDomain::try_from(domain as u32)?;
-	let sock_type = SocketType::try_from(r#type as u32)?;
+	let (sock_type, open_flags, cloexec) = parse_socket_type(r#type)?;
 	// Check permissions
 	if unlikely(!sock_domain.can_use() || !sock_type.can_use()) {
 		return Err(errno!(EACCES));
@@ -63,12 +78,14 @@ pub fn socket(domain: c_int, r#type: c_int, protocol: c_int) -> EResult<usize> {
 		protocol,
 	};
 	// Create socket
-	let sock = float::get_entry(Socket::new(desc)?, FileType::Socket)?;
-	let file = File::open_floating(sock, O_RDWR)?;
+	let sock = Arc::new(Socket::new(desc)?)?;
+	let entry = float::get_entry(DummyOps, FileType::Socket)?;
+	let file = File::open_floating_owned(entry, sock, open_flags)?;
+	let fd_flags = if cloexec { FD_CLOEXEC } else { 0 };
 	let (sock_fd_id, _) = Process::current()
 		.file_descriptors()
 		.lock()
-		.create_fd(0, file)?;
+		.create_fd(fd_flags, file)?;
 	Ok(sock_fd_id as _)
 }
 
@@ -79,7 +96,7 @@ pub fn socketpair(
 	sv: UserPtr<[c_int; 2]>,
 ) -> EResult<usize> {
 	let sock_domain = SocketDomain::try_from(domain as u32)?;
-	let sock_type = SocketType::try_from(r#type as u32)?;
+	let (sock_type, open_flags, _cloexec) = parse_socket_type(r#type)?;
 	// Check permissions
 	if unlikely(!sock_domain.can_use() || !sock_type.can_use()) {
 		return Err(errno!(EACCES));
@@ -90,9 +107,10 @@ pub fn socketpair(
 		protocol,
 	};
 	// Create socket
-	let sock = float::get_entry(Socket::new(desc)?, FileType::Socket)?;
-	let file0 = File::open_floating(sock.clone(), O_RDWR)?;
-	let file1 = File::open_floating(sock, O_RDWR)?;
+	let sock = Arc::new(Socket::new(desc)?)?;
+	let entry = float::get_entry(DummyOps, FileType::Socket)?;
+	let file0 = File::open_floating_owned(entry.clone(), sock.clone(), open_flags)?;
+	let file1 = File::open_floating_owned(entry, sock, open_flags)?;
 	// Create file descriptors
 	let (fd0_id, fd1_id) = Process::current()
 		.file_descriptors()

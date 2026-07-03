@@ -425,6 +425,24 @@ impl File {
 		Ok(Arc::new(file)?)
 	}
 
+	/// Open a floating file (for use with the floatfs) whose operations are owned by the file
+	pub fn open_floating_owned(
+		vfs_entry: Arc<vfs::Entry>,
+		ops: Arc<dyn FileOps>,
+		flags: i32,
+	) -> EResult<Arc<Self>> {
+		let file = Self {
+			vfs_entry,
+			ops: FileOpsWrapper::Owned(ops),
+			flags: Spin::new(flags),
+			off: Default::default(),
+
+			flock_mode: Default::default(),
+		};
+		file.ops.acquire(&file);
+		Ok(Arc::new(file)?)
+	}
+
 	/// Returns a reference to the file's node.
 	pub fn node(&self) -> &Arc<Node> {
 		self.vfs_entry.node()
