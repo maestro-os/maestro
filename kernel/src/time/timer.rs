@@ -31,7 +31,7 @@ use crate::{
 		unit::Timestamp,
 	},
 };
-use core::hint::unlikely;
+use core::{ffi::c_int, hint::unlikely};
 use utils::{
 	boxed::Box,
 	collections::{btreemap::BTreeMap, hashmap::HashMap, id_allocator::IDAllocator},
@@ -39,6 +39,17 @@ use utils::{
 	errno::{AllocResult, EResult},
 	limits::TIMER_MAX,
 };
+
+/// `setitimer`/`getitimer`: real-time interval timer, decrementing in real time and firing
+/// `SIGALRM`.
+pub const ITIMER_REAL: c_int = 0;
+/// `setitimer`/`getitimer`: virtual interval timer, decrementing while the process executes in
+/// userspace and firing `SIGVTALRM`.
+pub const ITIMER_VIRTUAL: c_int = 1;
+/// `setitimer`/`getitimer`: profiling interval timer, decrementing while the process executes and
+/// firing `SIGPROF`.
+pub const ITIMER_PROF: c_int = 2;
+
 // TODO make sure a timer doesn't send a signal to a thread that do not belong to the manager's
 // process
 
@@ -190,6 +201,9 @@ pub struct TimerManager {
 	id_allocator: IDAllocator,
 	/// The list of timers for the process. The key is the ID of the timer
 	timers: HashMap<TimerT, Timer>,
+	/// The process's interval timers, indexed by `which` (`ITIMER_REAL`, `ITIMER_VIRTUAL`,
+	/// `ITIMER_PROF`)
+	itimers: [Option<Timer>; 3],
 }
 
 impl TimerManager {
@@ -198,6 +212,7 @@ impl TimerManager {
 		Ok(Self {
 			id_allocator: IDAllocator::new_allocated(TIMER_MAX as _)?,
 			timers: HashMap::new(),
+			itimers: Default::default(),
 		})
 	}
 
@@ -257,6 +272,68 @@ impl TimerManager {
 			.remove(&id)
 			.ok_or_else(|| errno!(EINVAL))?;
 		Ok(())
+	}
+
+	/// Returns the clock and signal associated with the interval timer `which`.
+	///
+	/// If `which` is not a valid interval timer, the function returns `EINVAL`.
+	fn itimer_clock_signal(which: c_int) -> EResult<(Clock, Signal)> {
+		match which {
+			ITIMER_REAL => Ok((Clock::Monotonic, Signal::SIGALRM)),
+			ITIMER_VIRTUAL => Ok((Clock::ProcessCputimeId, Signal::SIGVTALRM)),
+			ITIMER_PROF => Ok((Clock::ProcessCputimeId, Signal::SIGPROF)),
+			_ => Err(errno!(EINVAL)),
+		}
+	}
+
+	/// Returns the current state of the current process's interval timer `which` as
+	/// `(interval_ns, value_ns)`, where `value_ns` is the time remaining until the next firing
+	/// (`0` if disarmed).
+	///
+	/// If `which` is not a valid interval timer, the function returns `EINVAL`.
+	pub fn get_itimer(which: c_int) -> EResult<(Timestamp, Timestamp)> {
+		Self::itimer_clock_signal(which)?;
+		let proc = Process::current();
+		let this = proc.timer_manager.lock();
+		Ok(this.itimers[which as usize]
+			.as_ref()
+			.map(Timer::get_time)
+			.unwrap_or((0, 0)))
+	}
+
+	/// Sets the state of the current process's interval timer `which`.
+	///
+	/// Arguments:
+	/// - `which` is the timer to set (`ITIMER_REAL`, `ITIMER_VIRTUAL` or `ITIMER_PROF`)
+	/// - `interval` is the interval between two firings, in nanoseconds
+	/// - `value` is the time until the next firing, in nanoseconds (`0` disarms the timer)
+	///
+	/// On success, the function returns the previous state as `(interval_ns, value_ns)`.
+	///
+	/// If `which` is not a valid interval timer, the function returns `EINVAL`.
+	pub fn set_itimer(
+		which: c_int,
+		interval: Timestamp,
+		value: Timestamp,
+	) -> EResult<(Timestamp, Timestamp)> {
+		// Validate `which` (returns `EINVAL` for an invalid value)
+		let (clock, sig) = Self::itimer_clock_signal(which)?;
+		// TODO implement `Clock::ProcessCputimeId` accounting and arm these for real.
+		if which != ITIMER_REAL {
+			return Ok((0, 0));
+		}
+		let proc = Process::current();
+		let mut this = proc.timer_manager.lock();
+		let slot = &mut this.itimers[which as usize];
+		// Read the previous state before mutating
+		let old = slot.as_ref().map(Timer::get_time).unwrap_or((0, 0));
+		// Lazily create the timer on first use
+		if slot.is_none() {
+			let proc = proc.clone();
+			*slot = Some(Timer::new(clock, move || Process::kill(&proc, sig))?);
+		}
+		slot.as_mut().unwrap().set_time(interval, value)?;
+		Ok(old)
 	}
 }
 

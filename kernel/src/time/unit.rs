@@ -274,6 +274,32 @@ pub struct ITimerspec {
 	pub it_value: Timespec,
 }
 
+/// An interval timer's state, 32-bit ABI.
+///
+/// Unlike [`ITimerspec32`], the values are expressed with microsecond precision
+/// ([`Timeval32`]).
+#[derive(Clone, Copy, Debug, Default)]
+#[repr(C)]
+pub struct ITimerval32 {
+	/// The interval between each firing of the timer.
+	pub it_interval: Timeval32,
+	/// Time remaining until the next firing of the timer.
+	pub it_value: Timeval32,
+}
+
+/// An interval timer's state, 64-bit ABI.
+///
+/// Unlike [`ITimerspec`], the values are expressed with microsecond precision
+/// ([`Timeval`]).
+#[derive(Clone, Copy, Debug, Default)]
+#[repr(C)]
+pub struct ITimerval {
+	/// The interval between each firing of the timer.
+	pub it_interval: Timeval,
+	/// Time remaining until the next firing of the timer.
+	pub it_value: Timeval,
+}
+
 /// Legacy structure for `utime`
 #[derive(Clone, Copy, Debug, Default)]
 #[repr(C)]
