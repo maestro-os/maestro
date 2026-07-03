@@ -154,6 +154,43 @@ pub fn rt_sigprocmask(
 	Ok(0)
 }
 
+fn do_sigsuspend(mut mask: SigSet) -> EResult<usize> {
+	// SIGKILL and SIGSTOP can never be blocked
+	mask.clear(Signal::SIGKILL.0 as usize);
+	mask.clear(Signal::SIGSTOP.0 as usize);
+	let proc = Process::current();
+	// Save the current mask so it is restored once a signal has been handled, and install the
+	// temporary one
+	{
+		let mut signals = proc.signal.lock();
+		signals.saved_sigmask = Some(signals.sigmask);
+		signals.sigmask = mask;
+	}
+	// Suspend until a signal not blocked by the temporary mask becomes pending
+	loop {
+		process::set_state(State::IntSleeping);
+		// Re-check after having marked the process as sleeping to avoid missing a wake-up
+		if proc.has_pending_signal() {
+			process::cancel_sleep();
+			break;
+		}
+		schedule();
+	}
+	Err(errno!(EINTR))
+}
+
+pub fn sigsuspend(_history0: c_int, _history1: c_int, mask: u32) -> EResult<usize> {
+	do_sigsuspend(SigSet(mask as u64))
+}
+
+pub fn rt_sigsuspend(unewset: UserPtr<SigSet>, sigsetsize: usize) -> EResult<usize> {
+	if unlikely(sigsetsize != size_of::<SigSet>()) {
+		return Err(errno!(EINVAL));
+	}
+	let mask = unewset.copy_from_user()?.ok_or_else(|| errno!(EFAULT))?;
+	do_sigsuspend(mask)
+}
+
 pub fn sigreturn(frame: &mut IntFrame) -> EResult<usize> {
 	let proc = Process::current();
 	// Retrieve and restore previous state

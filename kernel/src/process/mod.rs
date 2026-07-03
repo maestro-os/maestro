@@ -245,6 +245,9 @@ pub struct ProcessSignal {
 	pub sigmask: SigSet,
 	/// A bitfield storing the set of pending signals
 	sigpending: SigSet,
+	/// The signal mask to restore once the next signal has been handled (set by
+	/// `sigsuspend`/`rt_sigsuspend`).
+	pub saved_sigmask: Option<SigSet>,
 
 	/// The exit status of the process after exiting
 	pub exit_status: ExitStatus,
@@ -259,6 +262,7 @@ impl ProcessSignal {
 			altstack: AltStack::default(),
 			sigmask: Default::default(),
 			sigpending: Default::default(),
+			saved_sigmask: None,
 
 			exit_status: 0,
 			termsig: 0,
@@ -644,6 +648,7 @@ impl Process {
 				altstack: Default::default(),
 				sigmask: Default::default(),
 				sigpending: Default::default(),
+				saved_sigmask: None,
 
 				exit_status: 0,
 				termsig: 0,
@@ -945,6 +950,7 @@ impl Process {
 				altstack: Default::default(),
 				sigmask: parent.signal.lock().sigmask,
 				sigpending: Default::default(),
+				saved_sigmask: None,
 
 				exit_status: 0,
 				termsig: 0,
