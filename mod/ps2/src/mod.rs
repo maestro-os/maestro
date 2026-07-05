@@ -19,15 +19,16 @@
 //! Personal System/2 (PS/2) is a connector designed for keyboards and mouses.
 //! It has now been deprecated in favor of USB keyboards/mouses.
 
-#![no_std]
-#![no_main]
+#![cfg_attr(not(maestro_builtin), no_std)]
+#![cfg_attr(not(maestro_builtin), no_main)]
 
+#[cfg(not(maestro_builtin))]
 #[no_link]
 extern crate kernel;
 
 mod scancode;
 
-use crate::scancode::ScancodeSet;
+use self::scancode::ScancodeSet;
 use core::any::Any;
 use kernel::{
 	arch::x86::{
@@ -327,7 +328,7 @@ fn init_in() -> Result<(), ()> {
 	Ok(())
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(maestro_builtin), unsafe(no_mangle))]
 pub extern "C" fn init() -> bool {
 	match init_in() {
 		Ok(_) => {
@@ -341,7 +342,7 @@ pub extern "C" fn init() -> bool {
 	}
 }
 
-#[unsafe(no_mangle)]
+#[cfg_attr(not(maestro_builtin), unsafe(no_mangle))]
 pub extern "C" fn fini() {
 	// Destroy interrupt handler
 	PS2_KEYBOAD.lock().keyboard_interrupt_callback_hook = None;

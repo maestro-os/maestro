@@ -18,7 +18,7 @@
 
 //! Handles scancode sets and keycodes decoding.
 
-use crate::{KBD_CMD_SCANCODE, keyboard_send, read_data};
+use super::{KBD_CMD_SCANCODE, keyboard_send, read_data};
 use kernel::device::keyboard::{KeyboardAction, KeyboardKey};
 
 static SET1_BASE_KEYS: [(u8, KeyboardKey); 85] = [

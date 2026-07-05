@@ -19,3 +19,6 @@ panic = "abort"
 rustflags = [
 	"-Cforce-frame-pointers=yes"
 ]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(maestro_builtin)'] }

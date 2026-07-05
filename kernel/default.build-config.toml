@@ -29,3 +29,8 @@ callstack_depth = 16
 enabled = true
 # Font path or URL for the TTY
 font = "https://ftp.gnu.org/pub/gnu/unifont/unifont-17.0.04/unifont_all-17.0.04.hex.gz"
+
+[modules]
+# Names of modules to compile directly into the kernel binary (available before filesystem mount)
+builtin = []
+

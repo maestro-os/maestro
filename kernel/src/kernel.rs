@@ -53,6 +53,11 @@
 #![test_runner(crate::selftest::runner)]
 #![reexport_test_harness_main = "kernel_selftest"]
 
+// When built-in modules are compiled as part of this crate, expose the crate
+// under the name `kernel` so their existing `kernel::` paths resolve correctly.
+#[cfg(maestro_builtin)]
+extern crate self as kernel;
+
 pub mod acpi;
 pub mod arch;
 mod boot;
@@ -190,6 +195,9 @@ fn kernel_main_inner(magic: u32, multiboot_ptr: *const c_void) {
 	device::init().expect("devices management initialization failed");
 	net::osi::init().expect("network initialization failed");
 	rand::init().expect("entropy pool initialization failed");
+
+	println!("Load built-in modules");
+	module::load_builtin_modules();
 
 	let root = args_parser.get_root_dev();
 	println!("Setup files management");

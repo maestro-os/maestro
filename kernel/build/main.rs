@@ -22,6 +22,7 @@
 pub mod compile;
 pub mod config;
 pub mod font;
+pub mod module;
 pub mod target;
 pub mod util;
 
@@ -79,6 +80,7 @@ fn main() {
 	// Compile
 	compile::compile_c(&env, &target).expect("compilation failed");
 	compile::compile_vdso(&env, &target).expect("vDSO compilation failed");
+	module::embed_builtin_modules(&env, &config).expect("built-in module embedding failed");
 	// Add the linker script
 	println!(
 		"cargo:rerun-if-changed={}",

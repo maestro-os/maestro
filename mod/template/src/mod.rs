@@ -1,9 +1,10 @@
 //! <Add documentation for your module here>
 
-#![no_std]
-#![no_main]
+#![cfg_attr(not(maestro_builtin), no_std)]
+#![cfg_attr(not(maestro_builtin), no_main)]
 
 // Do not include kernel symbols in the module
+#[cfg(not(maestro_builtin))]
 #[no_link]
 extern crate kernel;
 
@@ -11,14 +12,14 @@ extern crate kernel;
 kernel::module!([]);
 
 /// Called on module load
-#[unsafe(no_mangle)]
+#[cfg_attr(not(maestro_builtin), unsafe(no_mangle))]
 pub extern "C" fn init() -> bool {
 	kernel::println!("Hello world!");
 	true
 }
 
 /// Called on module unload
-#[unsafe(no_mangle)]
+#[cfg_attr(not(maestro_builtin), unsafe(no_mangle))]
 pub extern "C" fn fini() {
 	kernel::println!("Goodbye!");
 }
