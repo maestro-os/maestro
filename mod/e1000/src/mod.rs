@@ -18,11 +18,12 @@
 
 //! This kernel module implements a driver for the Intel e1000 ethernet controllers.
 
-#![no_std]
-#![no_main]
-#![feature(likely_unlikely)]
+#![cfg_attr(not(maestro_builtin), no_std)]
+#![cfg_attr(not(maestro_builtin), no_main)]
+#![cfg_attr(not(maestro_builtin), feature(likely_unlikely))]
 #![allow(unused)] // TODO remove
 
+#[cfg(not(maestro_builtin))]
 #[no_link]
 extern crate kernel;
 
@@ -33,15 +34,15 @@ mod nic;
 kernel::module!([]);
 
 /// Called on module load
-#[unsafe(no_mangle)]
+#[cfg_attr(not(maestro_builtin), unsafe(no_mangle))]
 pub extern "C" fn init() -> bool {
-	// FIXME
+	// FIXME: driver not yet implemented
 	//kernel::device::driver::register(E1000Driver::new()).is_ok()
-	todo!()
+	false
 }
 
 /// Called on module unload
-#[unsafe(no_mangle)]
+#[cfg_attr(not(maestro_builtin), unsafe(no_mangle))]
 pub extern "C" fn fini() {
 	// FIXME
 	//kernel::device::driver::unregister("e1000");

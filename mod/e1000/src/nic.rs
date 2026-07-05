@@ -513,7 +513,12 @@ impl net::Interface for Nic {
 				continue;
 			}
 
-			let dst = unsafe { slice::from_raw_parts_mut(desc.addr as *mut u8, TX_BUFF_SIZE) };
+			let dst = unsafe {
+				slice::from_raw_parts_mut(
+					ptr::with_exposed_provenance_mut(desc.addr as usize),
+					TX_BUFF_SIZE,
+				)
+			};
 
 			// copy data
 			let copy_len = min(b.data.len() - buf_off, TX_BUFF_SIZE - desc_len);
@@ -546,7 +551,10 @@ impl Drop for Nic {
 			let rx_buffs_pages =
 				NonZeroUsize::new((RX_DESC_COUNT * RX_BUFF_SIZE).div_ceil(PAGE_SIZE)).unwrap();
 			let rx_buffs_order = buddy::get_order(rx_buffs_pages);
-			buddy::free_kernel((*self.rx_descs).addr as _, rx_buffs_order);
+			buddy::free_kernel(
+				ptr::with_exposed_provenance_mut((*self.rx_descs).addr as usize),
+				rx_buffs_order,
+			);
 
 			let rx_pages =
 				NonZeroUsize::new((RX_DESC_COUNT * size_of::<RXDesc>()).div_ceil(PAGE_SIZE))
@@ -557,7 +565,10 @@ impl Drop for Nic {
 			let tx_buffs_pages =
 				NonZeroUsize::new((TX_DESC_COUNT * TX_BUFF_SIZE).div_ceil(PAGE_SIZE)).unwrap();
 			let tx_buffs_order = buddy::get_order(tx_buffs_pages);
-			buddy::free_kernel((*self.tx_descs).addr as _, tx_buffs_order);
+			buddy::free_kernel(
+				ptr::with_exposed_provenance_mut((*self.tx_descs).addr as usize),
+				tx_buffs_order,
+			);
 
 			let tx_pages =
 				NonZeroUsize::new((TX_DESC_COUNT * size_of::<TXDesc>()).div_ceil(PAGE_SIZE))
