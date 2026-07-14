@@ -49,6 +49,12 @@ pub fn hash<K: ?Sized + Hash, H: Default + Hasher>(key: &K) -> u64 {
 	hasher.finish()
 }
 
+/// Returns the number of slots required to store `elems` elements while staying at or below the
+/// target `7/8` load factor (avoiding performance degradation).
+fn slots_for(elems: usize) -> usize {
+	elems.saturating_mul(8).div_ceil(7)
+}
+
 /// Occupied entry in the hashmap.
 pub struct OccupiedEntry<'h, K, V> {
 	pub(super) key: K,
@@ -100,9 +106,11 @@ impl<'h, K: Eq + Hash, V, H: Default + Hasher> VacantEntry<'h, K, V, H> {
 
 	/// Sets the value of the entry and returns a mutable reference to it.
 	pub fn insert(self, value: V) -> AllocResult<&'h mut V> {
+		// Tells whether we need to grow the hash map in order to maintain the 7/8 load factor
+		let needs_grow = self.hm.len + 1 > self.hm.capacity() / 8 * 7;
 		let slot_off = match self.slot_off {
-			Some(slot_off) => slot_off,
-			None => {
+			Some(slot_off) if !needs_grow => slot_off,
+			_ => {
 				// Allocate space for the new object
 				self.hm.reserve(1)?;
 				// Cannot fail because the collection is guaranteed to have space for the new
@@ -188,7 +196,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	/// Creates a new instance with the given capacity in number of elements.
 	pub fn with_capacity(capacity: usize) -> AllocResult<Self> {
 		Ok(Self {
-			inner: RawTable::with_capacity(capacity)?,
+			inner: RawTable::with_capacity(slots_for(capacity))?,
 			len: 0,
 			_hasher: PhantomData,
 		})
@@ -314,7 +322,7 @@ impl<K: Eq + Hash, V, H: Default + Hasher> HashMap<K, V, H> {
 	/// If the hash map already has enough capacity, the function does nothing.
 	pub fn reserve(&mut self, additional: usize) -> AllocResult<()> {
 		// Compute new capacity
-		let new_capacity = (self.len + additional).next_power_of_two();
+		let new_capacity = slots_for(self.len + additional).next_power_of_two();
 		if self.capacity() >= new_capacity {
 			return Ok(());
 		}
