@@ -54,6 +54,7 @@ use utils::{
 	collections::{hashset::HashSet, string::String, vec::Vec},
 	errno,
 	errno::EResult,
+	vec,
 };
 use version::{Dependency, Version};
 
@@ -255,7 +256,7 @@ impl Module {
 		})?;
 		// Allocate memory for the module
 		let mem_size = parser.get_load_size();
-		let mut mem = unsafe { Vec::new_uninit(mem_size)? }; // FIXME: memory alignment
+		let mut mem = vec![0; mem_size]?; // FIXME: memory alignment
 		// The base virtual address at which the module is loaded
 		let load_base = mem.as_mut_ptr();
 		// Copy the module's image
