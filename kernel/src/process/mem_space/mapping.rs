@@ -21,7 +21,6 @@
 //! Mappings may be created at the process's creation or by the process itself using
 //! system calls.
 
-use super::gap::MemGap;
 use crate::{
 	arch::x86::paging,
 	file::File,
@@ -209,6 +208,12 @@ impl MemMapping {
 		})
 	}
 
+	/// Returns the address to the end of the mapping, exclusive.
+	#[inline]
+	pub fn end(&self) -> VirtAddr {
+		self.addr + self.size.get() * PAGE_SIZE
+	}
+
 	/// Maps the page at the offset `offset` of the mapping, onto `mem_space`.
 	///
 	/// `write` tells whether the page has to be mapped for writing.
@@ -289,24 +294,23 @@ impl MemMapping {
 		Ok(())
 	}
 
-	/// Splits the current mapping, creating up to two new mappings and one gap.
+	/// Splits the current mapping by unmapping a range of memory onto it, creating up to two new
+	/// mappings.
 	///
 	/// Arguments:
-	/// - `begin` is the index of the first page to be unmapped.
-	/// - `size` is the number of pages to unmap.
+	/// - `begin` is the index of the first page to be unmapped
+	/// - `size` is the number of pages to unmap
 	///
 	/// If the region to be unmapped is out of bounds, it is truncated to the end of the mapping.
 	///
 	/// The newly created mappings correspond to the remaining pages.
-	///
-	/// The newly created gap corresponds to the unmapped portion.
 	///
 	/// If the mapping is completely unmapped, the function returns no new mappings.
 	pub(super) fn split(
 		&self,
 		begin: usize,
 		size: usize,
-	) -> AllocResult<(Option<Self>, Option<MemGap>, Option<Self>)> {
+	) -> AllocResult<(Option<Self>, Option<Self>)> {
 		let pages = self.pages.lock();
 		let prev = NonZeroUsize::new(begin)
 			.map(|size| {
@@ -323,10 +327,6 @@ impl MemMapping {
 				})
 			})
 			.transpose()?;
-		let gap = NonZeroUsize::new(size).map(|size| {
-			let addr = self.addr + begin * PAGE_SIZE;
-			MemGap::new(addr, size)
-		});
 		// The gap's end
 		let end = begin + size;
 		let next = self
@@ -348,7 +348,7 @@ impl MemMapping {
 				})
 			})
 			.transpose()?;
-		Ok((prev, gap, next))
+		Ok((prev, next))
 	}
 
 	/// Synchronizes the data on the memory mapping back to the filesystem.
