@@ -50,8 +50,174 @@ enum NodeColor {
 	Black,
 }
 
+/// Data attached to each node of a [`BTreeMap`], computed from the node's subtree.
+///
+/// This is the equivalent of Linux's augmented red-black trees: since each node knows an aggregate
+/// of the data of its whole subtree, a search can prune the subtrees that cannot contain the
+/// element it is looking for, instead of walking the whole collection.
+///
+/// The map maintains the following invariant: the data of a node is always equal to
+/// [`Augment::compute`] on this node, the data of its children being up to date.
+///
+/// The default implementation, for `()`, attaches no data and costs nothing.
+///
+/// # Example
+///
+/// Attaching the maximum value of each subtree, allowing to find an element with a value greater
+/// than a given threshold in `O(log n)`:
+///
+/// ```
+/// # use utils::collections::btreemap::{Augment, AugmentRef, BTreeMap};
+/// struct MaxValue;
+///
+/// impl<K> Augment<K, u32> for MaxValue {
+/// 	type Data = u32;
+///
+/// 	fn compute(node: AugmentRef<'_, K, u32, Self>) -> u32 {
+/// 		let children = node.left().into_iter().chain(node.right());
+/// 		children.fold(*node.value(), |max, c| max.max(*c.data()))
+/// 	}
+/// }
+///
+/// let mut map = BTreeMap::<u32, u32, MaxValue>::new();
+/// ```
+pub trait Augment<K, V>: Sized {
+	/// The data attached to each node.
+	type Data: Default + PartialEq;
+
+	/// Tells whether [`Self::compute`] uses [`AugmentRef::prev`] or [`AugmentRef::next`].
+	///
+	/// Contrary to the children of a node, its in-order neighbours are not necessarily part of its
+	/// subtree, so the map cannot know that inserting or removing an element invalidates them.
+	///
+	/// If set, the map refreshes the neighbours of an element on insertion and removal, at the
+	/// cost of an additional `O(log n)` walk.
+	const NEIGHBOURS: bool = false;
+
+	/// Computes the data to attach to `node`.
+	///
+	/// The data of the node's children is guaranteed to be up to date, so that the implementation
+	/// may aggregate it. The data of `node` itself is the one to be replaced and must not be used.
+	fn compute(node: AugmentRef<'_, K, V, Self>) -> Self::Data;
+}
+
+impl<K, V> Augment<K, V> for () {
+	type Data = ();
+
+	fn compute(_node: AugmentRef<'_, K, V, Self>) {}
+}
+
+/// A reference to a node of a [`BTreeMap`], for use by [`Augment::compute`].
+pub struct AugmentRef<'n, K, V, A: Augment<K, V>>(&'n Node<K, V, A>);
+
+impl<K, V, A: Augment<K, V>> AugmentRef<'_, K, V, A> {
+	/// Unwraps the given pointer into a reference.
+	///
+	/// Contrary to the rest of the collection, the tree is only ever traversed through shared
+	/// references here, since [`Augment::compute`] must not mutate it.
+	#[inline]
+	fn unwrap(ptr: Option<NonNull<Node<K, V, A>>>) -> Option<Self> {
+		ptr.map(|p| Self(unsafe { &*p.as_ptr() }))
+	}
+
+	/// Returns the parent of the node.
+	#[inline]
+	fn parent(&self) -> Option<Self> {
+		Self::unwrap(self.0.parent)
+	}
+
+	/// Tells whether the node is the left child of its parent.
+	fn is_left_child(&self) -> bool {
+		self.parent()
+			.and_then(|parent| parent.0.left)
+			.is_some_and(|left| ptr::eq(left.as_ptr(), self.0))
+	}
+
+	/// Returns a reference to the node's key.
+	#[inline]
+	pub fn key(&self) -> &K {
+		&self.0.key
+	}
+
+	/// Returns a reference to the node's value.
+	#[inline]
+	pub fn value(&self) -> &V {
+		&self.0.value
+	}
+
+	/// Returns a reference to the data attached to the node.
+	#[inline]
+	pub fn data(&self) -> &A::Data {
+		&self.0.aug
+	}
+
+	/// Returns the left child of the node, whose keys are all lower than the node's.
+	#[inline]
+	pub fn left(&self) -> Option<Self> {
+		Self::unwrap(self.0.left)
+	}
+
+	/// Returns the right child of the node, whose keys are all greater than the node's.
+	#[inline]
+	pub fn right(&self) -> Option<Self> {
+		Self::unwrap(self.0.right)
+	}
+
+	/// Returns the element preceding the node in key order.
+	///
+	/// [`Augment::NEIGHBOURS`] must be set for the map to keep the data up to date when using
+	/// this.
+	pub fn prev(&self) -> Option<Self> {
+		if let Some(mut node) = self.left() {
+			while let Some(right) = node.right() {
+				node = right;
+			}
+			return Some(node);
+		}
+		let mut node = Self(self.0);
+		while let Some(parent) = node.parent() {
+			if !node.is_left_child() {
+				return Some(parent);
+			}
+			node = parent;
+		}
+		None
+	}
+
+	/// Returns the element following the node in key order.
+	///
+	/// [`Augment::NEIGHBOURS`] must be set for the map to keep the data up to date when using
+	/// this.
+	pub fn next(&self) -> Option<Self> {
+		if let Some(mut node) = self.right() {
+			while let Some(left) = node.left() {
+				node = left;
+			}
+			return Some(node);
+		}
+		let mut node = Self(self.0);
+		while let Some(parent) = node.parent() {
+			if node.is_left_child() {
+				return Some(parent);
+			}
+			node = parent;
+		}
+		None
+	}
+}
+
+/// The direction to take at a node when descending a [`BTreeMap`] with [`BTreeMap::descend`].
+pub enum Descent<T> {
+	/// Continue with the left child, which holds the keys lower than the current node's.
+	Left,
+	/// Continue with the right child, which holds the keys greater than the current node's.
+	Right,
+	/// Stop the descent and return the given value.
+	Stop(T),
+}
+
 /// A node in the binary tree.
-struct Node<K, V> {
+struct Node<K, V, A: Augment<K, V>> {
 	/// Pointer to the parent node
 	parent: Option<NonNull<Self>>,
 	/// Pointer to the left child
@@ -65,6 +231,8 @@ struct Node<K, V> {
 	key: K,
 	/// The node's value.
 	value: V,
+	/// The data attached to the node's subtree.
+	aug: A::Data,
 }
 
 /// Drops the node at the given pointer, except the key and value fields which
@@ -75,11 +243,11 @@ struct Node<K, V> {
 /// The caller must ensure the pointer points to a valid node and must not use it after calling
 /// this function since it will be dropped.
 #[inline]
-unsafe fn drop_node<K, V>(ptr: NonNull<Node<K, V>>) -> (K, V) {
+unsafe fn drop_node<K, V, A: Augment<K, V>>(ptr: NonNull<Node<K, V, A>>) -> (K, V) {
 	let node = ptr.read();
-	let layout = Layout::new::<Node<K, V>>();
+	let layout = Layout::new::<Node<K, V, A>>();
 	__dealloc(ptr.cast(), layout);
-	let Node::<K, V> {
+	let Node::<K, V, A> {
 		key,
 		value,
 		..
@@ -89,11 +257,13 @@ unsafe fn drop_node<K, V>(ptr: NonNull<Node<K, V>>) -> (K, V) {
 
 /// Unwraps the given pointer option into a reference option.
 #[inline]
-fn unwrap_pointer<'a, K, V>(ptr: Option<NonNull<Node<K, V>>>) -> Option<&'a mut Node<K, V>> {
+fn unwrap_pointer<'a, K, V, A: Augment<K, V>>(
+	ptr: Option<NonNull<Node<K, V, A>>>,
+) -> Option<&'a mut Node<K, V, A>> {
 	ptr.map(|mut p| unsafe { p.as_mut() })
 }
 
-impl<K, V> Node<K, V> {
+impl<K, V, A: Augment<K, V>> Node<K, V, A> {
 	/// Creates a new node with the given `value`.
 	///
 	/// The node is colored [`NodeColor::Red`] by default.
@@ -106,6 +276,7 @@ impl<K, V> Node<K, V> {
 
 			key,
 			value,
+			aug: Default::default(),
 		};
 		let layout = Layout::new::<Self>();
 		unsafe {
@@ -189,6 +360,64 @@ impl<K, V> Node<K, V> {
 		false
 	}
 
+	/// Recomputes the data attached to the node.
+	///
+	/// The data of the node's children must be up to date.
+	#[inline]
+	fn update_aug(&mut self) {
+		self.aug = A::compute(AugmentRef(self));
+	}
+
+	/// Recomputes the data attached to the node, then to its ancestors, stopping as soon as the
+	/// data of a node is left unchanged.
+	///
+	/// The data of the node's children must be up to date. The data of the node itself is always
+	/// recomputed, so that this can be used after a change to the node's own key or value.
+	fn propagate_aug(&mut self) {
+		self.update_aug();
+		let Some(mut node) = self.get_parent() else {
+			return;
+		};
+		loop {
+			let aug = A::compute(AugmentRef(node));
+			if aug == node.aug {
+				// The data of the node is unchanged, hence so is the data of its ancestors
+				break;
+			}
+			node.aug = aug;
+			let Some(parent) = node.get_parent() else {
+				break;
+			};
+			node = parent;
+		}
+	}
+
+	/// Returns the in-order neighbours of the node, or `(None, None)` if [`Augment::NEIGHBOURS`]
+	/// is not set.
+	///
+	/// This is meant to be called before removing the node from the tree, since the neighbours
+	/// must be updated once the node is gone.
+	fn aug_neighbours<'a>(&self) -> (Option<&'a mut Self>, Option<&'a mut Self>) {
+		if !A::NEIGHBOURS {
+			return (None, None);
+		}
+		(prev_node(self), next_node(self))
+	}
+
+	/// Recomputes the data attached to the in-order neighbours of the node, and to their
+	/// ancestors.
+	///
+	/// This is a no-op if [`Augment::NEIGHBOURS`] is not set.
+	fn propagate_aug_neighbours(&mut self) {
+		let (prev, next) = self.aug_neighbours();
+		if let Some(prev) = prev {
+			prev.propagate_aug();
+		}
+		if let Some(next) = next {
+			next.propagate_aug();
+		}
+	}
+
 	/// Applies a left tree rotation with the current node as root.
 	///
 	/// If the current node doesn't have a right child, the function does
@@ -216,6 +445,10 @@ impl<K, V> Node<K, V> {
 		} else {
 			self.right = None;
 		}
+		// A rotation does not change the content of the rotated subtree, so the data of the
+		// ancestors is left untouched. `self` is updated first since it is now a child of `pivot`
+		self.update_aug();
+		pivot.update_aug();
 	}
 
 	/// Applies a right tree rotation with the current node as root.
@@ -245,13 +478,16 @@ impl<K, V> Node<K, V> {
 		} else {
 			self.left = None;
 		}
+		// Same as in `left_rotate`
+		self.update_aug();
+		pivot.update_aug();
 	}
 
 	/// Inserts the given node `node` to left of the current node.
 	///
 	/// If the node already has a left child, the old node is leaked.
 	#[inline]
-	fn insert_left(&mut self, node: &mut Node<K, V>) {
+	fn insert_left(&mut self, node: &mut Node<K, V, A>) {
 		self.left = NonNull::new(node);
 		node.parent = NonNull::new(self);
 	}
@@ -260,7 +496,7 @@ impl<K, V> Node<K, V> {
 	///
 	/// If the node already has a right child, the old node is leaked.
 	#[inline]
-	fn insert_right(&mut self, node: &mut Node<K, V>) {
+	fn insert_right(&mut self, node: &mut Node<K, V, A>) {
 		self.right = NonNull::new(node);
 		node.parent = NonNull::new(self);
 	}
@@ -306,10 +542,10 @@ impl<K, V> Node<K, V> {
 /// reference to it.
 ///
 /// `cmp` is the comparison function to use for the search.
-fn get_node<K: Ord, V>(
-	mut node: &mut Node<K, V>,
+fn get_node<K: Ord, V, A: Augment<K, V>>(
+	mut node: &mut Node<K, V, A>,
 	cmp: impl Fn(&K) -> Ordering,
-) -> Result<&mut Node<K, V>, &mut Node<K, V>> {
+) -> Result<&mut Node<K, V, A>, &mut Node<K, V, A>> {
 	loop {
 		let next = match cmp(&node.key) {
 			Ordering::Less => node.get_left(),
@@ -325,7 +561,7 @@ fn get_node<K: Ord, V>(
 }
 
 /// Returns a reference to the leftmost node in the tree.
-fn get_leftmost_node<K, V>(node: &mut Node<K, V>) -> &mut Node<K, V> {
+fn get_leftmost_node<K, V, A: Augment<K, V>>(node: &mut Node<K, V, A>) -> &mut Node<K, V, A> {
 	let mut n = node;
 	while let Some(left) = n.get_left() {
 		n = left;
@@ -334,10 +570,10 @@ fn get_leftmost_node<K, V>(node: &mut Node<K, V>) -> &mut Node<K, V> {
 }
 
 /// Returns the start node for a range iterator starting at `start`.
-fn get_start_node<K: Ord, V>(
-	mut node: &mut Node<K, V>,
+fn get_start_node<K: Ord, V, A: Augment<K, V>>(
+	mut node: &mut Node<K, V, A>,
 	start: Bound<&K>,
-) -> Option<NonNull<Node<K, V>>> {
+) -> Option<NonNull<Node<K, V, A>>> {
 	let (key, exclude) = match start {
 		Bound::Unbounded => return NonNull::new(get_leftmost_node(node)),
 		Bound::Included(key) => (key, false),
@@ -367,7 +603,7 @@ fn get_start_node<K: Ord, V>(
 }
 
 /// Balances the tree after insertion of node `node`.
-fn insert_balance<K, V>(mut node: &mut Node<K, V>) {
+fn insert_balance<K, V, A: Augment<K, V>>(mut node: &mut Node<K, V, A>) {
 	let Some(parent) = node.get_parent() else {
 		node.color = NodeColor::Black;
 		return;
@@ -411,12 +647,12 @@ fn insert_balance<K, V>(mut node: &mut Node<K, V>) {
 }
 
 /// An entry with a used key.
-pub struct OccupiedEntry<'t, K: Ord, V> {
+pub struct OccupiedEntry<'t, K: Ord, V, A: Augment<K, V> = ()> {
 	/// The entry's node.
-	node: &'t mut Node<K, V>,
+	node: &'t mut Node<K, V, A>,
 }
 
-impl<'t, K: Ord, V> OccupiedEntry<'t, K, V> {
+impl<'t, K: Ord, V, A: Augment<K, V>> OccupiedEntry<'t, K, V, A> {
 	/// Returns an immutable reference to the key.
 	pub fn key(&self) -> &K {
 		&self.node.key
@@ -428,35 +664,44 @@ impl<'t, K: Ord, V> OccupiedEntry<'t, K, V> {
 	}
 
 	/// Returns a mutable reference to the value.
+	///
+	/// If [`Augment::compute`] uses the value, [`BTreeMap::refresh_aug`] must be called
+	/// afterwards.
 	pub fn get_mut(&mut self) -> &mut V {
 		&mut self.node.value
 	}
 
 	/// Converts the [`OccupiedEntry`] into a mutable reference to the value in the entry with a
 	/// lifetime bound to the map itself.
+	///
+	/// If [`Augment::compute`] uses the value, [`BTreeMap::refresh_aug`] must be called
+	/// afterwards.
 	pub fn into_mut(self) -> &'t mut V {
 		&mut self.node.value
 	}
 
 	/// Sets the value to `value` and returns the previous value.
 	pub fn insert(&mut self, value: V) -> V {
-		mem::replace(self.get_mut(), value)
+		let prev = mem::replace(&mut self.node.value, value);
+		self.node.propagate_aug();
+		self.node.propagate_aug_neighbours();
+		prev
 	}
 }
 
 /// An entry with an unused key.
-pub struct VacantEntry<'t, K: Ord, V> {
+pub struct VacantEntry<'t, K: Ord, V, A: Augment<K, V> = ()> {
 	/// The tree in which the entry is located.
-	tree: &'t mut BTreeMap<K, V>,
+	tree: &'t mut BTreeMap<K, V, A>,
 	/// The key to use for insertion.
 	key: K,
 	/// The parent of the node to be created for insertion.
 	///
 	/// If `None`, the node is inserted at the root of the tree.
-	parent: Option<&'t mut Node<K, V>>,
+	parent: Option<&'t mut Node<K, V, A>>,
 }
 
-impl<'t, K: Ord, V> VacantEntry<'t, K, V> {
+impl<'t, K: Ord, V, A: Augment<K, V>> VacantEntry<'t, K, V, A> {
 	/// Inserts the given `value` and returns a reference to it.
 	pub fn insert(self, value: V) -> AllocResult<&'t mut V> {
 		let mut node = Node::new(self.key, value)?;
@@ -469,11 +714,17 @@ impl<'t, K: Ord, V> VacantEntry<'t, K, V> {
 					// If equal, the key is already used and `self` should not exist
 					_ => unreachable!(),
 				}
+				// Update the augmented data before balancing, so that rotations may rely on it
+				n.propagate_aug();
+				n.propagate_aug_neighbours();
 				insert_balance(n);
 				self.tree.update_root(n);
 			}
 			// The tree is empty. Insert as root
-			None => *self.tree.root.get_mut() = Some(node),
+			None => {
+				n.update_aug();
+				*self.tree.root.get_mut() = Some(node);
+			}
 		}
 		self.tree.len += 1;
 		#[cfg(feature = "healthcheck")]
@@ -483,9 +734,9 @@ impl<'t, K: Ord, V> VacantEntry<'t, K, V> {
 }
 
 /// An entry in a [`BTreeMap`].
-pub enum Entry<'t, K: Ord, V> {
-	Occupied(OccupiedEntry<'t, K, V>),
-	Vacant(VacantEntry<'t, K, V>),
+pub enum Entry<'t, K: Ord, V, A: Augment<K, V> = ()> {
+	Occupied(OccupiedEntry<'t, K, V, A>),
+	Vacant(VacantEntry<'t, K, V, A>),
 }
 
 /// Specifies the order in which the tree is to be traversed.
@@ -502,20 +753,20 @@ pub enum TraversalOrder {
 }
 
 /// The implementation of the B-tree map.
-pub struct BTreeMap<K: Ord, V> {
+pub struct BTreeMap<K: Ord, V, A: Augment<K, V> = ()> {
 	/// The root node of the binary tree.
-	root: UnsafeCell<Option<NonNull<Node<K, V>>>>,
+	root: UnsafeCell<Option<NonNull<Node<K, V, A>>>>,
 	/// The current number of elements in the tree.
 	len: usize,
 }
 
-impl<K: Ord, V> Default for BTreeMap<K, V> {
+impl<K: Ord, V, A: Augment<K, V>> Default for BTreeMap<K, V, A> {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl<K: Ord, V> BTreeMap<K, V> {
+impl<K: Ord, V, A: Augment<K, V>> BTreeMap<K, V, A> {
 	/// Creates a new empty binary tree.
 	pub const fn new() -> Self {
 		Self {
@@ -538,7 +789,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 
 	/// Returns a reference to the root node.
 	#[inline]
-	fn get_root<'a>(&self) -> Option<&'a mut Node<K, V>> {
+	fn get_root<'a>(&self) -> Option<&'a mut Node<K, V, A>> {
 		unsafe { Some((*self.root.get()).as_mut()?.as_mut()) }
 	}
 
@@ -562,7 +813,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 	}
 
 	/// Returns the entry corresponding to the given key.
-	pub fn entry(&mut self, key: K) -> Entry<'_, K, V> {
+	pub fn entry(&mut self, key: K) -> Entry<'_, K, V, A> {
 		let Some(root) = self.get_root() else {
 			return Entry::Vacant(VacantEntry {
 				tree: self,
@@ -616,6 +867,47 @@ impl<K: Ord, V> BTreeMap<K, V> {
 		self.get(k).is_some()
 	}
 
+	/// Descends the tree from the root, `f` choosing the direction to take at each node.
+	///
+	/// Together with [`Augment`], this allows searching for an element with a criterion other than
+	/// the order of the keys, with `O(log n)` complexity: since each node knows an aggregate of
+	/// the data of its whole subtree, `f` can tell which subtree may contain the element and
+	/// prune the other.
+	///
+	/// If the descent reaches a leaf without `f` returning [`Descent::Stop`], the function returns
+	/// `None`.
+	pub fn descend<T, F: FnMut(AugmentRef<'_, K, V, A>) -> Descent<T>>(
+		&self,
+		mut f: F,
+	) -> Option<T> {
+		let mut node = self.get_root()?;
+		loop {
+			let next = match f(AugmentRef(node)) {
+				Descent::Left => node.get_left(),
+				Descent::Right => node.get_right(),
+				Descent::Stop(val) => break Some(val),
+			};
+			node = next?;
+		}
+	}
+
+	/// Recomputes the augmented data of the element with the given key, along with the data of its
+	/// ancestors and in-order neighbours.
+	pub fn refresh_aug<Q>(&mut self, key: &Q)
+	where
+		K: Borrow<Q>,
+		Q: Ord + ?Sized,
+	{
+		let Some(root) = self.get_root() else {
+			return;
+		};
+		let Ok(node) = get_node(root, |k| key.cmp(k.borrow())) else {
+			return;
+		};
+		node.propagate_aug();
+		node.propagate_aug_neighbours();
+	}
+
 	/// Searches for a node in the tree using the given comparison function
 	/// `cmp` instead of the [`Ord`] trait.
 	pub fn cmp_get<F: Fn(&K, &V) -> Ordering>(&self, cmp: F) -> Option<&V> {
@@ -647,7 +939,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 	/// Updates the root of the tree.
 	///
 	/// `node` is a node inserted in the tree.
-	fn update_root(&mut self, mut node: &mut Node<K, V>) {
+	fn update_root(&mut self, mut node: &mut Node<K, V, A>) {
 		while let Some(n) = node.get_parent() {
 			node = n;
 		}
@@ -671,7 +963,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 	/// replacement are both black.
 	///
 	/// `node` is the node to fix.
-	fn remove_fix_double_black(node: &mut Node<K, V>) {
+	fn remove_fix_double_black(node: &mut Node<K, V, A>) {
 		let Some(parent) = node.get_parent() else {
 			return;
 		};
@@ -733,7 +1025,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 	/// Removes the given node `node` from the tree.
 	///
 	/// The function returns the key and value of the removed node.
-	fn remove_node(&mut self, node: &mut Node<K, V>) -> (K, V) {
+	fn remove_node(&mut self, node: &mut Node<K, V, A>) -> (K, V) {
 		let left = node.get_left();
 		let right = node.get_right();
 		let replacement = match (left, right) {
@@ -762,18 +1054,40 @@ impl<K: Ord, V> BTreeMap<K, V> {
 				}
 				// The node is root
 				None => {
-					debug_assert_eq!(self.get_root().unwrap() as *mut Node<K, V>, node as *mut _);
+					debug_assert_eq!(
+						self.get_root().unwrap() as *mut Node<K, V, A>,
+						node as *mut _
+					);
 					*self.root.get_mut() = None;
 				}
 			}
+			// The augmented data is updated after unlinking, since balancing has been performed
+			// with the node still in place
+			let (prev, next) = node.aug_neighbours();
+			let parent = node.get_parent();
 			node.unlink();
+			if let Some(parent) = parent {
+				parent.propagate_aug();
+			}
+			if let Some(prev) = prev {
+				prev.propagate_aug();
+			}
+			if let Some(next) = next {
+				next.propagate_aug();
+			}
 			self.len -= 1;
 			return unsafe { drop_node(node.into()) };
 		};
 		if node.get_left().is_some() && node.get_right().is_some() {
-			mem::swap(&mut node.key, &mut replacement.key);
-			mem::swap(&mut node.value, &mut replacement.value);
-			return self.remove_node(replacement);
+			// Remove the in-order successor, which has at most one child, then steal its key and
+			// value
+			let (key, value) = self.remove_node(replacement);
+			let key = mem::replace(&mut node.key, key);
+			let value = mem::replace(&mut node.value, value);
+			// The key and value of `node` have changed
+			node.propagate_aug();
+			node.propagate_aug_neighbours();
+			return (key, value);
 		}
 		let Some(parent) = parent else {
 			// The node is the root
@@ -784,6 +1098,8 @@ impl<K: Ord, V> BTreeMap<K, V> {
 			mem::swap(&mut key, &mut node.key);
 			let mut val = value;
 			mem::swap(&mut val, &mut node.value);
+			// The node is now alone in the tree
+			node.update_aug();
 			self.len -= 1;
 			return (key, val);
 		};
@@ -797,6 +1113,10 @@ impl<K: Ord, V> BTreeMap<K, V> {
 		}
 		node.unlink();
 		let (key, val) = unsafe { drop_node(node.into()) };
+		// `replacement` now stands in the place of the removed node. Update the augmented data
+		// before balancing, so that rotations may rely on it
+		replacement.propagate_aug();
+		replacement.propagate_aug_neighbours();
 		if both_black {
 			Self::remove_fix_double_black(replacement);
 			self.update_root(replacement);
@@ -829,8 +1149,8 @@ impl<K: Ord, V> BTreeMap<K, V> {
 	/// Calls the given closure for every node in the subtree with root `root`.
 	///
 	/// `traversal_order` defines the order in which the tree is traversed.
-	fn foreach_node<F: FnMut(&mut Node<K, V>)>(
-		root: &mut Node<K, V>,
+	fn foreach_node<F: FnMut(&mut Node<K, V, A>)>(
+		root: &mut Node<K, V, A>,
 		f: &mut F,
 		traversal_order: TraversalOrder,
 	) {
@@ -873,7 +1193,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 		let mut explored_nodes = Vec::<*const c_void>::new();
 		Self::foreach_node(
 			root,
-			&mut |n: &mut Node<K, V>| {
+			&mut |n: &mut Node<K, V, A>| {
 				for e in explored_nodes.iter() {
 					assert_ne!(*e, n as *const _ as *const c_void);
 				}
@@ -892,6 +1212,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 					));
 					assert!(right.key >= n.key);
 				}
+				assert!(n.aug == A::compute(AugmentRef(n)));
 			},
 			TraversalOrder::PreOrder,
 		);
@@ -901,7 +1222,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 	///
 	/// Iterator traversal has complexity `O(n)` in time and `O(1)` in space.
 	#[inline]
-	pub fn iter(&self) -> MapIterator<K, V> {
+	pub fn iter(&self) -> MapIterator<K, V, A> {
 		let node = self.get_root().map(|n| NonNull::from(get_leftmost_node(n)));
 		MapIterator {
 			tree: self,
@@ -914,7 +1235,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 	///
 	/// Iterator traversal has complexity `O(n)` in time and `O(1)` in space.
 	#[inline]
-	pub fn iter_mut(&mut self) -> MapMutIterator<K, V> {
+	pub fn iter_mut(&mut self) -> MapMutIterator<K, V, A> {
 		let node = self.get_root().map(|n| NonNull::from(get_leftmost_node(n)));
 		MapMutIterator {
 			tree: self,
@@ -927,7 +1248,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 	///
 	/// Iterator traversal has complexity `O(n)` in time and `O(1)` in space.
 	#[inline]
-	pub fn range<R: RangeBounds<K>>(&self, range: R) -> MapRange<'_, K, V, R> {
+	pub fn range<R: RangeBounds<K>>(&self, range: R) -> MapRange<'_, K, V, R, A> {
 		let node = self
 			.get_root()
 			.and_then(|root| get_start_node(root, range.start_bound()));
@@ -945,7 +1266,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 	///
 	/// Iterator traversal has complexity `O(n)` in time and `O(1)` in space.
 	#[inline]
-	pub fn range_mut<R: RangeBounds<K>>(&mut self, range: R) -> MapMutRange<'_, K, V, R> {
+	pub fn range_mut<R: RangeBounds<K>>(&mut self, range: R) -> MapMutRange<'_, K, V, R, A> {
 		let node = self
 			.get_root()
 			.and_then(|root| get_start_node(root, range.start_bound()));
@@ -962,7 +1283,7 @@ impl<K: Ord, V> BTreeMap<K, V> {
 	/// Drains elements than match the given predicate and returns an iterator to drained elements.
 	///
 	/// Iterator traversal has complexity `O(n)` in time and `O(1)` in space.
-	pub fn drain_filter<F>(&mut self, pred: F) -> DrainFilter<'_, K, V, F>
+	pub fn drain_filter<F>(&mut self, pred: F) -> DrainFilter<'_, K, V, F, A>
 	where
 		F: FnMut(&K, &mut V) -> bool,
 	{
@@ -1001,8 +1322,8 @@ impl<K: Ord, V> BTreeMap<K, V> {
 	}
 }
 
-impl<K: TryClone<Error = E> + Ord, V: TryClone<Error = E>, E: From<AllocError>> TryClone
-	for BTreeMap<K, V>
+impl<K: TryClone<Error = E> + Ord, V: TryClone<Error = E>, E: From<AllocError>, A: Augment<K, V>>
+	TryClone for BTreeMap<K, V, A>
 {
 	type Error = E;
 
@@ -1016,7 +1337,7 @@ impl<K: TryClone<Error = E> + Ord, V: TryClone<Error = E>, E: From<AllocError>> 
 }
 
 // TODO make a separate structure which borrows the tree for this implementation?
-/*impl<K: Ord + fmt::Debug, V> fmt::Debug for BTreeMap<K, V> {
+/*impl<K: Ord + fmt::Debug, V> fmt::Debug for BTreeMap<K, V, A> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		let Some(root) = self.get_root() else {
 			return write!(f, "<Empty tree>");
@@ -1038,7 +1359,7 @@ impl<K: TryClone<Error = E> + Ord, V: TryClone<Error = E>, E: From<AllocError>> 
 	}
 }*/
 
-impl<K: Ord + fmt::Debug, V: fmt::Debug> fmt::Debug for BTreeMap<K, V> {
+impl<K: Ord + fmt::Debug, V: fmt::Debug, A: Augment<K, V>> fmt::Debug for BTreeMap<K, V, A> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(f, "BTreeMap ")?;
 		f.debug_map().entries(self.iter()).finish()?;
@@ -1046,16 +1367,37 @@ impl<K: Ord + fmt::Debug, V: fmt::Debug> fmt::Debug for BTreeMap<K, V> {
 	}
 }
 
-impl<K: Ord, V> Drop for BTreeMap<K, V> {
+impl<K: Ord, V, A: Augment<K, V>> Drop for BTreeMap<K, V, A> {
 	fn drop(&mut self) {
 		self.clear();
+	}
+}
+
+/// Returns the node preceding the given node in key order.
+fn prev_node<'a, K, V, A: Augment<K, V>>(node: &Node<K, V, A>) -> Option<&'a mut Node<K, V, A>> {
+	if let Some(mut node) = node.get_left() {
+		while let Some(n) = node.get_right() {
+			node = n;
+		}
+		Some(node)
+	} else {
+		let mut node = node;
+		let mut parent = node.get_parent();
+		while let Some(p) = parent {
+			if !node.is_left_child() {
+				return Some(p);
+			}
+			node = p;
+			parent = node.get_parent();
+		}
+		None
 	}
 }
 
 /// Returns the next node in an iterator for the given node.
 ///
 /// This is an inner function for node iterators.
-fn next_node<'a, K, V>(node: &Node<K, V>) -> Option<&'a mut Node<K, V>> {
+fn next_node<'a, K, V, A: Augment<K, V>>(node: &Node<K, V, A>) -> Option<&'a mut Node<K, V, A>> {
 	if let Some(mut node) = node.get_right() {
 		while let Some(n) = node.get_left() {
 			node = n;
@@ -1075,7 +1417,7 @@ fn next_node<'a, K, V>(node: &Node<K, V>) -> Option<&'a mut Node<K, V>> {
 	}
 }
 
-impl<K: Ord, V> FromIterator<(K, V)> for CollectResult<BTreeMap<K, V>> {
+impl<K: Ord, V, A: Augment<K, V>> FromIterator<(K, V)> for CollectResult<BTreeMap<K, V, A>> {
 	fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
 		let iter = iter.into_iter();
 		let res = (|| {
@@ -1089,8 +1431,8 @@ impl<K: Ord, V> FromIterator<(K, V)> for CollectResult<BTreeMap<K, V>> {
 	}
 }
 
-impl<K: Ord, V> IntoIterator for BTreeMap<K, V> {
-	type IntoIter = MapIntoIter<K, V>;
+impl<K: Ord, V, A: Augment<K, V>> IntoIterator for BTreeMap<K, V, A> {
+	type IntoIter = MapIntoIter<K, V, A>;
 	type Item = (K, V);
 
 	fn into_iter(self) -> Self::IntoIter {
@@ -1107,14 +1449,14 @@ impl<K: Ord, V> IntoIterator for BTreeMap<K, V> {
 }
 
 /// Consuming iterator over a [`BTreeMap`].
-pub struct MapIntoIter<K: Ord, V> {
+pub struct MapIntoIter<K: Ord, V, A: Augment<K, V> = ()> {
 	/// The current node.
-	node: Option<NonNull<Node<K, V>>>,
+	node: Option<NonNull<Node<K, V, A>>>,
 	/// The number of remaining elements.
 	remaining: usize,
 }
 
-impl<K: Ord, V> Iterator for MapIntoIter<K, V> {
+impl<K: Ord, V, A: Augment<K, V>> Iterator for MapIntoIter<K, V, A> {
 	type Item = (K, V);
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -1147,13 +1489,13 @@ impl<K: Ord, V> Iterator for MapIntoIter<K, V> {
 	}
 }
 
-impl<K: Ord, V> ExactSizeIterator for MapIntoIter<K, V> {}
+impl<K: Ord, V, A: Augment<K, V>> ExactSizeIterator for MapIntoIter<K, V, A> {}
 
-impl<K: Ord, V> FusedIterator for MapIntoIter<K, V> {}
+impl<K: Ord, V, A: Augment<K, V>> FusedIterator for MapIntoIter<K, V, A> {}
 
-unsafe impl<K: Ord, V> TrustedLen for MapIntoIter<K, V> {}
+unsafe impl<K: Ord, V, A: Augment<K, V>> TrustedLen for MapIntoIter<K, V, A> {}
 
-impl<K: Ord, V> Drop for MapIntoIter<K, V> {
+impl<K: Ord, V, A: Augment<K, V>> Drop for MapIntoIter<K, V, A> {
 	fn drop(&mut self) {
 		// Drop remaining elements
 		for _ in self.by_ref() {}
@@ -1161,16 +1503,16 @@ impl<K: Ord, V> Drop for MapIntoIter<K, V> {
 }
 
 /// Immutable reference iterator for [`BTreeMap`]. This iterator traverses the tree in pre-order.
-pub struct MapIterator<'m, K: Ord, V> {
+pub struct MapIterator<'m, K: Ord, V, A: Augment<K, V> = ()> {
 	/// The tree to iterate on.
-	tree: &'m BTreeMap<K, V>,
+	tree: &'m BTreeMap<K, V, A>,
 	/// The current node of the iterator.
-	node: Option<NonNull<Node<K, V>>>,
+	node: Option<NonNull<Node<K, V, A>>>,
 	/// The number of nodes travelled so far.
 	i: usize,
 }
 
-impl<'m, K: Ord, V> Iterator for MapIterator<'m, K, V> {
+impl<'m, K: Ord, V, A: Augment<K, V>> Iterator for MapIterator<'m, K, V, A> {
 	type Item = (&'m K, &'m V);
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -1190,8 +1532,8 @@ impl<'m, K: Ord, V> Iterator for MapIterator<'m, K, V> {
 	}
 }
 
-impl<'m, K: Ord, V> IntoIterator for &'m BTreeMap<K, V> {
-	type IntoIter = MapIterator<'m, K, V>;
+impl<'m, K: Ord, V, A: Augment<K, V>> IntoIterator for &'m BTreeMap<K, V, A> {
+	type IntoIter = MapIterator<'m, K, V, A>;
 	type Item = (&'m K, &'m V);
 
 	fn into_iter(self) -> Self::IntoIter {
@@ -1199,23 +1541,23 @@ impl<'m, K: Ord, V> IntoIterator for &'m BTreeMap<K, V> {
 	}
 }
 
-impl<K: Ord, V> ExactSizeIterator for MapIterator<'_, K, V> {}
+impl<K: Ord, V, A: Augment<K, V>> ExactSizeIterator for MapIterator<'_, K, V, A> {}
 
-impl<K: Ord, V> FusedIterator for MapIterator<'_, K, V> {}
+impl<K: Ord, V, A: Augment<K, V>> FusedIterator for MapIterator<'_, K, V, A> {}
 
-unsafe impl<K: Ord, V> TrustedLen for MapIterator<'_, K, V> {}
+unsafe impl<K: Ord, V, A: Augment<K, V>> TrustedLen for MapIterator<'_, K, V, A> {}
 
 /// Mutable reference iterator for [`BTreeMap`]. This iterator traverses the tree in pre-order.
-pub struct MapMutIterator<'m, K: Ord, V> {
+pub struct MapMutIterator<'m, K: Ord, V, A: Augment<K, V> = ()> {
 	/// The tree to iterate on.
-	tree: &'m mut BTreeMap<K, V>,
+	tree: &'m mut BTreeMap<K, V, A>,
 	/// The current node of the iterator.
-	node: Option<NonNull<Node<K, V>>>,
+	node: Option<NonNull<Node<K, V, A>>>,
 	/// The number of nodes travelled so far.
 	i: usize,
 }
 
-impl<'m, K: Ord, V> Iterator for MapMutIterator<'m, K, V> {
+impl<'m, K: Ord, V, A: Augment<K, V>> Iterator for MapMutIterator<'m, K, V, A> {
 	type Item = (&'m K, &'m mut V);
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -1235,8 +1577,8 @@ impl<'m, K: Ord, V> Iterator for MapMutIterator<'m, K, V> {
 	}
 }
 
-impl<'m, K: Ord, V> IntoIterator for &'m mut BTreeMap<K, V> {
-	type IntoIter = MapMutIterator<'m, K, V>;
+impl<'m, K: Ord, V, A: Augment<K, V>> IntoIterator for &'m mut BTreeMap<K, V, A> {
+	type IntoIter = MapMutIterator<'m, K, V, A>;
 	type Item = (&'m K, &'m mut V);
 
 	fn into_iter(self) -> Self::IntoIter {
@@ -1244,21 +1586,21 @@ impl<'m, K: Ord, V> IntoIterator for &'m mut BTreeMap<K, V> {
 	}
 }
 
-impl<K: Ord, V> ExactSizeIterator for MapMutIterator<'_, K, V> {}
+impl<K: Ord, V, A: Augment<K, V>> ExactSizeIterator for MapMutIterator<'_, K, V, A> {}
 
-impl<K: Ord, V> FusedIterator for MapMutIterator<'_, K, V> {}
+impl<K: Ord, V, A: Augment<K, V>> FusedIterator for MapMutIterator<'_, K, V, A> {}
 
-unsafe impl<K: Ord, V> TrustedLen for MapMutIterator<'_, K, V> {}
+unsafe impl<K: Ord, V, A: Augment<K, V>> TrustedLen for MapMutIterator<'_, K, V, A> {}
 
 /// Same as [`MapIterator`], but restrained to a predefined range.
-pub struct MapRange<'m, K: Ord, V, R: RangeBounds<K>> {
+pub struct MapRange<'m, K: Ord, V, R: RangeBounds<K>, A: Augment<K, V> = ()> {
 	/// Inner iterator.
-	iter: MapIterator<'m, K, V>,
+	iter: MapIterator<'m, K, V, A>,
 	/// The range to iterate on.
 	range: R,
 }
 
-impl<'m, K: Ord, V, R: RangeBounds<K>> Iterator for MapRange<'m, K, V, R> {
+impl<'m, K: Ord, V, R: RangeBounds<K>, A: Augment<K, V>> Iterator for MapRange<'m, K, V, R, A> {
 	type Item = (&'m K, &'m V);
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -1272,14 +1614,14 @@ impl<'m, K: Ord, V, R: RangeBounds<K>> Iterator for MapRange<'m, K, V, R> {
 }
 
 /// Same as [`MapMutIterator`], but restrained to a predefined range.
-pub struct MapMutRange<'m, K: Ord, V, R: RangeBounds<K>> {
+pub struct MapMutRange<'m, K: Ord, V, R: RangeBounds<K>, A: Augment<K, V> = ()> {
 	/// Inner iterator.
-	iter: MapMutIterator<'m, K, V>,
+	iter: MapMutIterator<'m, K, V, A>,
 	/// The range to iterate on.
 	range: R,
 }
 
-impl<'m, K: Ord, V, R: RangeBounds<K>> Iterator for MapMutRange<'m, K, V, R> {
+impl<'m, K: Ord, V, R: RangeBounds<K>, A: Augment<K, V>> Iterator for MapMutRange<'m, K, V, R, A> {
 	type Item = (&'m K, &'m mut V);
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -1294,15 +1636,15 @@ impl<'m, K: Ord, V, R: RangeBounds<K>> Iterator for MapMutRange<'m, K, V, R> {
 
 /// An iterator that traverses a [`BTreeMap`] in ascending order and removes, then yields elements
 /// that match the associated predicate.
-pub struct DrainFilter<'m, K: Ord, V, F>
+pub struct DrainFilter<'m, K: Ord, V, F, A: Augment<K, V> = ()>
 where
 	F: FnMut(&K, &mut V) -> bool,
 {
 	/// The tree to iterate on.
-	tree: &'m mut BTreeMap<K, V>,
+	tree: &'m mut BTreeMap<K, V, A>,
 
 	/// The current node of the iterator.
-	node: Option<NonNull<Node<K, V>>>,
+	node: Option<NonNull<Node<K, V, A>>>,
 	/// The number of nodes travelled so far.
 	i: usize,
 
@@ -1310,7 +1652,9 @@ where
 	pred: F,
 }
 
-impl<K: Ord, V, F: FnMut(&K, &mut V) -> bool> Iterator for DrainFilter<'_, K, V, F> {
+impl<K: Ord, V, F: FnMut(&K, &mut V) -> bool, A: Augment<K, V>> Iterator
+	for DrainFilter<'_, K, V, F, A>
+{
 	type Item = (K, V);
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -1595,6 +1939,169 @@ mod test {
 			.0
 			.unwrap();
 		assert_eq!(foo.as_slice(), [0, 3, 4, 8, 17]);
+	}
+
+	/// Augmentation attaching the maximum value of each subtree.
+	struct MaxValue;
+
+	impl<K> Augment<K, u32> for MaxValue {
+		type Data = u32;
+
+		fn compute(node: AugmentRef<'_, K, u32, Self>) -> u32 {
+			let children = node.left().into_iter().chain(node.right());
+			children.fold(*node.value(), |max, c| max.max(*c.data()))
+		}
+	}
+
+	/// Augmentation attaching the largest gap between two consecutive keys of each subtree.
+	///
+	/// This is a simplified version of what the kernel uses to find a hole in a memory space.
+	struct MaxGap;
+
+	impl Augment<u32, ()> for MaxGap {
+		type Data = u32;
+
+		// The gap attached to an element depends on its predecessor, which may not be part of its
+		// subtree
+		const NEIGHBOURS: bool = true;
+
+		fn compute(node: AugmentRef<'_, u32, (), Self>) -> u32 {
+			let children = node.left().into_iter().chain(node.right());
+			children.fold(own_gap(&node), |max, c| max.max(*c.data()))
+		}
+	}
+
+	/// Returns the gap between the given element and its predecessor.
+	fn own_gap(node: &AugmentRef<'_, u32, (), MaxGap>) -> u32 {
+		node.prev().map(|prev| node.key() - prev.key()).unwrap_or(0)
+	}
+
+	/// Asserts the augmented data of every node of the map is valid.
+	fn check_aug<K: Ord, V, A: Augment<K, V>>(map: &BTreeMap<K, V, A>) {
+		let Some(root) = map.get_root() else {
+			return;
+		};
+		BTreeMap::foreach_node(
+			root,
+			&mut |n| assert!(n.aug == A::compute(AugmentRef(n))),
+			TraversalOrder::PreOrder,
+		);
+	}
+
+	/// Returns the data attached to the root of the map.
+	fn root_aug<K: Ord, V, A: Augment<K, V, Data = u32>>(map: &BTreeMap<K, V, A>) -> u32 {
+		map.get_root().map(|root| root.aug).unwrap_or(0)
+	}
+
+	#[test]
+	fn augment_max_value() {
+		let mut b = BTreeMap::<u32, u32, MaxValue>::new();
+		let mut val = 0;
+		for _ in 0..100 {
+			val = pseudo_rand(val, 1664525, 1013904223, 0x100);
+			b.insert(val, val * 2).unwrap();
+			check_aug(&b);
+			assert_eq!(root_aug(&b), b.iter().map(|(_, v)| *v).max().unwrap());
+		}
+		// Find an element with a value greater than a threshold, without walking the whole map
+		for threshold in [0, 42, 200, 0x100] {
+			let found = b.descend(|node| {
+				if node.left().is_some_and(|c| *c.data() >= threshold) {
+					Descent::Left
+				} else if *node.value() >= threshold {
+					Descent::Stop(*node.value())
+				} else {
+					Descent::Right
+				}
+			});
+			let expected = b.iter().any(|(_, v)| *v >= threshold);
+			assert_eq!(found.is_some(), expected);
+			assert!(found.is_none_or(|v| v >= threshold));
+		}
+		let mut val = 0;
+		for _ in 0..100 {
+			val = pseudo_rand(val, 1664525, 1013904223, 0x100);
+			b.remove(&val);
+			check_aug(&b);
+			assert_eq!(root_aug(&b), b.iter().map(|(_, v)| *v).max().unwrap_or(0));
+		}
+		assert!(b.is_empty());
+	}
+
+	#[test]
+	fn augment_mixed_ops() {
+		let mut b = BTreeMap::<u32, (), MaxGap>::new();
+		let mut val = 0;
+		for i in 0..1000 {
+			val = pseudo_rand(val, 1664525, 1013904223, 0x100);
+			match i % 3 {
+				0 => {
+					b.remove(&val);
+				}
+				1 if i % 9 == 1 => {
+					b.pop_first();
+				}
+				_ => {
+					b.insert(val, ()).unwrap();
+				}
+			}
+			check_aug(&b);
+			assert_eq!(root_aug(&b), max_gap(&b));
+		}
+		b.retain(|key, _| key % 2 == 0);
+		check_aug(&b);
+		assert_eq!(root_aug(&b), max_gap(&b));
+	}
+
+	/// Returns the largest gap between two consecutive keys of the map.
+	fn max_gap(b: &BTreeMap<u32, (), MaxGap>) -> u32 {
+		let mut prev = None;
+		let mut max = 0;
+		for (key, _) in b.iter() {
+			if let Some(prev) = prev {
+				max = max.max(key - prev);
+			}
+			prev = Some(*key);
+		}
+		max
+	}
+
+	#[test]
+	fn augment_max_gap() {
+		let mut b = BTreeMap::<u32, (), MaxGap>::new();
+		let mut val = 0;
+		for _ in 0..100 {
+			val = pseudo_rand(val, 1664525, 1013904223, 0x1000);
+			b.insert(val, ()).unwrap();
+			check_aug(&b);
+			assert_eq!(root_aug(&b), max_gap(&b));
+		}
+		// Find the leftmost gap large enough to fit `size`, without walking the whole map
+		for size in [1, 2, 16, 64, 0x1000] {
+			let found = b.descend(|node| {
+				if node.left().is_some_and(|c| *c.data() >= size) {
+					Descent::Left
+				} else if own_gap(&node) >= size {
+					// The gap starts right after the previous element
+					Descent::Stop(node.prev().map(|prev| *prev.key()).unwrap())
+				} else {
+					Descent::Right
+				}
+			});
+			assert_eq!(found.is_some(), max_gap(&b) >= size);
+			// Check the returned gap is indeed free
+			if let Some(start) = found {
+				assert_eq!(b.range(start + 1..start + size).count(), 0);
+			}
+		}
+		let mut val = 0;
+		for _ in 0..100 {
+			val = pseudo_rand(val, 1664525, 1013904223, 0x1000);
+			b.remove(&val);
+			check_aug(&b);
+			assert_eq!(root_aug(&b), max_gap(&b));
+		}
+		assert!(b.is_empty());
 	}
 
 	#[test]
