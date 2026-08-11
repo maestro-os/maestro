@@ -342,7 +342,7 @@ impl MemMapping {
 					flags: self.flags,
 
 					file: self.file.clone(),
-					off: self.off + end as u64,
+					off: self.off + (end * PAGE_SIZE) as u64,
 
 					pages: Spin::new(Vec::try_from(&pages[end..])?),
 				})
