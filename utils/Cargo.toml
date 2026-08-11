@@ -6,6 +6,10 @@ edition = "2024"
 [dependencies]
 macros = { path = "../macros" }
 
+# Use the `std` feature when running `cargo test`
+[dev-dependencies]
+utils = { path = ".", features = ["std"] }
+
 [features]
 default = []
 std = []
