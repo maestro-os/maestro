@@ -26,7 +26,7 @@ use crate::{
 	memory::user::{UserPtr, UserSlice},
 	process,
 	process::{
-		ForkOptions, PROCESS_FLAG_LINUX, Process, State,
+		ForkOptions, PROCESS_FLAG_LINUX, Process, State, USER_STACK_SIZE,
 		pid::Pid,
 		rusage::Rusage,
 		scheduler::{
@@ -46,7 +46,7 @@ use core::{
 		fence,
 	},
 };
-use utils::{errno, errno::EResult};
+use utils::{errno, errno::EResult, limits, limits::PAGE_SIZE};
 
 /// TODO doc
 pub const CLONE_IO: c_ulong = -0x80000000 as _;
@@ -415,11 +415,14 @@ pub struct RLimit {
 	rlim_max: u64,
 }
 
+/// Value of [`RLimit`] fields for an unlimited resource.
+const RLIM_INFINITY: u64 = u64::MAX;
+
 pub fn prlimit64(
 	pid: Pid,
 	resource: c_int,
-	_new_limit: UserPtr<RLimit>,
-	_old_limit: UserPtr<RLimit>,
+	new_limit: UserPtr<RLimit>,
+	old_limit: UserPtr<RLimit>,
 ) -> EResult<usize> {
 	// The target process. If None, the current process is the target
 	let _target_proc = if pid != 0 {
@@ -428,27 +431,35 @@ pub fn prlimit64(
 	} else {
 		None
 	};
-	// TODO Implement all
-	match resource {
-		RLIMIT_CPU => {}
-		RLIMIT_FSIZE => {}
-		RLIMIT_DATA => {}
-		RLIMIT_STACK => {}
-		RLIMIT_CORE => {}
-		RLIMIT_RSS => {}
-		RLIMIT_NPROC => {}
-		RLIMIT_NOFILE => {}
-		RLIMIT_MEMLOCK => {}
-		RLIMIT_AS => {}
-		RLIMIT_LOCKS => {}
-		RLIMIT_SIGPENDING => {}
-		RLIMIT_MSGQUEUE => {}
-		RLIMIT_NICE => {}
-		RLIMIT_RTPRIO => {}
-		RLIMIT_RTTIME => {}
-		RLIMIT_NLIMITS => {}
+	// TODO store the limits on the process instead of returning constants
+	let cur = match resource {
+		RLIMIT_STACK => RLimit {
+			rlim_cur: (USER_STACK_SIZE * PAGE_SIZE) as _,
+			rlim_max: (USER_STACK_SIZE * PAGE_SIZE) as _,
+		},
+		RLIMIT_NOFILE => RLimit {
+			rlim_cur: limits::OPEN_MAX as _,
+			rlim_max: limits::OPEN_MAX as _,
+		},
+		RLIMIT_CORE => RLimit {
+			rlim_cur: 0,
+			rlim_max: RLIM_INFINITY,
+		},
+		RLIMIT_CPU | RLIMIT_FSIZE | RLIMIT_DATA | RLIMIT_RSS | RLIMIT_NPROC | RLIMIT_MEMLOCK
+		| RLIMIT_AS | RLIMIT_LOCKS | RLIMIT_SIGPENDING | RLIMIT_MSGQUEUE | RLIMIT_NICE
+		| RLIMIT_RTPRIO | RLIMIT_RTTIME | RLIMIT_NLIMITS => RLimit {
+			rlim_cur: RLIM_INFINITY,
+			rlim_max: RLIM_INFINITY,
+		},
 		_ => return Err(errno!(EINVAL)),
+	};
+	// Validate the new limit, if any. It is not stored yet
+	if let Some(new) = new_limit.copy_from_user()?
+		&& unlikely(new.rlim_cur > new.rlim_max)
+	{
+		return Err(errno!(EINVAL));
 	}
+	old_limit.copy_to_user(&cur)?;
 	Ok(0)
 }
 

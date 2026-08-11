@@ -98,7 +98,7 @@ const TTY_DEVICE_PATH: &str = "/dev/tty";
 const DEFAULT_UMASK: file::Mode = 0o022;
 
 /// The size of the userspace stack of a process in number of pages.
-const USER_STACK_SIZE: usize = 2048;
+pub(crate) const USER_STACK_SIZE: usize = 2048;
 /// The size of the kernelspace stack of a process in number of pages.
 const KERNEL_STACK_ORDER: FrameOrder = 4;
 
