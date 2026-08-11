@@ -461,7 +461,9 @@ pub fn getcwd(buf: *mut u8, size: usize) -> EResult<usize> {
 	}
 	buf.copy_to_user(0, cwd.as_bytes())?;
 	buf.copy_to_user(cwd.len(), b"\0")?;
-	Ok(buf.as_ptr() as _)
+	// Contrary to the libc wrapper, the system call returns the length of the path, including the
+	// terminating nul byte
+	Ok(cwd.len() + 1)
 }
 
 pub fn chdir(path: UserString) -> EResult<usize> {
