@@ -3,11 +3,8 @@ name: "CodeQL (Actions)"
 on:
   push:
     branches: ["master"]
-    paths: &paths
-      - ".github/workflows/**"
   pull_request:
     branches: ["master"]
-    paths: *paths
   schedule:
     - cron: "33 4 * * 0"
 
