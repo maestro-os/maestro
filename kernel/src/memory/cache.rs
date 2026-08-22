@@ -252,7 +252,7 @@ impl Drop for RcPage {
 /// type.
 ///
 /// This structure is useful to *return* a mapped value from a function.
-pub struct RcBlockVal<T: AnyRepr> {
+pub struct RcPageVal<T: AnyRepr> {
 	/// The page the value is located on
 	page: RcPage,
 	/// The offset of the object in the array
@@ -260,7 +260,7 @@ pub struct RcBlockVal<T: AnyRepr> {
 	_phantom: PhantomData<T>,
 }
 
-impl<T: AnyRepr> RcBlockVal<T> {
+impl<T: AnyRepr> RcPageVal<T> {
 	/// Creates a new instance.
 	pub fn new(page: RcPage, off: usize) -> Self {
 		Self {
@@ -288,7 +288,7 @@ impl<T: AnyRepr> RcBlockVal<T> {
 	}
 }
 
-impl<T: AnyRepr> Deref for RcBlockVal<T> {
+impl<T: AnyRepr> Deref for RcPageVal<T> {
 	type Target = T;
 
 	#[inline]
@@ -297,7 +297,7 @@ impl<T: AnyRepr> Deref for RcBlockVal<T> {
 	}
 }
 
-impl<T: AnyRepr + fmt::Debug> fmt::Debug for RcBlockVal<T> {
+impl<T: AnyRepr + fmt::Debug> fmt::Debug for RcPageVal<T> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		fmt::Debug::fmt(self.deref(), f)
 	}

@@ -21,7 +21,7 @@
 //! filesystem.
 
 use super::Ext2Fs;
-use crate::memory::cache::RcBlockVal;
+use crate::memory::cache::RcPageVal;
 use core::{mem::size_of, sync::atomic::AtomicU16};
 use macros::AnyRepr;
 use utils::errno::EResult;
@@ -51,7 +51,7 @@ pub struct BlockGroupDescriptor {
 
 impl BlockGroupDescriptor {
 	/// Returns the `i`th block group descriptor
-	pub fn get(i: u32, fs: &Ext2Fs) -> EResult<RcBlockVal<Self>> {
+	pub fn get(i: u32, fs: &Ext2Fs) -> EResult<RcPageVal<Self>> {
 		let blk_size = fs.sp.get_block_size() as usize;
 		let bgd_per_blk = blk_size / size_of::<Self>();
 		// Read block
@@ -59,6 +59,6 @@ impl BlockGroupDescriptor {
 		let blk = fs.dev.ops.read_page(&fs.dev, blk_off as _)?;
 		// Get entry
 		let off = i as usize % bgd_per_blk;
-		Ok(RcBlockVal::new(blk, off))
+		Ok(RcPageVal::new(blk, off))
 	}
 }
