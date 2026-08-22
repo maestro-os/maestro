@@ -30,10 +30,10 @@ use crate::{
 			Statfs,
 			kernfs::{EitherOps, StaticDir, StaticEntry, StaticLink, box_node, static_dir_stat},
 		},
-		vfs::node::Node,
+		vfs::{CachePolicy, node::Node},
 	},
 };
-use utils::{boxed::Box, collections::path::PathBuf, errno, errno::EResult, ptr::arc::Arc};
+use utils::{boxed::Box, collections::path::PathBuf, errno::EResult, ptr::arc::Arc};
 
 /// Returns the status of a symbolic link.
 #[inline]
@@ -126,8 +126,8 @@ impl FilesystemOps for SysFS {
 		b"sysfs"
 	}
 
-	fn cache_entries(&self) -> bool {
-		false
+	fn cache_policy(&self) -> CachePolicy {
+		CachePolicy::Never
 	}
 
 	fn get_stat(&self) -> EResult<Statfs> {
@@ -156,10 +156,6 @@ impl FilesystemOps for SysFS {
 		))?)
 	}
 
-	fn create_node(&self, _fs: &Arc<Filesystem>, _stat: Stat) -> EResult<Arc<Node>> {
-		Err(errno!(EINVAL))
-	}
-
 	fn destroy_node(&self, _node: &Node) -> EResult<()> {
 		Ok(())
 	}
@@ -181,8 +177,8 @@ impl FilesystemType for SysFsType {
 		&self,
 		_dev: Option<Arc<BlkDev>>,
 		_mountpath: PathBuf,
-		_readonly: bool,
+		mount_flags: u32,
 	) -> EResult<Arc<Filesystem>> {
-		Ok(Filesystem::new(0, Box::new(SysFS)?)?)
+		Ok(Filesystem::new(0, Box::new(SysFS)?, mount_flags)?)
 	}
 }
