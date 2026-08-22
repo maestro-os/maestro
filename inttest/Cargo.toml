@@ -14,3 +14,4 @@ path = "src/boot.rs"
 [dependencies]
 libc = "0.2.172"
 memmap2 = "0.9.5"
+reqwest = { version = "0.13.4", features = ["blocking"] }
