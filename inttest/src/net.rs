@@ -22,7 +22,7 @@ use std::time::Duration;
 pub fn http_call() -> TestResult {
 	let client = reqwest::blocking::Client::new();
 	let response = client
-		.get("https://one.one.one.one")
+		.get("http://example.com")
 		.timeout(Duration::from_secs(5))
 		.send()?;
 	test_assert!(response.status().is_success());
