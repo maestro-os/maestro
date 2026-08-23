@@ -325,11 +325,18 @@ jobs:
         with:
           name: workspace-${{ matrix.arch.kernel }}-debug
       - name: Restore permissions
-        run: chmod +x mod/build inttest/build.sh
+        run: chmod +x mod/build inttest/build.sh inttest/build-blimp.sh
       - *rust-toolchain-cache
       - *rust-registry-cache
       - *binutils-cache
       - *binutils-path
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y fakeroot
+      - name: Build blimp
+        working-directory: inttest
+        run: ./build-blimp.sh "$RUNNER_TEMP/blimp"
+      - name: Add blimp to PATH
+        run: echo "$RUNNER_TEMP/blimp" >>$GITHUB_PATH
       - name: Build tests
         working-directory: inttest
         env:

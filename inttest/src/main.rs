@@ -22,9 +22,12 @@
 
 use crate::{
 	mount::{mount, umount},
-	util::TestResult,
+	util::{TestResult, exec},
 };
-use std::{path::Path, process::exit};
+use std::{
+	path::Path,
+	process::{Command, exit},
+};
 
 mod filesystem;
 mod module;
@@ -191,8 +194,7 @@ const TESTS: &[TestSuite] = &[
 			start: module::dummy,
 		}],
 	},
-	// TODO install required commands
-	/*TestSuite {
+	TestSuite {
 		name: "command",
 		desc: "Basic commands testing",
 		tests: &[
@@ -211,9 +213,33 @@ const TESTS: &[TestSuite] = &[
 			// TODO `cp`
 			// TODO `rm`
 		],
-	},*/
+	},
 	// TODO scripts (Shell/Perl)
-	// TODO compilation (C/C++/Rust)
+	TestSuite {
+		name: "Compilation",
+		desc: "Simple programs compilation",
+		tests: &[
+			Test {
+				name: "gcc",
+				desc: "Compile C code using gcc",
+				start: || {
+					exec(Command::new("gcc").args(["hello.c", "-o", "hello-c"]))?;
+					exec(&mut Command::new("./hello-c"))?;
+					Ok(())
+				},
+			},
+			Test {
+				name: "g++",
+				desc: "Compile C++ code using g++",
+				start: || {
+					exec(Command::new("g++").args(["hello.cpp", "-o", "hello-cpp"]))?;
+					exec(&mut Command::new("./hello-cpp"))?;
+					Ok(())
+				},
+			},
+			// TODO Rust
+		],
+	},
 	// TODO network
 	TestSuite {
 		name: "Unmount",
