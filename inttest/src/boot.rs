@@ -24,7 +24,10 @@
 use std::{os::unix::process::ExitStatusExt, process::Command};
 
 pub fn main() {
-	let status = Command::new("/inttest").status().unwrap();
+	let status = Command::new("/inttest")
+		.env("PATH", "/bin:/usr/bin:/sbin")
+		.status()
+		.unwrap();
 	if let Some(sig) = status.signal() {
 		eprintln!("[KILLED] {sig}");
 	}

@@ -25,7 +25,7 @@ use std::{
 	io, mem,
 	os::unix::ffi::OsStrExt,
 	path::Path,
-	process::{Command, Stdio},
+	process::Command,
 	ptr::null,
 };
 
@@ -197,7 +197,6 @@ pub fn unprivileged<F: FnOnce() -> R, R>(f: F) -> io::Result<R> {
 #[allow(dead_code)]
 pub fn exec(cmd: &mut Command) -> TestResult {
 	// TODO capture output and compare to expected output?
-	let cmd = cmd.stdout(Stdio::null()).stderr(Stdio::null());
 	let status = cmd.status()?;
 	if status.success() {
 		Ok(())
