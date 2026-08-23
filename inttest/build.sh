@@ -45,11 +45,12 @@ cd ..
 # Populate the system root
 ROOT=root/
 rm -rf "$ROOT"
-mkdir -p "$ROOT/"{dev,sbin,var/lib/blimp}
+mkdir -p "$ROOT/dev" "$ROOT/sbin" "$ROOT/var/lib/blimp"
 cp "target/$TARGET/debug/init" "$ROOT/sbin/init"
 cp "target/$TARGET/debug/inttest" "$ROOT/inttest"
 cp "mod/target/$ARCH/debug/libinttest.so" "$ROOT/mod.kmod"
-cp test/hello.{c,cpp} "$ROOT"
+cp test/hello.c "$ROOT"
+cp test/hello.cpp "$ROOT"
 echo "pkg.maestro-os.org" >"$ROOT/var/lib/blimp/remotes-list"
 # Install packages
 SYSROOT="$ROOT" blimp update
