@@ -30,7 +30,7 @@ __kernel_vsyscall:
 	ret
 
 __kernel_sigreturn:
-    add $4, esp
+    addl $4, esp
 	movl $119, %eax
 	int $0x80
 
