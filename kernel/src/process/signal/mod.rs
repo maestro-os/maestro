@@ -475,7 +475,7 @@ impl SignalHandler {
 				if sig.altstack.ss_flags & SS_AUTODISARM != 0 {
 					sig.altstack = Default::default();
 				}
-				let stack_top = (altstack.ss_sp as usize).saturating_add(altstack.ss_size);
+				let stack_top = (altstack.ss_sp as usize).saturating_add(altstack.ss_size as _);
 				VirtAddr(stack_top)
 			} else {
 				VirtAddr(frame.get_stack_address().saturating_sub(REDZONE_SIZE))
