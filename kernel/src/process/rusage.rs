@@ -18,43 +18,81 @@
 
 //! Monitoring of the resource usage of processes.
 
-use crate::time::unit::Timeval;
+use crate::time::unit::{Timeval, Timeval32};
 
 // TODO Place calls in kernel's code to update usage
 
 /// Usage of each resource by a process.
+#[allow(missing_docs)]
 #[derive(Clone, Debug, Default)]
+#[repr(C)]
 pub struct Rusage {
-	/// User CPU time used.
 	pub ru_utime: Timeval,
-	/// System CPU time used.
 	pub ru_stime: Timeval,
-	/// Maximum resident set size.
 	pub ru_maxrss: i64,
-	/// Integral shared memory size.
 	pub ru_ixrss: i64,
-	/// Integral unshared data size.
 	pub ru_idrss: i64,
-	/// Integral unshared stack size.
 	pub ru_isrss: i64,
-	/// Page reclaims (soft page faults).
 	pub ru_minflt: i64,
-	/// Page faults (hard page faults).
 	pub ru_majflt: i64,
-	/// Swaps.
 	pub ru_nswap: i64,
-	/// Block input operations.
 	pub ru_inblock: i64,
-	/// Block output operations.
 	pub ru_oublock: i64,
-	/// IPC messages sent.
 	pub ru_msgsnd: i64,
-	/// IPC messages received.
 	pub ru_msgrcv: i64,
-	/// Signals received.
 	pub ru_nsignals: i64,
-	/// Voluntary context switches.
 	pub ru_nvcsw: i64,
-	/// Involuntary context switches.
 	pub ru_nivcsw: i64,
+}
+
+/// 32-bit version of [`Rusage`].
+#[allow(missing_docs)]
+#[derive(Clone, Debug, Default)]
+#[repr(C)]
+pub struct Rusage32 {
+	pub ru_utime: Timeval32,
+	pub ru_stime: Timeval32,
+	pub ru_maxrss: i32,
+	pub ru_ixrss: i32,
+	pub ru_idrss: i32,
+	pub ru_isrss: i32,
+	pub ru_minflt: i32,
+	pub ru_majflt: i32,
+	pub ru_nswap: i32,
+	pub ru_inblock: i32,
+	pub ru_oublock: i32,
+	pub ru_msgsnd: i32,
+	pub ru_msgrcv: i32,
+	pub ru_nsignals: i32,
+	pub ru_nvcsw: i32,
+	pub ru_nivcsw: i32,
+}
+
+impl From<&Rusage> for Rusage32 {
+	fn from(r: &Rusage) -> Self {
+		Self {
+			ru_utime: Timeval32 {
+				tv_sec: r.ru_utime.tv_sec as _,
+				tv_usec: r.ru_utime.tv_usec as _,
+			},
+			ru_stime: Timeval32 {
+				tv_sec: r.ru_stime.tv_sec as _,
+				tv_usec: r.ru_stime.tv_usec as _,
+			},
+			ru_maxrss: r.ru_maxrss as _,
+			ru_ixrss: r.ru_ixrss as _,
+			ru_idrss: r.ru_idrss as _,
+			ru_isrss: r.ru_isrss as _,
+			ru_minflt: r.ru_minflt as _,
+			ru_majflt: r.ru_majflt as _,
+			ru_nswap: r.ru_nswap as _,
+			ru_inblock: r.ru_inblock as _,
+			ru_oublock: r.ru_oublock as _,
+			ru_msgsnd: r.ru_msgsnd as _,
+			ru_msgrcv: r.ru_msgrcv as _,
+			ru_nsignals: r.ru_nsignals as _,
+			ru_nvcsw: r.ru_nvcsw as _,
+			ru_nivcsw: r.ru_nivcsw as _,
+		}
+	}
 }

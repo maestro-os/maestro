@@ -28,7 +28,7 @@ use crate::{
 	process::{
 		ForkOptions, PROCESS_FLAG_LINUX, Process, State, USER_STACK_SIZE,
 		pid::Pid,
-		rusage::Rusage,
+		rusage::{Rusage, Rusage32},
 		scheduler::{
 			cpu::{CPU, iter_online},
 			defer, schedule,
@@ -391,17 +391,25 @@ pub fn prctl(op: c_int, arg0: usize, arg1: usize, arg2: usize, arg3: usize) -> E
 	}
 }
 
-pub fn getrusage(who: c_int, usage: UserPtr<Rusage>) -> EResult<usize> {
+fn get_rusage(who: c_int) -> EResult<Rusage> {
 	let proc = Process::current();
-	let rusage = match who {
-		RUSAGE_SELF => proc.rusage.lock().clone(),
+	match who {
+		RUSAGE_SELF => Ok(proc.rusage.lock().clone()),
 		RUSAGE_CHILDREN => {
 			// TODO Return resources of terminated children
-			Rusage::default()
+			Ok(Rusage::default())
 		}
-		_ => return Err(errno!(EINVAL)),
-	};
-	usage.copy_to_user(&rusage)?;
+		_ => Err(errno!(EINVAL)),
+	}
+}
+
+pub fn getrusage(who: c_int, usage: UserPtr<Rusage>) -> EResult<usize> {
+	usage.copy_to_user(&get_rusage(who)?)?;
+	Ok(0)
+}
+
+pub fn getrusage32(who: c_int, usage: UserPtr<Rusage32>) -> EResult<usize> {
+	usage.copy_to_user(&Rusage32::from(&get_rusage(who)?))?;
 	Ok(0)
 }
 

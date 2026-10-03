@@ -89,6 +89,10 @@ pub fn uname(buf: UserPtr<Utsname>) -> EResult<usize> {
 	Ok(0)
 }
 
+/// The size of the padding at the end of `struct sysinfo`, which the ABI defines as
+/// `20 - 2 * sizeof(long) - sizeof(int)`.
+const SYSINFO_PAD: usize = 20 - 2 * size_of::<c_ulong>() - size_of::<c_uint>();
+
 /// Userspace structure storing some system usage statistics.
 #[derive(Debug)]
 #[repr(C)]
@@ -119,12 +123,73 @@ pub struct Sysinfo {
 	freehigh: c_ulong,
 	/// Memory unit size in bytes
 	mem_unit: c_uint,
-	__reserved: [c_char; 256],
+	_f: [c_char; SYSINFO_PAD],
 }
 
-pub fn sysinfo(info: UserPtr<Sysinfo>) -> EResult<usize> {
+/// 32-bit version of [`Sysinfo`].
+#[derive(Debug)]
+#[repr(C)]
+pub struct Sysinfo32 {
+	/// Seconds since boot
+	uptime: i32,
+	/// 1, 5 and 15 minute load averages
+	loads: [u32; 3],
+	/// Total usable main memory size
+	totalram: u32,
+	/// Available memory size
+	freeram: u32,
+	/// Amount of shared memory
+	sharedram: u32,
+	/// Memory used by buffers
+	bufferram: u32,
+	/// Total swap space size
+	totalswap: u32,
+	/// Swap space still available
+	freeswap: u32,
+	/// Number of current processes
+	procs: u16,
+	/// Padding
+	pad: u16,
+	/// Total high memory size
+	totalhigh: u32,
+	/// Available high memory size
+	freehigh: u32,
+	/// Memory unit size in bytes
+	mem_unit: u32,
+	_f: [c_char; 20 - 2 * size_of::<u32>() - size_of::<u32>()],
+}
+
+// The ABI fixes both layouts, and getting them wrong overflows a userspace buffer
+const _: () = assert!(size_of::<Sysinfo32>() == 64);
+#[cfg(target_arch = "x86_64")]
+const _: () = assert!(size_of::<Sysinfo>() == 112);
+#[cfg(target_arch = "x86")]
+const _: () = assert!(size_of::<Sysinfo>() == 64);
+
+impl From<&Sysinfo> for Sysinfo32 {
+	fn from(info: &Sysinfo) -> Self {
+		Self {
+			uptime: info.uptime as _,
+			loads: [info.loads[0] as _, info.loads[1] as _, info.loads[2] as _],
+			totalram: info.totalram as _,
+			freeram: info.freeram as _,
+			sharedram: info.sharedram as _,
+			bufferram: info.bufferram as _,
+			totalswap: info.totalswap as _,
+			freeswap: info.freeswap as _,
+			procs: info.procs,
+			pad: 0,
+			totalhigh: info.totalhigh as _,
+			freehigh: info.freehigh as _,
+			mem_unit: info.mem_unit,
+			_f: [0; 20 - 2 * size_of::<u32>() - size_of::<u32>()],
+		}
+	}
+}
+
+fn get_sysinfo() -> Sysinfo {
 	let mem_info = MEM_INFO.lock().clone();
-	info.copy_to_user(&Sysinfo {
+	Sysinfo {
 		uptime: current_time_sec(Clock::Boottime) as _,
 		loads: [0; 3], // TODO
 		totalram: mem_info.mem_total as _,
@@ -137,9 +202,18 @@ pub fn sysinfo(info: UserPtr<Sysinfo>) -> EResult<usize> {
 		pad: 0,
 		totalhigh: 0, // TODO
 		freehigh: 0,  // TODO
-		mem_unit: 0,  // TODO
-		__reserved: [0; 256],
-	})?;
+		mem_unit: 1024,
+		_f: [0; SYSINFO_PAD],
+	}
+}
+
+pub fn sysinfo(info: UserPtr<Sysinfo>) -> EResult<usize> {
+	info.copy_to_user(&get_sysinfo())?;
+	Ok(0)
+}
+
+pub fn sysinfo32(info: UserPtr<Sysinfo32>) -> EResult<usize> {
+	info.copy_to_user(&Sysinfo32::from(&get_sysinfo()))?;
 	Ok(0)
 }
 
