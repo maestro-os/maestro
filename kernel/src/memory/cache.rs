@@ -364,15 +364,47 @@ impl MappedNode {
 /// Global cache for all pages
 static LRU: Mutex<list_type!(RcPageInner, lru), false> = Mutex::new(list!(RcPageInner, lru));
 
+/// Tells whether `page` has data that [`RcPage::writeback`] would send to disk at `ts`.
+///
+/// This is the same condition as `writeback`'s, which checks it again: it is used to pick
+/// the pages that are worth taking out of the LRU.
+fn needs_writeback(page: &RcPageInner, ts: Timestamp) -> bool {
+	if page.dev.is_none() {
+		return false;
+	}
+	let meta = buddy::get_page(page.addr);
+	meta.dirty.load(Acquire) && ts >= meta.last_write.load(Acquire) + WRITEBACK_TIMEOUT
+}
+
 fn flush_task_inner(cur_ts: Timestamp) {
-	// Iterate on all pages
-	let mut lru = LRU.lock();
-	for cursor in lru.iter().rev() {
-		let page = RcPage(cursor.arc());
-		if let Err(errno) = page.writeback(Some(cur_ts), true) {
-			// Failure, try the next page
-			println!("Disk writeback I/O failure: {errno}");
-			continue;
+	/// Number of pages taken per acquisition of the LRU lock.
+	const BATCH: usize = 64;
+	// `RcPage::drop` takes `LRU`, and `writeback` performs I/O that may sleep; neither
+	// may happen while the guard is held. Take a batch of pages, release the lock, then
+	// write them back and let them drop
+	loop {
+		let mut batch: [Option<RcPage>; BATCH] = [const { None }; BATCH];
+		let mut i = 0;
+		// Fill batch array
+		{
+			let mut lru = LRU.lock();
+			for cursor in lru.iter().rev() {
+				if !needs_writeback(cursor.value(), cur_ts) {
+					continue;
+				}
+				batch[i] = Some(RcPage(cursor.arc()));
+				i += 1;
+				if i == BATCH {
+					break;
+				}
+			}
+		}
+		for page in batch.iter_mut().take(i) {
+			let page = page.take().unwrap();
+			if let Err(errno) = page.writeback(Some(cur_ts), true) {
+				// Failure, but continue regardless
+				println!("Disk writeback I/O failure: {errno}");
+			}
 		}
 	}
 }
@@ -392,40 +424,60 @@ pub(crate) fn flush_task() -> ! {
 ///
 /// If the cache cannot shrink, the function returns `false`.
 pub fn shrink() -> bool {
-	// Search for and remove an inactive page
-	let mut lru = LRU.lock();
-	let mut iter = lru.iter().rev();
+	let mut skip = 0;
 	loop {
-		let Some(cursor) = iter.next() else {
-			// No more pages remaining
-			return false;
+		// `writeback` sleeps on I/O and `RcPage::drop` takes `LRU` again, so neither may run
+		// while the lock is held. Only the search for a candidate does, and it holds plain
+		// [`Arc`]s rather than [`RcPage`]s, whose `Drop` is the one that takes `LRU`.
+		let page = {
+			let mut lru = LRU.lock();
+			// Start from the end, to remove least used pages first
+			let mut iter = lru.iter().rev().skip(skip);
+			loop {
+				let Some(cursor) = iter.next() else {
+					// No page can be reclaimed
+					return false;
+				};
+				skip += 1;
+				let page = cursor.arc();
+				// The LRU holds one reference and the search another. Another reference
+				// means the page is in use
+				let count = 2 + page.dev.is_some() as usize;
+				if Arc::strong_count(&page) <= count {
+					break RcPage(page);
+				}
+			}
 		};
-		// Get as an Arc to access the reference counter
-		let page = RcPage(cursor.arc());
-		{
-			// We lock the cache first to avoid having someone else activating the page while
-			// we are removing it
+		let reclaimed = {
+			// Lock the cache first to avoid having someone else activate the page while we
+			// are removing it
 			let mut cache = page.0.dev.as_ref().map(|dev| dev.mapped.cache.lock());
-			// If the page is used somewhere else, skip to the next
+			// `page` and the LRU hold one reference each, plus the cache if present
 			let count = 2 + cache.is_some() as usize;
 			if Arc::strong_count(&page.0) > count {
-				continue;
-			}
-			if let Err(errno) = page.writeback(None, false) {
-				// Failure, try the next page
+				// Used somewhere else, try the next one
+				false
+			} else if let Err(errno) = page.writeback(None, false) {
 				println!("Disk writeback I/O failure: {errno}");
-				continue;
+				false
+			} else {
+				// Remove the page from its node
+				if let Some(cache) = &mut cache {
+					cache.remove(&page.0.dev_off);
+				}
+				true
 			}
-			// Remove the page from its node
-			if let Some(cache) = &mut cache {
-				cache.remove(&page.0.dev_off);
+		};
+		if reclaimed {
+			unsafe {
+				LRU.lock().remove(&page.0);
 			}
+			// Dropping the page here reclaims it, with no lock held
+			drop(page);
+			// Update inactive count
+			let mut mem_info = MEM_INFO.lock();
+			mem_info.inactive = mem_info.inactive.saturating_sub(4);
+			return true;
 		}
-		// Remove the page from the LRU
-		cursor.remove();
-		break;
 	}
-	// Update statistics
-	MEM_INFO.lock().inactive -= 4;
-	true
 }
