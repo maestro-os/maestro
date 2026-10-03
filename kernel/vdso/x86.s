@@ -29,13 +29,14 @@ __kernel_vsyscall:
 	int $0x80
 	ret
 
-__kernel_rt_sigreturn:
-	# TODO
-	ud2
-
 __kernel_sigreturn:
-	# TODO
-	ud2
+    add $4, esp
+	movl $119, %eax
+	int $0x80
+
+__kernel_rt_sigreturn:
+	movl $173, %eax
+	int $0x80
 
 __vdso_clock_gettime:
 	# TODO

@@ -192,9 +192,19 @@ pub fn rt_sigsuspend(unewset: UserPtr<SigSet>, sigsetsize: usize) -> EResult<usi
 }
 
 pub fn sigreturn(frame: &mut IntFrame) -> EResult<usize> {
+	do_sigreturn(frame, false)
+}
+
+fn do_sigreturn(frame: &mut IntFrame, rt: bool) -> EResult<usize> {
 	let proc = Process::current();
 	// Retrieve and restore previous state
-	let stack_ptr = frame.get_stack_address();
+	let mut stack_ptr = frame.get_stack_address();
+	// The signal frame is `[restorer, signal number, context]`. On 32 bit, `__restore`
+	// pops the signal number before issuing the syscall, but `__restore_rt` does not, so
+	// for the latter the context sits one word further up the stack.
+	if rt && frame.is_compat() {
+		stack_ptr += size_of::<u32>();
+	}
 	if frame.is_compat() {
 		let ctx = UserPtr::<ucontext::UContext32>::from_ptr(stack_ptr)
 			.copy_from_user()?
@@ -217,7 +227,7 @@ pub fn sigreturn(frame: &mut IntFrame) -> EResult<usize> {
 }
 
 pub fn rt_sigreturn(frame: &mut IntFrame) -> EResult<usize> {
-	sigreturn(frame)
+	do_sigreturn(frame, true)
 }
 
 /// Tries to kill the process with PID `pid` with the signal `sig`.
