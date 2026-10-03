@@ -27,14 +27,18 @@
 use crate::{file::vfs, memory::cache};
 use utils::errno::AllocResult;
 
-/// Attempts to reclaim memory from different places, or panics on failure.
+/// Attempts to reclaim memory.
+///
+/// Returns `true` if memory was freed.
+///
+/// Unlike [`reclaim`], the function does not panic when nothing can be freed.
+pub fn try_reclaim() -> bool {
+	cache::shrink() || vfs::shrink_entries()
+}
+
+/// Attempts to reclaim memory, or panics on failure.
 pub fn reclaim() {
-	// Attempt to shrink the page cache
-	if cache::shrink() {
-		return;
-	}
-	// Attempt to shrink the directory entries cache
-	if vfs::shrink_entries() {
+	if try_reclaim() {
 		return;
 	}
 	// TODO Attempt to:

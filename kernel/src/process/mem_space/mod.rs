@@ -31,6 +31,7 @@ use crate::{
 	memory::{
 		COMPAT_PROCESS_END, PROCESS_END, VirtAddr,
 		cache::RcPage,
+		oom,
 		user::UserSlice,
 		vmem::{KERNEL_VMEM, VMem, shootdown_range},
 	},
@@ -48,7 +49,7 @@ use utils::{
 	TryClone,
 	collections::btreemap::{Augment, AugmentRef, BTreeMap, Descent},
 	errno,
-	errno::{AllocResult, EResult},
+	errno::{AllocResult, ENOMEM, EResult},
 	limits::PAGE_SIZE,
 	ptr::arc::Arc,
 	range_cmp,
@@ -748,7 +749,15 @@ impl MemSpace {
 		}
 		// Map the accessed page
 		let page_offset = (addr.0 - mapping.addr.0) / PAGE_SIZE;
-		mapping.map(self, page_offset, write)?;
+		let mut res = mapping.map(self, page_offset, write);
+		// The page the fault needs may be exactly what the caches are holding, so give them
+		// a chance to give it back instead of failing the fault. Without this, a fault that
+		// runs out of memory raises `SIGBUS`, and a handler for it faults the same way: the
+		// process then makes no progress at all
+		while matches!(&res, Err(e) if e.as_int() == ENOMEM) && oom::try_reclaim() {
+			res = mapping.map(self, page_offset, write);
+		}
+		res?;
 		Ok(true)
 	}
 }
