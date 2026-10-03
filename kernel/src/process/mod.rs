@@ -775,7 +775,7 @@ impl Process {
 	/// Waits until the process is no longer running on any CPU.
 	///
 	/// A non-[`State::Running`] process keeps its state write-locked from the moment it stops
-	/// running until its context switch is effective ([`switch`] calls [`Self::unlock_state`]).
+	/// running until its context switch is effective.
 	///
 	/// This function is used to avoid reclaiming resources of a process that has been marked as
 	/// `Zombie` but whose final context switch has not happened yet.

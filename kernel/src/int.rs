@@ -40,7 +40,7 @@ pub type Callback = Box<CallbackInner>;
 
 const HARDWARE_INT_COUNT: usize = 32;
 
-/// Per-CPU callback list, stored in [`PerCpu`].
+/// Per-CPU callback list, stored in the `PerCpu` structure.
 pub struct CallbackList([UnsafeCell<Option<Callback>>; idt::ENTRIES_COUNT]);
 
 impl Default for CallbackList {

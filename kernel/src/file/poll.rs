@@ -118,7 +118,7 @@ pub struct EpollItem {
 	/// The events the user is interested in (poll bits only, without the
 	/// behaviour flags).
 	pub events: u32,
-	/// The behaviour flags ([`EPOLLET`] and [`EPOLLONESHOT`]).
+	/// The behaviour flags.
 	pub flags: u32,
 	/// Opaque user data associated with the entry.
 	pub data: u64,
