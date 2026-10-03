@@ -201,10 +201,7 @@ pub fn exec(cmd: &mut Command) -> TestResult {
 	if status.success() {
 		Ok(())
 	} else {
-		Err(TestError(format!(
-			"Command failed (status: {code}): {cmd:?}",
-			code = status.code().unwrap(),
-		)))
+		Err(TestError(format!("Command failed ({status}): {cmd:?}")))
 	}
 }
 
