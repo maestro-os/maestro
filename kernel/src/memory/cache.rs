@@ -399,6 +399,10 @@ fn flush_task_inner(cur_ts: Timestamp) {
 				}
 			}
 		}
+		// Nothing left to flush
+		if i == 0 {
+			break;
+		}
 		for page in batch.iter_mut().take(i) {
 			let page = page.take().unwrap();
 			if let Err(errno) = page.writeback(Some(cur_ts), true) {
