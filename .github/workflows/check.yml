@@ -392,7 +392,7 @@ jobs:
         working-directory: kernel
         env:
           CARGOFLAGS: --target arch/${{ matrix.arch.kernel }}/${{ matrix.arch.kernel }}.json
-          QEMUFLAGS: "-smp ${{ matrix.cores }}"
+          QEMUFLAGS: "-smp ${{ matrix.cores }} -m 512M"
           DISKTYPE: ${{ matrix.disktype }}
         run: |
           mv ../disk-${{ matrix.arch.kernel }} qemu_disk
@@ -403,7 +403,7 @@ jobs:
         working-directory: kernel
         env:
           CARGOFLAGS: --target arch/${{ matrix.arch.kernel }}/${{ matrix.arch.kernel }}.json
-          QEMUFLAGS: "-smp ${{ matrix.cores }}"
+          QEMUFLAGS: "-smp ${{ matrix.cores }} -m 512M"
           DISKTYPE: ${{ matrix.disktype }}
         run: |
           mv ../disk-${{ matrix.arch.kernel }}-compat qemu_disk
