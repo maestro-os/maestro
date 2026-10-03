@@ -119,10 +119,8 @@ pub fn symbols() -> impl Iterator<Item = KernSym> {
 ///
 /// If the name of the symbol could not be found, the function returns `None`.
 pub fn get_symbol_name(symbol: &KernSym) -> Option<&'static [u8]> {
-	let ptr = PhysAddr(STRTAB.sh_addr as usize + symbol.st_name as usize)
-		.kernel_to_virtual()
-		.unwrap()
-		.as_ptr();
+	let off = (STRTAB.sh_addr as usize).checked_add(symbol.st_name as usize)?;
+	let ptr = PhysAddr(off).kernel_to_virtual()?.as_ptr();
 	// The string is in bound, otherwise the kernel's ELF is invalid
 	Some(unsafe { utils::str_from_ptr(ptr) })
 }

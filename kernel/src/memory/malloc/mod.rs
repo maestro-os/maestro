@@ -49,6 +49,10 @@ unsafe fn alloc_impl(n: NonZeroUsize) -> AllocResult<NonNull<u8>> {
 	free_chunk.check();
 	// Mark chunk as used
 	let chunk = &mut free_chunk.chunk;
+	debug_assert!(
+		!chunk.used,
+		"malloc: allocating a chunk that is already used"
+	);
 	chunk.used = true;
 	// Return pointer
 	let ptr = chunk.get_ptr_mut();
@@ -109,7 +113,7 @@ unsafe fn realloc(ptr: NonNull<u8>, n: NonZeroUsize) -> AllocResult<NonNull<u8>>
 unsafe fn free_impl(mut ptr: NonNull<u8>) {
 	// Get chunk
 	let chunk = Chunk::from_ptr(ptr.as_mut());
-	assert!(chunk.used);
+	assert!(chunk.used, "malloc: freeing a chunk that is not in use");
 	#[cfg(config_debug_malloc_check)]
 	chunk.check();
 	// Mark as free
@@ -119,10 +123,16 @@ unsafe fn free_impl(mut ptr: NonNull<u8>) {
 	free_chunk.next = None;
 	// Merge with adjacent chunks
 	let chunk = chunk.coalesce();
-	if chunk.is_single() {
-		chunk.as_free_chunk().unwrap().free_list_remove();
+	let single = chunk.is_single();
+	let free_chunk = chunk.as_free_chunk().unwrap();
+	if single {
+		free_chunk.free_list_remove();
 		let block = Block::from_first_chunk(chunk);
 		drop_in_place(block);
+	} else {
+		// `coalesce` takes the chunk out of its free list to merge it. Put it back so next
+		// allocations can find it
+		free_chunk.free_list_insert();
 	}
 }
 
