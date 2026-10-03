@@ -361,7 +361,7 @@ impl FileOps for TmpFSFile {
 			// Zero the last page
 			if let Some(page) = pages.last() {
 				let inner_off = size % PAGE_SIZE;
-				let slice = unsafe { page.slice_mut() };
+				let slice = unsafe { page.slice_mut::<u8>() };
 				slice[inner_off..].fill(0);
 			}
 			// Clear cache

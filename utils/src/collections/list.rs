@@ -357,11 +357,16 @@ impl<T, const OFF: usize> List<T, OFF> {
 	/// The function is marked as unsafe because it cannot ensure `val` actually is inserted in
 	/// `self`. This is the caller's responsibility.
 	pub unsafe fn lru_promote(&mut self, val: &Arc<T>) {
-		let mut cursor = Cursor {
-			list: NonNull::from(&mut *self),
-			node: Self::get_node(val).as_ref(),
-		};
-		cursor.lru_promote();
+		let node = Self::get_node(val).as_ref();
+		if node.is_linked() {
+			let mut cursor = Cursor {
+				list: NonNull::from(&mut *self),
+				node,
+			};
+			cursor.lru_promote();
+		} else {
+			self.insert_front(val.clone());
+		}
 	}
 
 	/// Unlinks all the elements from the list.
@@ -437,6 +442,10 @@ impl<'l, T: 'l, const OFF: usize> Cursor<'l, T, OFF> {
 			if ptr::addr_eq(self.node, head.as_ptr()) {
 				return;
 			}
+			// The list owns a reference for each node linked in it. Re-linking a node that
+			// is not currently linked would add one without taking that reference, leaving
+			// the list pointing at memory that can be freed while still linked
+			debug_assert!(self.node.is_linked());
 			// Move the node in the list
 			self.node.unlink();
 			self.node.insert_before(head);

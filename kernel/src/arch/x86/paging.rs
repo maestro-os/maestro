@@ -159,11 +159,7 @@ impl Table {
 			return;
 		}
 		let flags = val & (FLAGS_MASK & !FLAG_PAGE_SIZE);
-		let stride = if level == 1 {
-			PAGE_SIZE
-		} else {
-			PAGE_SIZE * PAGE_SIZE
-		};
+		let stride = PAGE_SIZE << (PAGE_SIZE_ORDER_1 as usize * (level - 1));
 		// Create table
 		let mut new_table = alloc_table();
 		let new_table_ref = unsafe { new_table.as_mut() };
@@ -339,10 +335,17 @@ pub unsafe fn map(
 			}
 			// Use PAGE_SIZE if appropriate
 			(1, true, PAGE_SIZE_ORDER_1..) => {
+				debug_assert!(virtaddr.0 & ((PAGE_SIZE << PAGE_SIZE_ORDER_1) - 1) == 0);
+				debug_assert!(physaddr.0 & ((PAGE_SIZE << PAGE_SIZE_ORDER_1) - 1) == 0);
 				ent.store(to_entry(physaddr, flags), Relaxed);
 				return PAGE_SIZE << PAGE_SIZE_ORDER_1;
 			}
 			(2, true, PAGE_SIZE_ORDER_2..) if likely(*PAGE_SIZE_1GB) => {
+				#[cfg(target_arch = "x86_64")]
+				{
+					debug_assert!(virtaddr.0 & ((PAGE_SIZE << PAGE_SIZE_ORDER_2) - 1) == 0);
+					debug_assert!(physaddr.0 & ((PAGE_SIZE << PAGE_SIZE_ORDER_2) - 1) == 0);
+				}
 				ent.store(to_entry(physaddr, flags), Relaxed);
 				return PAGE_SIZE << PAGE_SIZE_ORDER_2;
 			}
@@ -391,7 +394,8 @@ pub unsafe fn map_range(
 	let end = virtaddr + pages * PAGE_SIZE;
 	while virtaddr < end {
 		// log2(PAGE_SIZE) = 12
-		let align_order = (physaddr.0 | (end.0 - virtaddr.0)).trailing_zeros() as u8 - 12;
+		let align_order =
+			(physaddr.0 | virtaddr.0 | (end.0 - virtaddr.0)).trailing_zeros() as u8 - 12;
 		let off = map(
 			table,
 			physaddr,
