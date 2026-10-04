@@ -228,9 +228,12 @@ pub trait NodeOps: Any + Debug {
 	/// First, the function attempts to read the page from the node's page cache. If not present,
 	/// then it is read from disk.
 	///
+	/// `alloc` tells whether we need to allocate a block if the offset has no block backing it.
+	/// This is necessary to handle shared mappings, where writes must be forwarded to disk.
+	///
 	/// The default implementation of this function returns an error.
-	fn read_page(&self, node: &Arc<Node>, off: u64) -> EResult<RcPage> {
-		let _ = (node, off);
+	fn read_page(&self, node: &Arc<Node>, off: u64, alloc: bool) -> EResult<RcPage> {
+		let _ = (node, off, alloc);
 		Err(errno!(EINVAL))
 	}
 
@@ -351,7 +354,7 @@ pub fn generic_file_read(file: &File, mut off: u64, buf: UserSlice<u8>) -> EResu
 	let end = off.saturating_add(buf_len).div_ceil(PAGE_SIZE as u64);
 	let mut buf_off = 0;
 	for page_off in start..end {
-		let page = node.node_ops.read_page(node, page_off)?;
+		let page = node.node_ops.read_page(node, page_off, false)?;
 		let inner_off = off as usize % PAGE_SIZE;
 		let max_len = min(size - off, (PAGE_SIZE - inner_off) as u64) as usize;
 		let len = unsafe {
@@ -379,7 +382,7 @@ pub fn generic_file_write(file: &File, mut off: u64, buf: UserSlice<u8>) -> ERes
 	let end = end.div_ceil(PAGE_SIZE as u64);
 	let mut buf_off = 0;
 	for page_off in start..end {
-		let page = node.node_ops.read_page(node, page_off)?;
+		let page = node.node_ops.read_page(node, page_off, true)?;
 		let inner_off = off as usize % PAGE_SIZE;
 		let len = unsafe {
 			let page_ptr = page.virt_addr().as_ptr::<u8>().add(inner_off);

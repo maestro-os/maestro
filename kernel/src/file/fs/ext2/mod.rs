@@ -416,16 +416,33 @@ impl NodeOps for Ext2NodeOps {
 		Ok(())
 	}
 
-	fn read_page(&self, node: &Arc<Node>, off: u64) -> EResult<RcPage> {
-		node.mapped.get_or_insert_page(off, || {
-			let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
-			let inode = Ext2INode::get(node, fs)?;
-			let off: u32 = off.try_into().map_err(|_| errno!(EOVERFLOW))?;
-			let blk_off = inode
-				.translate_blk_off(off, fs)?
-				.ok_or_else(|| errno!(EOVERFLOW))?;
-			fs.dev.ops.read_page(&fs.dev, blk_off.get() as _)
-		})
+	fn read_page(&self, node: &Arc<Node>, off: u64, alloc: bool) -> EResult<RcPage> {
+		if let Some(page) = node.mapped.get(off) {
+			return Ok(page);
+		}
+		let fs = downcast_fs::<Ext2Fs>(&*node.fs.ops);
+		let blk: u32 = off.try_into().map_err(|_| errno!(EOVERFLOW))?;
+		let mut inode = Ext2INode::get(node, fs)?;
+		let blk_off = match inode.translate_blk_off(blk, fs)? {
+			Some(blk_off) => blk_off.get(),
+			// No block. Allocate one
+			None => {
+				let begin = off * fs.sp.get_block_size() as u64;
+				if begin >= inode.get_size(&fs.sp) {
+					return Err(errno!(EOVERFLOW));
+				}
+				if !alloc {
+					return Ok(RcPage::new_zeroed()?);
+				}
+				let blk_off = inode.alloc_content_blk(blk, fs)?;
+				inode.mark_dirty();
+				blk_off
+			}
+		};
+		// Do not hold the inode across the device read
+		drop(inode);
+		node.mapped
+			.get_or_insert_page(off, || fs.dev.ops.read_page(&fs.dev, blk_off as _))
 	}
 
 	fn set_stat(&self, node: &Node, stat: &Stat) -> EResult<()> {

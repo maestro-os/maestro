@@ -278,7 +278,10 @@ impl MemMapping {
 				}
 				// Get page from file
 				let node = file.node();
-				let mut page = node.node_ops.read_page(node, file_off)?;
+				// A shared mapping writes through to the file, so an offset backed by no
+				// block has to allocate one
+				let shared = self.flags & MAP_SHARED != 0;
+				let mut page = node.node_ops.read_page(node, file_off, shared)?;
 				// If the mapping is private, we need our own copy
 				if self.flags & MAP_PRIVATE != 0 {
 					page = init_page(&mem_space.vmem, self.prot, Some(&page), virtaddr)?;

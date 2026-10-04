@@ -311,7 +311,7 @@ impl NodeOps for NodeContent {
 		Ok(())
 	}
 
-	fn read_page(&self, _node: &Arc<Node>, off: u64) -> EResult<RcPage> {
+	fn read_page(&self, _node: &Arc<Node>, off: u64, _alloc: bool) -> EResult<RcPage> {
 		let i: usize = off.try_into().map_err(|_| errno!(EOVERFLOW))?;
 		let NodeContent::Regular(pages) = self else {
 			return Err(errno!(EINVAL));
