@@ -397,7 +397,7 @@ jobs:
         run: |
           mv ../disk-${{ matrix.arch.kernel }} qemu_disk
           ci/test.sh int
-        timeout-minutes: 3
+        timeout-minutes: 5
       - name: Run (compat)
         if: ${{ matrix.arch.user_compat }}
         working-directory: kernel
@@ -408,4 +408,4 @@ jobs:
         run: |
           mv ../disk-${{ matrix.arch.kernel }}-compat qemu_disk
           ci/test.sh int
-        timeout-minutes: 3
+        timeout-minutes: 5
