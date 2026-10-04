@@ -30,7 +30,7 @@ use super::{DummyOps, Filesystem, FilesystemOps, FilesystemType, NodeOps};
 use crate::{
 	device::BlkDev,
 	file::{
-		DirContext, DirEntry, FileType, Mode, Stat,
+		DirContext, DirEntry, FileType, INode, Mode, Stat,
 		fs::{
 			Statfs,
 			kernfs::{
@@ -80,6 +80,17 @@ fn proc_file_stat(pid: Pid, mode: Mode) -> Stat {
 	}
 }
 
+/// Inode number of the filesystem's root.
+const ROOT_INODE: INode = 1;
+
+fn pid_inode(pid: Pid) -> INode {
+	/// Base of the inode numbers of the per-process directories.
+	const PID_INODE_BASE: INode = 1 << 40;
+	/// Count of inode numbers each process owns.
+	const PID_INODE_STRIDE: INode = 1 << 24;
+	PID_INODE_BASE + pid as INode * PID_INODE_STRIDE
+}
+
 /// The root directory of the proc.
 #[derive(Clone, Debug)]
 struct RootDir;
@@ -127,7 +138,10 @@ impl RootDir {
 								box_node(StaticDir {
 									entries: &[StaticEntry {
 										name: b"osrelease",
-										stat: |_| static_dir_stat(),
+										stat: |_| Stat {
+											mode: FileType::Regular.to_mode() | 0o444,
+											..Default::default()
+										},
 										init: EitherOps::File(|_| box_file(OsRelease)),
 									}],
 									data: (),
@@ -179,7 +193,7 @@ impl NodeOps for RootDir {
 		ent.node = Process::get_by_pid(pid)
 			.map(|_| {
 				Arc::new(Node::new(
-					0,
+					pid_inode(pid),
 					dir.fs.clone(),
 					static_dir_stat(),
 					Box::new(StaticDir {
@@ -312,7 +326,7 @@ impl FilesystemOps for ProcFS {
 
 	fn root(&self, fs: &Arc<Filesystem>) -> EResult<Arc<Node>> {
 		Ok(Arc::new(Node::new(
-			0,
+			ROOT_INODE,
 			fs.clone(),
 			RootDir::stat(),
 			Box::new(RootDir)?,

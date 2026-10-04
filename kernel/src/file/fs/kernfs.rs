@@ -255,6 +255,12 @@ pub struct StaticDir<T: 'static + Clone + Debug = ()> {
 	pub data: T,
 }
 
+fn entry_inode(dir: INode, index: usize) -> crate::file::INode {
+	const DIR_STRIDE: INode = 64;
+	dir.wrapping_mul(DIR_STRIDE)
+		.wrapping_add(index as INode + 1)
+}
+
 /// Returns [`Stat`] for [`StaticDir`].
 #[inline]
 pub fn static_dir_stat() -> Stat {
@@ -285,7 +291,13 @@ impl<T: 'static + Clone + Debug> NodeOps for StaticDir<T> {
 						(node_ops, file_ops)
 					}
 				};
-				Arc::new(Node::new(0, dir.fs.clone(), stat, node_ops, file_ops))
+				Arc::new(Node::new(
+					entry_inode(dir.inode, index),
+					dir.fs.clone(),
+					stat,
+					node_ops,
+					file_ops,
+				))
 			})
 			.transpose()?;
 		Ok(())

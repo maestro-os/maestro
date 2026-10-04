@@ -47,6 +47,8 @@ fn link_stat(_: ()) -> Stat {
 /// The root directory of the sysfs.
 ///
 /// **Warning**: entries of each [`StaticDir`] must be kept sorted alphabetically by name.
+const ROOT_INODE: crate::file::INode = 1;
+
 const ROOT: StaticDir = StaticDir {
 	entries: &[
 		StaticEntry {
@@ -148,7 +150,7 @@ impl FilesystemOps for SysFS {
 
 	fn root(&self, fs: &Arc<Filesystem>) -> EResult<Arc<Node>> {
 		Ok(Arc::new(Node::new(
-			0,
+			ROOT_INODE,
 			fs.clone(),
 			static_dir_stat(),
 			Box::new(ROOT)?,
