@@ -32,6 +32,7 @@ use std::{
 mod filesystem;
 mod module;
 mod mount;
+mod net;
 mod procfs;
 mod signal;
 mod util;
@@ -240,7 +241,21 @@ const TESTS: &[TestSuite] = &[
 			// TODO Rust
 		],
 	},
-	// TODO network
+	TestSuite {
+		name: "Network",
+		desc: "Test network connectivity",
+		tests: &[
+			// TODO network setup
+			// TODO ping
+			// TODO UDP
+			Test {
+				name: "HTTP call",
+				desc: "Attempt an HTTP call to the internet",
+				start: net::http_call,
+			},
+			// TODO http server
+		],
+	},
 	TestSuite {
 		name: "Unmount",
 		desc: "Unmount filesystems",
