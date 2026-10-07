@@ -16,8 +16,15 @@
  * Maestro. If not, see <https://www.gnu.org/licenses/>.
  */
 
-use crate::{test_assert, util::TestResult};
-use std::time::Duration;
+use crate::{
+	test_assert,
+	util::{TestResult, exec},
+};
+use std::{process::Command, time::Duration};
+
+pub fn ping() -> TestResult {
+	exec(Command::new("ping").args(["-c", "3", "github.com"]))
+}
 
 pub fn http_call() -> TestResult {
 	let client = reqwest::blocking::Client::new();

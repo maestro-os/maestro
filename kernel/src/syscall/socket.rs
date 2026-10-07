@@ -342,19 +342,16 @@ pub fn sendto(
 	dest_addr: *mut u8,
 	addrlen: isize,
 ) -> EResult<usize> {
-	let buf = UserSlice::from_user(buf, len)?;
-	let dest_addr = UserSlice::from_user(dest_addr, addrlen as _)?;
 	// Validation
 	if unlikely(addrlen < 0) {
 		return Err(errno!(EINVAL));
 	}
 	// Get socket
 	let file = fd_to_file(sockfd)?;
-	let _sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
-	// Get slices
-	let _buf_slice = buf.copy_from_user_vec(0)?.ok_or(errno!(EFAULT))?;
-	let _dest_addr_slice = dest_addr.copy_from_user_vec(0)?.ok_or(errno!(EFAULT))?;
-	todo!()
+	let sock: &Socket = file.get_buffer().ok_or_else(|| errno!(ENOTSOCK))?;
+	let buf = UserSlice::from_user(buf, len)?;
+	let dest_addr = read_sockaddr(sock.desc().domain, dest_addr, addrlen as _)?;
+	sock.ops.sendto(sock, buf, dest_addr)
 }
 
 pub fn shutdown(sockfd: c_int, how: c_int) -> EResult<usize> {

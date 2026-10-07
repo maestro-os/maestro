@@ -54,7 +54,7 @@ cp test/hello.cpp "$ROOT"
 echo "pkg.maestro-os.org" >"$ROOT/var/lib/blimp/remotes-list"
 # Install packages
 SYSROOT="$ROOT" blimp update
-yes | SYSROOT="$ROOT" blimp --arch "$PKG_ARCH" install binutils coreutils gcc musl
+yes | SYSROOT="$ROOT" blimp --arch "$PKG_ARCH" install binutils coreutils gcc musl maestro-net-tools
 
 # Create disk and filesystem
 rm -f disk
