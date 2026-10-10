@@ -26,7 +26,11 @@ pub mod osi;
 pub mod sockaddr;
 pub mod tcp;
 
-use crate::{file::perm::is_privileged, net::sockaddr::SaFamily, sync::spin::Spin};
+use crate::{
+	file::perm::is_privileged,
+	net::sockaddr::{SaFamily, SockAddr},
+	sync::spin::Spin,
+};
 use buf::BufList;
 use core::cmp::Ordering;
 use utils::{
@@ -48,6 +52,16 @@ pub enum Address {
 	IPv4([u8; 4]),
 	/// Internet Protocol version 6.
 	IPv6([u8; 16]),
+}
+
+impl Address {
+	fn from_sockaddr(addr: SockAddr) -> Option<Self> {
+		match addr {
+			SockAddr::Inet(a) => Some(Self::IPv4(a.sin_addr.to_ne_bytes())),
+			SockAddr::Inet6(a) => Some(Self::IPv6(unsafe { a.sin6_addr.__s6_addr })),
+			_ => None,
+		}
+	}
 }
 
 /// An address/subnet mask pair to be bound to an interface.
@@ -100,15 +114,15 @@ pub trait Interface {
 	/// Returns the list of addresses bound to the interface.
 	fn get_addresses(&self) -> &[BindAddress];
 
-	/// Reads data from the network interface and writes it into `buff`.
+	/// Reads data from the network interface and writes it into `buf`.
 	///
 	/// The function returns the number of bytes read.
-	fn read(&mut self, buff: &mut [u8]) -> EResult<u64>;
+	fn read(&self, buf: &mut [u8]) -> EResult<u64>;
 
-	/// Reads data from `buff` and writes it into the network interface.
+	/// Reads data from `buf` and writes it into the network interface.
 	///
 	/// The function returns the number of bytes written.
-	fn write(&mut self, buff: &BufList<'_>) -> EResult<u64>;
+	fn write(&self, buf: &BufList<'_>) -> EResult<u64>;
 }
 
 /// An entry in the routing table.
@@ -179,9 +193,9 @@ impl Route {
 }
 
 /// The list of network interfaces.
-pub static INTERFACES: Spin<HashMap<String, Arc<Spin<dyn Interface>>>> = Spin::new(HashMap::new());
-/// The routing table.
-pub static ROUTING_TABLE: Spin<Vec<Route>> = Spin::new(Vec::new());
+pub static INTERFACES: Spin<HashMap<String, Arc<dyn Interface>>> = Spin::new(HashMap::new());
+/// Routes list.
+pub static ROUTES: Spin<Vec<Route>> = Spin::new(Vec::new());
 
 /// Registers the given network interface.
 ///
@@ -189,34 +203,29 @@ pub static ROUTING_TABLE: Spin<Vec<Route>> = Spin::new(Vec::new());
 /// - `name` is the name of the interface.
 /// - `iface` is the interface to register.
 pub fn register_iface<I: 'static + Interface>(name: String, iface: I) -> EResult<()> {
-	let mut interfaces = INTERFACES.lock();
-
-	let i = Arc::new(Spin::new(iface))?;
-	interfaces.insert(name, i)?;
-
+	INTERFACES.lock().insert(name, Arc::new(iface)?)?;
 	Ok(())
 }
 
 /// Unregisters the network interface with the given name.
 pub fn unregister_iface(name: &[u8]) {
-	let mut interfaces = INTERFACES.lock();
-	interfaces.remove(name);
+	INTERFACES.lock().remove(name);
 }
 
 /// Returns the network interface with the given name.
 ///
 /// If the interface doesn't exist, thhe function returns `None`.
-pub fn get_iface(name: &[u8]) -> Option<Arc<Spin<dyn Interface>>> {
+pub fn get_iface(name: &[u8]) -> Option<Arc<dyn Interface>> {
 	INTERFACES.lock().get(name).cloned()
 }
 
 /// Returns the network interface to be used to transmit a packet to the given destination address.
-pub fn get_iface_for(addr: Address) -> Option<Arc<Spin<dyn Interface>>> {
-	let routing_table = ROUTING_TABLE.lock();
+pub fn get_iface_for(addr: &Address) -> Option<Arc<dyn Interface>> {
+	let routing_table = ROUTES.lock();
 	let route = routing_table
 		.iter()
-		.filter(|route| route.is_matching(&addr))
-		.max_by(|a, b| a.cmp_for(b, &addr))?;
+		.filter(|route| route.is_matching(addr))
+		.max_by(|a, b| a.cmp_for(b, addr))?;
 	get_iface(&route.iface)
 }
 

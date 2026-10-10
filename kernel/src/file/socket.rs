@@ -26,7 +26,12 @@ use crate::{
 		vfs,
 	},
 	memory::{ring_buffer::RingBuffer, user::UserSlice},
-	net::{SocketDesc, SocketDomain, osi, sockaddr::SockAddr},
+	net::{
+		SocketDesc, SocketDomain,
+		ip::{Inet6SocketOps, InetSocketOps},
+		osi,
+		sockaddr::SockAddr,
+	},
 	sync::{spin::Spin, wait_queue::WaitQueue},
 	syscall::ioctl,
 };
@@ -73,6 +78,15 @@ pub trait SocketOps: Debug {
 	///
 	/// On success, the function returns the number of bytes written.
 	fn write(&self, sock: &Socket, buf: UserSlice<u8>) -> EResult<usize>;
+
+	/// Sends a message on the socket.
+	///
+	/// Arguments:
+	/// - `buf` is the buffer the data is read from
+	/// - `addr` is the destination address
+	///
+	/// On success, the function returns the number of bytes sent.
+	fn sendto(&self, sock: &Socket, buf: UserSlice<u8>, addr: SockAddr) -> EResult<usize>;
 
 	/// Returns the mask of events that are ready on the socket.
 	fn poll(&self, sock: &Socket) -> EResult<u32>;
@@ -134,6 +148,10 @@ impl SocketOps for UnixSocketOps {
 			return Err(errno!(ENOTCONN));
 		};
 		peer_rx_buf.write(buf)
+	}
+
+	fn sendto(&self, _sock: &Socket, _buf: UserSlice<u8>, _addr: SockAddr) -> EResult<usize> {
+		todo!()
 	}
 
 	fn poll(&self, sock: &Socket) -> EResult<u32> {
@@ -206,9 +224,9 @@ impl Socket {
 	/// Creates a new instance, with default socket operations
 	pub fn new(desc: SocketDesc) -> AllocResult<Self> {
 		let ops = match desc.domain {
-			SocketDomain::AfUnix => Box::new(UnixSocketOps::default())?,
-			SocketDomain::AfInet => todo!(),
-			SocketDomain::AfInet6 => todo!(),
+			SocketDomain::AfUnix => Box::new(UnixSocketOps::default())? as Box<dyn SocketOps>,
+			SocketDomain::AfInet => Box::new(InetSocketOps::default())? as Box<dyn SocketOps>,
+			SocketDomain::AfInet6 => Box::new(Inet6SocketOps::default())? as Box<dyn SocketOps>,
 			SocketDomain::AfNetlink => todo!(),
 			SocketDomain::AfPacket => todo!(),
 		};

@@ -19,9 +19,16 @@
 //! This module implements the IP protocol.
 
 use super::{buf::BufList, osi::Layer};
-use core::mem::size_of;
+use crate::{
+	file::socket::{Socket, SocketOps},
+	memory::user::UserSlice,
+	net::{Address, get_iface_for, sockaddr::SockAddr},
+};
+use core::{mem::size_of, todo};
 use macros::AnyRepr;
-use utils::{boxed::Box, bytes::as_bytes, crypto::checksum::rfc1071, errno::EResult};
+use utils::{
+	boxed::Box, bytes::as_bytes, crypto::checksum::rfc1071, errno, errno::EResult, ptr::arc::Arc,
+};
 
 /// The default TTL value.
 const DEFAULT_TTL: u8 = 128;
@@ -155,4 +162,66 @@ pub fn inet_build(_sockaddr: &[u8]) -> EResult<Box<dyn Layer>> {
 pub fn inet6_build(_sockaddr: &[u8]) -> EResult<Box<dyn Layer>> {
 	// TODO
 	todo!()
+}
+
+/// IPv4 socket operations
+#[derive(Debug, Default)]
+pub struct InetSocketOps {
+	// TODO
+}
+
+impl SocketOps for InetSocketOps {
+	fn connect(&self, _sock: &Arc<Socket>, _addr: SockAddr) -> EResult<()> {
+		todo!()
+	}
+
+	fn read(&self, _sock: &Socket, _buf: UserSlice<u8>) -> EResult<usize> {
+		todo!()
+	}
+
+	fn write(&self, _sock: &Socket, _buf: UserSlice<u8>) -> EResult<usize> {
+		todo!()
+	}
+
+	fn sendto(&self, _sock: &Socket, _buf: UserSlice<u8>, addr: SockAddr) -> EResult<usize> {
+		match Address::from_sockaddr(addr) {
+			Some(addr) => {
+				let _iface = get_iface_for(&addr).ok_or_else(|| errno!(ENETUNREACH))?;
+				todo!()
+			}
+			None => todo!(),
+		}
+	}
+
+	fn poll(&self, _sock: &Socket) -> EResult<u32> {
+		todo!()
+	}
+}
+
+/// IPv6 socket operations
+#[derive(Debug, Default)]
+pub struct Inet6SocketOps {
+	// TODO
+}
+
+impl SocketOps for Inet6SocketOps {
+	fn connect(&self, _sock: &Arc<Socket>, _addr: SockAddr) -> EResult<()> {
+		todo!()
+	}
+
+	fn read(&self, _sock: &Socket, _buf: UserSlice<u8>) -> EResult<usize> {
+		todo!()
+	}
+
+	fn write(&self, _sock: &Socket, _buf: UserSlice<u8>) -> EResult<usize> {
+		todo!()
+	}
+
+	fn sendto(&self, _sock: &Socket, _buf: UserSlice<u8>, _addr: SockAddr) -> EResult<usize> {
+		todo!()
+	}
+
+	fn poll(&self, _sock: &Socket) -> EResult<u32> {
+		todo!()
+	}
 }
