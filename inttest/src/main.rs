@@ -245,7 +245,11 @@ const TESTS: &[TestSuite] = &[
 		name: "Network",
 		desc: "Test network connectivity",
 		tests: &[
-			// TODO network setup
+			Test {
+				name: "Network setup",
+				desc: "Setup network interfaces",
+				start: net::setup,
+			},
 			Test {
 				name: "ping",
 				desc: "Ping a remote host",
