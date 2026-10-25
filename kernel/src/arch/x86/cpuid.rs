@@ -41,10 +41,9 @@ pub fn cpuid(mut eax: u32, mut ecx: u32) -> (u32, u32, u32, u32) {
 		);
 		#[cfg(target_arch = "x86_64")]
 		asm!(
-			"push rbx",
+			"mov {ebx:r}, rbx",
 			"cpuid",
-			"mov {ebx:e}, ebx",
-			"pop rbx",
+			"xchg {ebx:r}, rbx",
 			inout("eax") eax,
 			ebx = out(reg) ebx,
 			inout("ecx") ecx,
