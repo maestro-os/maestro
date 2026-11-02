@@ -127,7 +127,8 @@ pub(crate) fn init() {
 		asm!(
 			"mov ax, {off}",
 			"ltr ax",
-			off = const gdt::TSS_OFFSET
+			off = const gdt::TSS_OFFSET,
+			out("ax") _,
 		);
 	}
 }
