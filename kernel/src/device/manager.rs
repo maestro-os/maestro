@@ -21,7 +21,11 @@
 
 use crate::{device::bar::Bar, sync::spin::Spin};
 use core::any::{Any, TypeId};
-use utils::{collections::hashmap::HashMap, errno::EResult, ptr::arc::Arc};
+use utils::{
+	collections::hashmap::HashMap,
+	errno::{AllocResult, EResult},
+	ptr::arc::Arc,
+};
 
 /// Trait representing a physical device.
 pub trait PhysicalDevice: Any {
@@ -71,7 +75,7 @@ static DEVICE_MANAGERS: Spin<HashMap<TypeId, Arc<Spin<dyn DeviceManager>>>> =
 	Spin::new(HashMap::new());
 
 /// Registers the given device manager.
-pub fn register<M: DeviceManager>(manager: M) -> EResult<()> {
+pub fn register<M: DeviceManager>(manager: M) -> AllocResult<()> {
 	let m = Arc::new(Spin::new(manager))?;
 	let mut device_managers = DEVICE_MANAGERS.lock();
 	device_managers.insert(TypeId::of::<M>(), m)?;
