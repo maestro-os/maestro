@@ -1,0 +1,23 @@
+cargo-features = ["profile-rustflags"]
+
+[package]
+name = "virtio"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/mod.rs"
+crate-type = ["dylib"]
+
+[dependencies]
+
+[profile.release]
+panic = "abort"
+
+[profile.dev]
+rustflags = [
+	"-Cforce-frame-pointers=yes"
+]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(maestro_builtin)'] }
