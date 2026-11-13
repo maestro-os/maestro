@@ -1,6 +1,8 @@
 //! Virtio block device implementation
 
 use crate::{VirtioDeviceOps, le16, le32, le64};
+use core::todo;
+use kernel::{device::manager::PhysicalDevice, utils::errno::EResult};
 
 // Feature bits
 
@@ -21,8 +23,8 @@ pub const VIRTIO_BLK_F_ZONED: u32 = 1 << 17;
 
 // Legacy feature bits
 
-pub const VIRTIO_BLK_F_BARRIER: u32 = 0;
-pub const VIRTIO_BLK_F_SCSI: u32 = 7;
+pub const VIRTIO_BLK_F_BARRIER: u32 = 1 << 0;
+pub const VIRTIO_BLK_F_SCSI: u32 = 1 << 7;
 
 #[repr(C)]
 struct VirtioBlkGeometry {
@@ -76,4 +78,8 @@ struct VirtioBlkConfig {
 
 pub struct VirtioBlkDevOps;
 
-impl VirtioDeviceOps for VirtioBlkDevOps {}
+impl VirtioDeviceOps for VirtioBlkDevOps {
+	fn setup(&self, dev: &dyn PhysicalDevice) -> EResult<()> {
+		todo!()
+	}
+}

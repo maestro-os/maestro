@@ -26,7 +26,7 @@ kernel::module!([]);
 
 const VIRTIO_VENDOR_ID: u16 = 0x1af4;
 const VIRTIO_DEVICE_ID_START: u16 = 0x1000;
-const VIRTIO_DEVICE_ID_END: u16 = 0x107f;
+const VIRTIO_DEVICE_ID_END: u16 = 0x1080;
 
 const NON_TRANSITIONAL_NET_DEV: u16 = 1;
 const NON_TRANSITIONAL_BLK_DEV: u16 = 2;
@@ -63,7 +63,8 @@ fn is_virtio_dev(vendor_id: u16, device_id: u16) -> bool {
 }
 
 trait VirtioDeviceOps {
-	// TODO
+	/// Device-specific setup
+	fn setup(&self, dev: &dyn PhysicalDevice) -> EResult<()>;
 }
 
 struct VirtioDevice {
@@ -94,6 +95,19 @@ impl VirtioDevice {
 				_ => return Ok(None),
 			}
 		};
+		// TODO:
+		// - reset the device
+		// - set the acknowledge status bit
+		// - set the driver status bit
+		// - read feature bits and write the supported subset back
+		// - Set FEATURES_OK status bit
+		// - Re-read device status to ensure FEATURES_OK is still set. If not, abort
+		let res = ops.setup(dev);
+		if let Err(e) = res {
+			// TODO set FAILED status bit
+			return Err(e);
+		}
+		// TODO: set DRIVER_OK
 		Ok(Some(VirtioDevice {
 			ops,
 		}))
@@ -127,7 +141,7 @@ fn init_impl() -> AllocResult<()> {
 	device::manager::register(VirtioDeviceManager {
 		devices: Vec::new(),
 	})?;
-	// TODO rescan PCI?
+	// TODO rescan PCI
 	Ok(())
 }
 
@@ -145,4 +159,5 @@ pub extern "C" fn init() -> bool {
 #[cfg_attr(not(maestro_builtin), unsafe(no_mangle))]
 pub extern "C" fn fini() {
 	println!("Unload virtio driver");
+	// TODO unregister manager
 }
